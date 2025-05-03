@@ -1,0 +1,9 @@
+*.kernel
+
+*.a
+*.d
+*.o
+
+*.iso
+isodir
+sysroot
