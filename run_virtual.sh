@@ -2,5 +2,5 @@
 set -e
 . ./make_iso.sh
 
-qemu-system-$(./target_triplet_to_arch.sh $HOST) -cdrom hojicha.iso
+qemu-system-$(./target_triplet_to_arch.sh $HOST) -cdrom hojicha.iso -serial file:$HOME/logs/hojicha/serial.log
 

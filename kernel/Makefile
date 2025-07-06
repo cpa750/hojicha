@@ -29,6 +29,8 @@ LIBS:=$(LIBS) $(KERNEL_ARCH_LIBS)
 
 KERNEL_OBJS=\
 $(KERNEL_ARCH_OBJS) \
+utils/io.o \
+drivers/serial.o \
 kernel/kernel.o \
 
 OBJS=\
