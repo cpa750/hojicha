@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 __attribute__((__noreturn__)) void abort(void);
+char* itoa(int num, char* dst, int base);
 
 #ifdef __cplusplus
 }
