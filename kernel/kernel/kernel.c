@@ -2,14 +2,19 @@
 #include <serial.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 void kernel_main(void) {
   terminal_initialize();
   initialize_serial();
-  serial_write_string("Kernel initialized\n");
-  printf("Kernel initialized\n");
-  for (size_t i = 0; i < 26; i++) {
-    printf("i: %c\n", (char)i + 0x30);
+  printf("Serial initialized.\n");
+  serial_write_string("Hojicha kernel initialized.\n");
+  printf("Hojicha kernel initialized.\n");
+  char buf[100];
+  for (size_t i = 0; i < 100; i++) {
+    itoa(i, buf, 16);
+    serial_write_string(buf);
+    serial_write_string("\n");
   }
 }
 

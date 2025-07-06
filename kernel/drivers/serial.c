@@ -21,7 +21,7 @@ int initialize_serial() {
   }
 
   outb(SERIAL_PORT + 4, 0x0F);
-  serial_write_char('a');
+  serial_write_string("Serial initialized.\n");
   return 0;
 }
 
