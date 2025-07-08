@@ -22,7 +22,24 @@ char* itoa(int num, char* dst, int base) {
     num /= base;
   }
 
-  if (is_negative) {
+  switch (base) {
+    case 16:
+      dst[i++] = 'x';
+      break;
+    case 10:
+      dst[i++] = 'd';
+      break;
+    case 8:
+      dst[i++] = 'o';
+      break;
+    case 2:
+      dst[i++] = 'b';
+      break;
+  }
+
+  dst[i++] = '0';
+
+  if (is_negative && base == 10) {
     dst[i++] = '-';
   }
 
