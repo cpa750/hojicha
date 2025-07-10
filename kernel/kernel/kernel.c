@@ -1,3 +1,4 @@
+#include <cpu/gdt.h>
 #include <kernel/tty.h>
 #include <serial.h>
 #include <stddef.h>
@@ -7,6 +8,7 @@
 void kernel_main(void) {
   terminal_initialize();
   initialize_serial();
+  initialize_gdt();
   printf("Serial initialized.\n");
   serial_write_string("Hojicha kernel initialized.\n");
   printf("Hojicha kernel initialized.\n");

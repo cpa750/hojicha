@@ -1,6 +1,8 @@
 #include <cpu/gdt.h>
+#include <cpu/tss.h>
 #include <serial.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define GDT_ENTRIES 6
 
@@ -12,6 +14,7 @@ void create_gdt_entry(GDTEntry* entry, uint8_t index, uint32_t limit,
     printf("Fatal: GDT cannot encode limits greater than 0xFFFFF. Halt.");
     serial_write_string(
         "Fatal: GDT cannot encode limits greater than 0xFFFFF. Halt.");
+    abort();
   }
 
   entry[index].base_low = base & 0xFFFF;
@@ -20,8 +23,8 @@ void create_gdt_entry(GDTEntry* entry, uint8_t index, uint32_t limit,
 
   entry[index].limit_low = limit & 0xFFFF;
 
-  entry[index].limit_high = (limit >> 16) & 0x0F;
-  entry[index].limit_high |= granularity & 0xF0;
+  entry[index].flags = (limit >> 16) & 0x0F;
+  entry[index].flags |= flags & 0xF0;
 
   entry[index].access = access;
 }
@@ -29,6 +32,8 @@ void create_gdt_entry(GDTEntry* entry, uint8_t index, uint32_t limit,
 void initialize_gdt() {
   GDTEntry gdt_entries[GDT_ENTRIES];
   GDTPointer gdt_pointer;
+
+  TSS tss = {0};
 
   // Null descriptor
   create_gdt_entry(gdt_entries, 0, 0x0, 0x0, 0x0, 0x0);
@@ -40,11 +45,12 @@ void initialize_gdt() {
   create_gdt_entry(gdt_entries, 3, 0xFFFF, 0x0, 0xFA, 0xC);
   // User data segment
   create_gdt_entry(gdt_entries, 4, 0xFFFF, 0x0, 0xF2, 0xC);
-  // TODO: Task state segment
+  // Task state segment
+  create_gdt_entry(gdt_entries, 5, sizeof(TSS) - 1, (uint32_t)&tss, 0x89, 0x0);
 
-  gdt_pointer = (GDTPointer) {
-    .limit = sizeof(uint8_t * 7) - 1;
-    .base = gdt_entries;
-  }
+  gdt_pointer = (GDTPointer){.limit = sizeof(uint8_t) * 7 - 1,
+                             .base = (uint32_t)gdt_entries};
+
+  load_gdt();
 }
 
