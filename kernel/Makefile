@@ -31,6 +31,7 @@ KERNEL_OBJS=\
 $(KERNEL_ARCH_OBJS) \
 utils/io.o \
 drivers/serial.o \
+cpu/gdt.o \
 kernel/kernel.o \
 
 OBJS=\
@@ -50,7 +51,7 @@ $(ARCHDIR)/crtend.o \
 $(ARCHDIR)/crtn.o \
 
 .PHONY: all clean install install-headers install-kernel
-.SUFFIXES: .o .c .s
+.SUFFIXES: .o .c .s .asm
 
 all: hojicha.kernel
 
@@ -66,6 +67,9 @@ $(ARCHDIR)/crtbegin.o $(ARCHDIR)/crtend.o:
 
 .s.o:
 	$(CC) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS)
+
+.asm.o:
+	nasm -Wall -f elf32 $< -o $@
 
 clean:
 	rm -f hojicha.kernel
