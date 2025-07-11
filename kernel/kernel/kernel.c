@@ -1,4 +1,5 @@
 #include <cpu/gdt.h>
+#include <cpu/protected.h>
 #include <kernel/tty.h>
 #include <serial.h>
 #include <stddef.h>
@@ -6,6 +7,11 @@
 #include <stdlib.h>
 
 void kernel_main(void) {
+  if (!is_protected_mode()) {
+    printf(
+        "Fatal: bootloader handed over with protected mode disabled. Abort.");
+    abort();
+  }
   asm volatile("cli");  // Disable interrupts
   terminal_initialize();
   initialize_serial();
