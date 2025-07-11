@@ -1,3 +1,6 @@
+#ifndef TSS_H
+#define TSS_H
+
 #include <stdint.h>
 
 typedef struct {
@@ -40,4 +43,6 @@ typedef struct {
   uint16_t io_map_base_low;
   uint16_t io_map_base_high;
 } __attribute__((packed)) TSS;
+
+#endif  // TSS_H
 
