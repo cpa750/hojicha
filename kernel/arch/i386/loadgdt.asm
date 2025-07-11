@@ -6,6 +6,9 @@ section .text
 
 ; Thank you OSDev wiki, I'll yoink this
 load_gdt:
+   mov eax, [esp+4]
+   lgdt [eax]
+
    ; Reload CS register containing code selector:
    jmp   0x08:.reload_CS
 .reload_CS:
