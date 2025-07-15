@@ -5,9 +5,9 @@ global load_gdt
 section .text
 
 ; Thank you OSDev wiki, I'll yoink this
+extern gdt_pointer
 load_gdt:
-   mov eax, [esp+4]
-   lgdt [eax]
+   lgdt [gdt_pointer]
 
    ; Reload CS register containing code selector:
    jmp   0x08:.reload_CS

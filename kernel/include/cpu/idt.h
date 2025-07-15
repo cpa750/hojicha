@@ -16,7 +16,7 @@ typedef struct {
   uint32_t base;
 } __attribute((packed)) IDTPointer;
 
-void intialize_idt();
+void initialize_idt();
 
 #endif  // IDT_H
 

@@ -6,7 +6,7 @@
 
 #define GDT_ENTRIES 6
 
-extern void load_gdt(uint32_t);
+extern void load_gdt();
 
 void create_gdt_entry(GDTEntry* entry, uint8_t index, uint32_t limit,
                       uint32_t base, uint8_t access, uint8_t flags) {
@@ -29,11 +29,11 @@ void create_gdt_entry(GDTEntry* entry, uint8_t index, uint32_t limit,
   entry[index].access = access;
 }
 
-void initialize_gdt() {
-  GDTEntry gdt_entries[GDT_ENTRIES];
-  GDTPointer gdt_pointer;
-  TSS tss = {0};
+GDTEntry gdt_entries[GDT_ENTRIES];
+GDTPointer gdt_pointer;
+TSS tss = {0};
 
+void initialize_gdt() {
   // Null descriptor
   create_gdt_entry(gdt_entries, 0, 0x0, 0x0, 0x0, 0x0);
   // Kernel code segment
@@ -48,8 +48,8 @@ void initialize_gdt() {
   create_gdt_entry(gdt_entries, 5, sizeof(TSS) - 1, (uint32_t)&tss, 0x89, 0x0);
 
   gdt_pointer = (GDTPointer){.limit = (sizeof(GDTEntry) * GDT_ENTRIES) - 1,
-                             .base = (uint32_t)gdt_entries};
+                             .base = (uint32_t)&gdt_entries};
 
-  load_gdt((uint32_t)&gdt_pointer);
+  load_gdt();
 }
 
