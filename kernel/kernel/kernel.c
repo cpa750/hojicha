@@ -23,7 +23,6 @@ void kernel_main(void) {
   printf("IDT initialized.\n");
 
   printf("Hojicha kernel initialized.\n");
-  serial_write_string("Hojicha kernel initialized.\n");
 
   asm volatile("sti");
   asm volatile("int $0x0");

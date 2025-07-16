@@ -1,5 +1,6 @@
 extern handle_fault
 
+; Thank you OS Dev wiki for nasm macros
 %macro isr_err_stub 1
 isr_stub_%+%1:
     push byte %1
