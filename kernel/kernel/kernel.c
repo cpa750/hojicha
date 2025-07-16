@@ -1,4 +1,5 @@
 #include <cpu/gdt.h>
+#include <cpu/idt.h>
 #include <cpu/protected.h>
 #include <kernel/tty.h>
 #include <serial.h>
@@ -12,27 +13,19 @@ void kernel_main(void) {
         "Fatal: bootloader handed over with protected mode disabled. Abort.");
     abort();
   }
-  asm volatile("cli");  // Disable interrupts
+  asm volatile("cli");
   terminal_initialize();
   initialize_serial();
   printf("Serial initialized.\n");
   initialize_gdt();
   printf("GDT initialized.\n");
-  serial_write_string("GDT initialized.\n");
+  initialize_idt();
+  printf("IDT initialized.\n");
 
   printf("Hojicha kernel initialized.\n");
   serial_write_string("Hojicha kernel initialized.\n");
-  char buf[100];
-  for (size_t i = 0; i < 100; i++) {
-    itoa(i, buf, 16);
-    serial_write_string(buf);
-    serial_write_string("\n");
-  }
-  // asm volatile("sti");  // Enable interrupts
-  // TODO: Re-enable this once we've implemented the IDT
 
-  while (1) {
-    asm("");
-  }
+  asm volatile("sti");
+  asm volatile("int $0x0");
 }
 
