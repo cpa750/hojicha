@@ -3,6 +3,7 @@
 #include <pic.h>
 #include <stdlib.h>
 #include <string.h>
+#include <timer.h>
 
 #define IDT_ENTRIES 256
 
@@ -30,6 +31,7 @@ void initialize_idt() {
   idt_pointer.base = (uint32_t)&entries;
 
   create_isr_entries();
+  create_idt_entry(entries, 32, &handle_timer, 0x8E, 0x08);
   load_idt();
 }
 
