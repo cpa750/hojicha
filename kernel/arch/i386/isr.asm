@@ -12,7 +12,6 @@ isr_stub_%+%1:
     push byte 0
     push byte %1
     jmp isr_common
-    iret
 %endmacro
 
 isr_no_err_stub 0

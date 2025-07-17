@@ -2,6 +2,7 @@
 #include <cpu/idt.h>
 #include <cpu/protected.h>
 #include <kernel/tty.h>
+#include <pic.h>
 #include <serial.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -16,15 +17,20 @@ void kernel_main(void) {
   asm volatile("cli");
   terminal_initialize();
   initialize_serial();
-  printf("Serial initialized.\n");
+  printf("Serial interface initialized.\n");
   initialize_gdt();
   printf("GDT initialized.\n");
   initialize_idt();
   printf("IDT initialized.\n");
+  initialize_pic();
+  printf("PICs initialized.\n");
 
-  printf("Hojicha kernel initialized.\n");
+  printf("\nHojicha kernel initialized.\n\n");
 
   asm volatile("sti");
-  asm volatile("int $0x0");
+  // asm volatile("int $0x1");
+
+  for (;;)
+    ;
 }
 

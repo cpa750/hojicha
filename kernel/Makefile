@@ -30,6 +30,7 @@ LIBS:=$(LIBS) $(KERNEL_ARCH_LIBS)
 KERNEL_OBJS=\
 $(KERNEL_ARCH_OBJS) \
 utils/io.o \
+drivers/pic.o \
 drivers/serial.o \
 cpu/gdt.o \
 cpu/isr.o \

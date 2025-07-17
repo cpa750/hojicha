@@ -1,5 +1,6 @@
 #include <cpu/idt.h>
 #include <cpu/isr.h>
+#include <pic.h>
 #include <stdlib.h>
 #include <string.h>
 
