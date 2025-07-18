@@ -32,16 +32,20 @@ void full_mask_pics() {
 
 void enable_irq(uint16_t irq) {
   if (irq < 8) {
+    inb(0x21);
     outb(0x21, ~(1 << irq));
   } else {
+    inb(0xA1);
     outb(0xA1, ~(1 << (irq % 8)));
   }
 }
 
 void disable_irq(uint16_t irq) {
   if (irq < 8) {
+    inb(0x21);
     outb(0x21, (1 << irq));
   } else {
+    inb(0xA1);
     outb(0xA1, (1 << (irq % 8)));
   }
 }

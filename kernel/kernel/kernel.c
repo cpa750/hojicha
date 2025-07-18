@@ -3,6 +3,7 @@
 #include <cpu/protected.h>
 #include <kernel/tty.h>
 #include <pic.h>
+#include <pit.h>
 #include <serial.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -24,13 +25,16 @@ void kernel_main(void) {
   printf("IDT initialized.\n");
   initialize_pic();
   printf("PICs initialized.\n");
+  initialize_pit();
+  printf("PICs initialized.\n");
 
-  printf("\nHojicha kernel initialized.\n\n");
+  printf("\n------------------------------------------------------------\n");
+  printf("|                Hojicha kernel initialized.               |\n");
+  printf("------------------------------------------------------------\n\n");
 
   asm volatile("sti");
   // asm volatile("int $0x1");
 
-  for (;;)
-    ;
+  while (1) asm volatile("hlt");
 }
 
