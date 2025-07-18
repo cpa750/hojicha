@@ -26,7 +26,7 @@ void kernel_main(void) {
   initialize_pic();
   printf("PICs initialized.\n");
   initialize_pit();
-  printf("PICs initialized.\n");
+  printf("PIT initialized.\n");
 
   printf("\n------------------------------------------------------------\n");
   printf("|                Hojicha kernel initialized.               |\n");

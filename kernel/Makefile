@@ -35,6 +35,7 @@ drivers/serial.o \
 drivers/pit.o \
 cpu/gdt.o \
 cpu/isr.o \
+cpu/irq.o \
 cpu/idt.o \
 kernel/kernel.o \
 

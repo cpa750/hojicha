@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define TICKS_PER_SECOND 100
+#define TICKS_PER_SECOND 10
 
 uint32_t ticks;
 

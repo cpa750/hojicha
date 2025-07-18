@@ -60,12 +60,12 @@ isr_common:
     mov gs, ax
     mov eax, esp
     call handle_fault
-    pop eax
     pop ds
     pop fs
     pop es
-    pop ds
+    pop gs
     popa
+    add esp, 8
     iret
 
 global isr_stub_table
