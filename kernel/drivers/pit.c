@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define TICKS_PER_SECOND 10
+#define TICKS_PER_SECOND 100
 
 uint32_t ticks;
 
@@ -29,8 +29,5 @@ void handle_pit() {
   } else {
     ticks++;
   }
-
-  send_end_of_interrupt(0x0);
-  asm volatile("sti");
 }
 
