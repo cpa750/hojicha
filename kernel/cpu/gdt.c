@@ -1,6 +1,5 @@
 #include <cpu/gdt.h>
 #include <cpu/tss.h>
-#include <serial.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -12,8 +11,6 @@ void create_gdt_entry(GDTEntry* entry, uint8_t index, uint32_t limit,
                       uint32_t base, uint8_t access, uint8_t flags) {
   if (limit > 0xFFFFFFFF) {
     printf("Fatal: GDT cannot encode limits greater than 0xFFFFFFFF. Abort.\n");
-    serial_write_string(
-        "Fatal: GDT cannot encode limits greater than 0xFFFFFFFF. Abort.\n");
     abort();
   }
 

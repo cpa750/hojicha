@@ -12,7 +12,6 @@ isr_stub_%+%1:
     push byte 0
     push byte %1
     jmp isr_common
-    iret
 %endmacro
 
 isr_no_err_stub 0
@@ -61,12 +60,12 @@ isr_common:
     mov gs, ax
     mov eax, esp
     call handle_fault
-    pop eax
     pop ds
     pop fs
     pop es
-    pop ds
+    pop gs
     popa
+    add esp, 8
     iret
 
 global isr_stub_table

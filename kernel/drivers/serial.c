@@ -1,5 +1,5 @@
+#include <drivers/serial.h>
 #include <io.h>
-#include <serial.h>
 #include <string.h>
 
 #define SERIAL_PORT 0x3f8

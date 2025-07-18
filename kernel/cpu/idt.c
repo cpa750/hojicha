@@ -1,5 +1,7 @@
 #include <cpu/idt.h>
 #include <cpu/isr.h>
+#include <drivers/pic.h>
+#include <drivers/pit.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -21,6 +23,7 @@ void create_idt_entry(IDTEntry* entries, uint8_t index, void* base,
 }
 
 void create_isr_entries();
+void create_irq_entries();
 
 __attribute__((aligned(0x10))) IDTEntry entries[IDT_ENTRIES];
 IDTPointer idt_pointer;
@@ -29,14 +32,20 @@ void initialize_idt() {
   idt_pointer.base = (uint32_t)&entries;
 
   create_isr_entries();
+  create_irq_entries();
   load_idt();
 }
 
 extern void* isr_stub_table[];
+extern void* irq_stub_table[];
 
 void create_isr_entries() {
   for (size_t vector = 0; vector < 32; vector++) {
     create_idt_entry(entries, vector, isr_stub_table[vector], 0x8E, 0x08);
   }
+}
+
+void create_irq_entries() {
+  create_idt_entry(entries, 32, irq_stub_table[0], 0x8E, 0x08);  // PIT
 }
 
