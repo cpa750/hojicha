@@ -23,8 +23,8 @@ irq_common:
     mov eax, esp
     call handle_irq
     pop ds
-    pop fs
     pop es
+    pop fs
     pop gs
     popa
     add esp, 8
