@@ -1,5 +1,4 @@
 #include <cpu/isr.h>
-#include <serial.h>
 #include <stdio.h>
 #include <stdlib.h>
 

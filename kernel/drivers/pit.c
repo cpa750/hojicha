@@ -1,6 +1,6 @@
+#include <drivers/pic.h>
+#include <drivers/pit.h>
 #include <io.h>
-#include <pic.h>
-#include <pit.h>
 #include <stdio.h>
 #include <stdlib.h>
 

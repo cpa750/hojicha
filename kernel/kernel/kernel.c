@@ -1,10 +1,10 @@
 #include <cpu/gdt.h>
 #include <cpu/idt.h>
 #include <cpu/protected.h>
+#include <drivers/pic.h>
+#include <drivers/pit.h>
+#include <drivers/serial.h>
 #include <kernel/tty.h>
-#include <pic.h>
-#include <pit.h>
-#include <serial.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,7 +33,6 @@ void kernel_main(void) {
   printf("------------------------------------------------------------\n\n");
 
   asm volatile("sti");
-  // asm volatile("int $0x1");
 
   while (1) asm volatile("hlt");
 }

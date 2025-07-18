@@ -1,7 +1,7 @@
 #include <cpu/idt.h>
 #include <cpu/isr.h>
-#include <pic.h>
-#include <pit.h>
+#include <drivers/pic.h>
+#include <drivers/pit.h>
 #include <stdlib.h>
 #include <string.h>
 
