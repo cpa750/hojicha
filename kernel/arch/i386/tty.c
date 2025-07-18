@@ -39,13 +39,17 @@ void terminal_put_entry_at(unsigned char c, uint8_t color, size_t x, size_t y) {
   terminal_buffer[idx] = vga_entry(c, color);
 }
 
-void scroll(int line) {
-  int loop;
-  char c;
+void scroll() {
+  for (int y = 1; y < VGA_HEIGHT; y++) {
+    for (int x = 0; x < VGA_WIDTH; x++) {
+      terminal_buffer[(y - 1) * VGA_WIDTH + x] =
+          terminal_buffer[y * VGA_WIDTH + x];
+    }
+  }
 
-  for (loop = line * (VGA_WIDTH * 2) + 0xB8000; loop < VGA_WIDTH * 2; loop++) {
-    c = *((char*)loop);
-    *((char*)loop - (VGA_WIDTH * 2)) = c;
+  for (int x = 0; x < VGA_WIDTH; x++) {
+    terminal_buffer[(VGA_HEIGHT - 1) * VGA_WIDTH + x] =
+        vga_entry(' ', terminal_color);
   }
 }
 
@@ -59,19 +63,22 @@ void delete_last_line() {
 }
 
 void terminal_putchar(char c) {
-  int line;
-  unsigned char uc = c;
-
-  terminal_put_entry_at(uc, terminal_color, terminal_column, terminal_row);
-  // TODO fix terminal scrolling
-  if (++terminal_column == VGA_WIDTH || c == '\n') {
+  if (c == '\n') {
     terminal_column = 0;
     if (++terminal_row == VGA_HEIGHT) {
-      for (line = 1; line <= VGA_HEIGHT - 1; line++) {
-        scroll(line);
-      }
-      delete_last_line();
-      terminal_row = VGA_HEIGHT - 1;
+      scroll();
+      terminal_row--;
+    }
+    return;
+  }
+
+  terminal_put_entry_at(c, terminal_color, terminal_column, terminal_row);
+
+  if (++terminal_column == VGA_WIDTH) {
+    terminal_column = 0;
+    if (++terminal_row == VGA_HEIGHT) {
+      scroll();
+      terminal_row--;
     }
   }
 }
