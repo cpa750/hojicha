@@ -20,7 +20,6 @@ void initialize_pit() {
 
 void handle_pit() {
   if (ticks > 0 && (ticks % TICKS_PER_SECOND) == 0) {
-    printf("One second elapsed.\n");
     ticks = 0;
   } else {
     ticks++;
