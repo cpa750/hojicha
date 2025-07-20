@@ -19,14 +19,12 @@ void initialize_pit() {
 }
 
 void handle_pit() {
-  // Need to pause interrupts while we handle this.
-  // If we don't, it causes some sort of race condition
-  // after the first interrupt, softlocking the kernel.
   if (ticks > 0 && (ticks % TICKS_PER_SECOND) == 0) {
     printf("One second elapsed.\n");
     ticks = 0;
   } else {
     ticks++;
   }
+  send_end_of_interrupt(0x0);
 }
 

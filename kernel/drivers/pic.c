@@ -10,8 +10,9 @@ void full_mask_pics();
 void initialize_pic() {
   remap_pics(0x20, 0x28);
   full_mask_pics();
+  // TODO: Shouldn't these be in their respective drivers...?
   enable_irq(0x0);  // Enable only timer interrupts
-  // enable_irq(0x1);  // ...and the keyboard
+  enable_irq(0x1);  // ...and the keyboard
 }
 
 void remap_pics(uint32_t main_offset, uint32_t sub_offset) {
