@@ -54,7 +54,7 @@ char lookup_scancode_with_shift(uint8_t scancode) {
     serial_write_string("Shifted char: ");
     serial_write_char(shifted_keyboard_characters[scancode - 0x07]);
     serial_write_string("\n");
-    return shifted_keyboard_characters[scancode - 0x07];
+    return shifted_keyboard_characters[scancode - 0x08];
   } else {
     return 0;
   }
