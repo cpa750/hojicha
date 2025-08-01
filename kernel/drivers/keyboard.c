@@ -9,7 +9,7 @@
 
 // TODO refactor this mess
 
-KeyboardStatus keyboard_status = {0};
+KeyboardStatus keyboard_status;
 
 char keyboard_characters[] = {
     '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '^',

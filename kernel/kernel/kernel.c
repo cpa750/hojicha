@@ -1,6 +1,7 @@
 #include <cpu/gdt.h>
 #include <cpu/idt.h>
 #include <cpu/protected.h>
+#include <drivers/keyboard.h>
 #include <drivers/pic.h>
 #include <drivers/pit.h>
 #include <drivers/serial.h>
@@ -18,15 +19,17 @@ void kernel_main(void) {
   asm volatile("cli");
   terminal_initialize();
   initialize_serial();
-  printf("Serial interface initialized.\n");
+  printf("[OK] Serial\n");
   initialize_gdt();
-  printf("GDT initialized.\n");
+  printf("[OK] GDT\n");
   initialize_idt();
-  printf("IDT initialized.\n");
+  printf("[OK] IDT\n");
   initialize_pic();
-  printf("PICs initialized.\n");
+  printf("[OK] PICs\n");
   initialize_pit();
-  printf("PIT initialized.\n");
+  printf("[OK] PIT\n");
+  initialize_keyboard();
+  printf("[OK] Keyboard\n");
 
   printf("\n------------------------------------------------------------\n");
   printf("|                Hojicha kernel initialized.               |\n");
