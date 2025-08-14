@@ -1,6 +1,7 @@
 #include <drivers/pic.h>
 #include <io.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -10,8 +11,9 @@ void full_mask_pics();
 void initialize_pic() {
   remap_pics(0x20, 0x28);
   full_mask_pics();
+  // TODO: Shouldn't these be in their respective drivers...?
   enable_irq(0x0);  // Enable only timer interrupts
-  // enable_irq(0x1);  // ...and the keyboard
+  enable_irq(0x1);  // ...and the keyboard
 }
 
 void remap_pics(uint32_t main_offset, uint32_t sub_offset) {
@@ -25,28 +27,37 @@ void remap_pics(uint32_t main_offset, uint32_t sub_offset) {
   outb(0xA1, 0b1);
 }
 
+static uint8_t main_mask = 0b11111111;
+static uint8_t sub_mask = 0b11111111;
+
 void full_mask_pics() {
+  main_mask = 0b11111111;
+  sub_mask = 0b11111111;
   outb(0x21, 0xff);
   outb(0xA1, 0xff);
 }
 
 void enable_irq(uint16_t irq) {
   if (irq < 8) {
+    main_mask &= ~(1 << irq);
     inb(0x21);
-    outb(0x21, ~(1 << irq));
+    outb(0x21, main_mask);
   } else {
+    sub_mask &= ~(1 << (irq % 8));
     inb(0xA1);
-    outb(0xA1, ~(1 << (irq % 8)));
+    outb(0xA1, sub_mask);
   }
 }
 
 void disable_irq(uint16_t irq) {
   if (irq < 8) {
+    main_mask &= (1 << irq);
     inb(0x21);
-    outb(0x21, (1 << irq));
+    outb(0x21, main_mask);
   } else {
+    sub_mask &= (1 << (irq % 8));
     inb(0xA1);
-    outb(0xA1, (1 << (irq % 8)));
+    outb(0xA1, sub_mask);
   }
 }
 

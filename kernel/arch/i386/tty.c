@@ -1,3 +1,4 @@
+#include <io.h>
 #include <kernel/tty.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -10,10 +11,18 @@ static const size_t VGA_WIDTH = 80;
 static const size_t VGA_HEIGHT = 25;
 static uint16_t* const VGA_MEMORY = (uint16_t*)0xB8000;
 
-static size_t terminal_row;
-static size_t terminal_column;
+static uint16_t terminal_row;
+static uint16_t terminal_column;
 static uint8_t terminal_color;
 static uint16_t* terminal_buffer;
+
+void set_cursor_shape(uint8_t start, uint8_t end) {
+  outb(0x3d4, 0x0a);
+  outb(0x3d5, start);
+
+  outb(0x3d4, 0x0b);
+  outb(0x3d5, end);
+}
 
 void terminal_initialize(void) {
   terminal_row = 0;
@@ -26,6 +35,7 @@ void terminal_initialize(void) {
       terminal_buffer[idx] = vga_entry(' ', terminal_color);
     }
   }
+  set_cursor_shape(0, 15);
 }
 
 void terminal_set_color(uint8_t color) { terminal_color = color; }
@@ -62,13 +72,44 @@ void delete_last_line() {
   }
 }
 
+void terminal_erase() {
+  if (terminal_column == 0 && terminal_row > 0) {
+    terminal_column = VGA_WIDTH;
+    --terminal_row;
+  }
+  if (terminal_buffer[terminal_row * VGA_WIDTH + terminal_column] != 0) {
+    const size_t idx = terminal_row * VGA_WIDTH + terminal_column;
+    terminal_buffer[idx - 1] = vga_entry(' ', terminal_color);
+  }
+  if (terminal_column == 0 && terminal_row == 0) {
+    return;
+  }
+  terminal_column--;
+}
+
+void terminal_set_caret_pos(uint16_t terminal_row, uint16_t terminal_column) {
+  uint16_t idx = terminal_row * VGA_WIDTH + terminal_column;
+  outb(0x3d4, 0x0f);
+  outb(0x3d5, (uint8_t)(idx & 0xff));
+
+  outb(0x3d4, 0x0e);
+  outb(0x3d5, (uint8_t)((idx >> 8) & 0xff));
+}
+
 void terminal_putchar(char c) {
+  if (c == 0x08) {
+    terminal_erase();
+    terminal_set_caret_pos(terminal_row, terminal_column);
+    return;
+  }
+
   if (c == '\n') {
     terminal_column = 0;
     if (++terminal_row == VGA_HEIGHT) {
       scroll();
       terminal_row--;
     }
+    terminal_set_caret_pos(terminal_row, terminal_column);
     return;
   }
 
@@ -81,6 +122,7 @@ void terminal_putchar(char c) {
       terminal_row--;
     }
   }
+  terminal_set_caret_pos(terminal_row, terminal_column);
 }
 
 void terminal_write(const char* data, size_t len) {

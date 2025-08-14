@@ -29,15 +29,16 @@ LIBS:=$(LIBS) $(KERNEL_ARCH_LIBS)
 
 KERNEL_OBJS=\
 $(KERNEL_ARCH_OBJS) \
-utils/io.o \
-drivers/pic.o \
-drivers/serial.o \
-drivers/pit.o \
 cpu/gdt.o \
 cpu/isr.o \
 cpu/irq.o \
 cpu/idt.o \
+drivers/keyboard.o \
+drivers/pic.o \
+drivers/pit.o \
+drivers/serial.o \
 kernel/kernel.o \
+utils/io.o \
 
 OBJS=\
 $(ARCHDIR)/crti.o \

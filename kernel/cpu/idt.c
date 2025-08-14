@@ -47,5 +47,6 @@ void create_isr_entries() {
 
 void create_irq_entries() {
   create_idt_entry(entries, 32, irq_stub_table[0], 0x8E, 0x08);  // PIT
+  create_idt_entry(entries, 33, irq_stub_table[1], 0x8E, 0x08);  // Keyboard
 }
 

@@ -8,6 +8,7 @@ irq_stub_%+%1:
 %endmacro
 
 irq_stub 32
+irq_stub 33
 
 irq_common:
     pusha
@@ -33,4 +34,5 @@ irq_common:
 global irq_stub_table
 irq_stub_table:
     dd irq_stub_32
+    dd irq_stub_33
 

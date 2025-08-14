@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 void terminal_initialize(void);
-void terminal_put_char(char c);
+void terminal_putchar(char c);
 void terminal_write(const char* data, size_t len);
 void terminal_write_string(const char* data);
 
