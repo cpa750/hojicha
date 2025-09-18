@@ -5,9 +5,27 @@ This project is a first effort at developing an operating system for the i386 pl
 > try to install it on real hardware - I'm not responsible for what happens if you do.
 
 ## Current Status
-Under active (early) development. The next big hurdle is interrupts and getting keyboard input.
+Under (early) active development.
+
+## Current goal:
+A malloc implementation using virtual memory.
+### In progres:
+- Physical memory manager
+### Planned
+- Virtual memory manager (paging)
+- kmalloc()
+- Maybe even get to userland?
+
+## MVP Done:
+- Boot hello world
+- Basic TTY output
+- Serial debug logs
+- GDT
+- IDT, simple PIC driver
+- Timer interrupts
+- Keyboard input
 
 If you're reading this and you have feedback, please don't hesitate to let me know!
 
 #### TODO:
-Build and run instructions, proper readme stuff
+Build and run instructions (basically get an x86 cross compiler and run `./run_virtual.sh`)
