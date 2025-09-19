@@ -1,12 +1,15 @@
+#include <drivers/serial.h>
 #include <limits.h>
 #include <memory/pmm.h>
+#include <stdlib.h>
 
 #define PAGE_SIZE 4096
 #define MEM_BITMAP_LENGTH 32768
 
-// TODO: declare these in asm
 extern uint32_t __kernel_start;
+uint32_t kernel_start = (uint32_t)&__kernel_start;
 extern uint32_t __kernel_end;
+uint32_t kernel_end = (uint32_t)&__kernel_end;
 
 // TODO: Align this to next page after kernel end,
 // reserve the region needed for it and memset to 0
@@ -50,7 +53,27 @@ void initialize_pmm(multiboot_info_t* m_info) {
       max_section_start_addr = mmap_entry->addr;
     }
   }
-  pmm_reserve_region(align_to_prev_page(__kernel_start),
-                     align_to_next_page(__kernel_end - __kernel_start + 1));
+  pmm_reserve_region(align_to_prev_page(kernel_start),
+                     align_to_next_page(kernel_end - kernel_start + 1));
+  char buf[100];
+  itoa(kernel_start, buf, 16);
+  serial_write_string("kernel_start: ");
+  serial_write_string(buf);
+  serial_write_char('\n');
+
+  itoa(kernel_end, buf, 16);
+  serial_write_string("kernel_end: ");
+  serial_write_string(buf);
+  serial_write_char('\n');
+
+  itoa(align_to_prev_page(kernel_start), buf, 16);
+  serial_write_string("kernel_start Page: ");
+  serial_write_string(buf);
+  serial_write_char('\n');
+
+  itoa(align_to_next_page(kernel_end - kernel_start + 1), buf, 16);
+  serial_write_string("kernel_end Page: ");
+  serial_write_string(buf);
+  serial_write_char('\n');
 }
 
