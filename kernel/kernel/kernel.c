@@ -7,6 +7,7 @@
 #include <drivers/serial.h>
 #include <kernel/multiboot.h>
 #include <kernel/tty.h>
+#include <memory/pmm.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,6 +32,8 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
   printf("[OK] PIT\n");
   initialize_keyboard();
   printf("[OK] Keyboard\n");
+  initialize_pmm(multiboot_info);
+  printf("[OK] PMM\n");
 
   printf("\n------------------------------------------------------------\n");
   printf("|                Hojicha kernel initialized.               |\n");
