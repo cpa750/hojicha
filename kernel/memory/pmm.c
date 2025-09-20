@@ -17,14 +17,14 @@ uint32_t kernel_end = (uint32_t)&__kernel_end;
 // 1 -> Reserved
 uint32_t mem_bitmap[32768] = {0};
 
-void mark_page(uint16_t idx) {
-  uint16_t mask = 1 << (idx & 31);
+void mark_page(uint32_t idx) {
+  uint32_t mask = 1 << (idx & 31);
   // Convert page idx to bitmap idx by log base 2 (32) = 5 right shift
   mem_bitmap[idx >> 5] |= mask;
 }
 
-void clear_page(uint16_t idx) {
-  uint16_t mask = ~(1 << (idx & 31));
+void clear_page(uint32_t idx) {
+  uint32_t mask = ~(1 << (idx & 31));
   mem_bitmap[idx >> 5] &= mask;
 }
 
@@ -53,8 +53,10 @@ void initialize_pmm(multiboot_info_t* m_info) {
       max_section_start_addr = mmap_entry->addr;
     }
   }
-  pmm_reserve_region(align_to_prev_page(kernel_start),
-                     align_to_next_page(kernel_end - kernel_start + 1));
+  uint16_t kernel_start_page = align_to_prev_page(kernel_start);
+  uint16_t kernel_end_page = align_to_next_page(kernel_end + 1);
+  pmm_reserve_region(kernel_start_page, kernel_end_page - kernel_start_page);
+
   char buf[100];
   itoa(kernel_start, buf, 16);
   serial_write_string("kernel_start: ");
@@ -71,8 +73,18 @@ void initialize_pmm(multiboot_info_t* m_info) {
   serial_write_string(buf);
   serial_write_char('\n');
 
-  itoa(align_to_next_page(kernel_end - kernel_start + 1), buf, 16);
+  itoa(align_to_next_page(kernel_end + 1), buf, 16);
   serial_write_string("kernel_end Page: ");
+  serial_write_string(buf);
+  serial_write_char('\n');
+
+  itoa(kernel_end - kernel_start + 1, buf, 16);
+  serial_write_string("kernel size: ");
+  serial_write_string(buf);
+  serial_write_char('\n');
+
+  itoa((uint32_t)mem_bitmap, buf, 16);
+  serial_write_string("mem_bitmap addr: ");
   serial_write_string(buf);
   serial_write_char('\n');
 }
