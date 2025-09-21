@@ -35,6 +35,16 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
   initialize_pmm(multiboot_info);
   printf("[OK] PMM\n");
 
+  pmm_alloc_frame();
+  pmm_alloc_frame();
+  pmm_alloc_frame();
+  pmm_alloc_frame();
+  pmm_alloc_frame();
+  pmm_alloc_frame();
+  pmm_alloc_frame();
+  pmm_alloc_frame();
+  pmm_alloc_frame();
+
   printf("\n------------------------------------------------------------\n");
   printf("|                Hojicha kernel initialized.               |\n");
   printf("------------------------------------------------------------\n\n");

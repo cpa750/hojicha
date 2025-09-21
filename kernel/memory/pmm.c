@@ -1,3 +1,4 @@
+#include <drivers/serial.h>
 #include <limits.h>
 #include <memory/pmm.h>
 #include <stdio.h>
@@ -5,7 +6,6 @@
 #include <string.h>
 
 #define PAGE_SIZE 4096
-#define MEM_BITMAP_LENGTH 32768
 
 extern uint32_t __kernel_start;
 uint32_t kernel_start = (uint32_t)&__kernel_start;
@@ -18,17 +18,19 @@ static uint8_t* mem_bitmap;
 
 uint32_t total_pages = 0;
 uint32_t free_pages = 0;
+uint32_t last_page = 0;
+uint32_t first_page_after_bitmap = 0;
 
 void mark_page(uint32_t idx) {
-  uint32_t mask = 1 << (idx & 31);
-  // Convert page idx to bitmap idx by log base 2 (32) = 5 right shift
-  mem_bitmap[idx >> 5] |= mask;
+  uint32_t mask = 1 << (idx & 7);
+  // Convert page idx to bitmap idx by log base 2 (8) = 3 right shift
+  mem_bitmap[idx >> 3] |= mask;
   --free_pages;
 }
 
 void clear_page(uint32_t idx) {
-  uint32_t mask = ~(1 << (idx & 31));
-  mem_bitmap[idx >> 5] &= mask;
+  uint32_t mask = ~(1 << (idx & 7));
+  mem_bitmap[idx >> 3] &= mask;
   ++free_pages;
 }
 
@@ -47,50 +49,75 @@ void initialize_pmm(multiboot_info_t* m_info) {
   uint64_t max_section_start_addr = 0;
   uint32_t available_mem_bytes = 0;
 
+  // Calculate total available memory and find largest free area
   for (uint32_t i = 0; i < m_info->mmap_length;
        i += sizeof(multiboot_memory_map_t)) {
     multiboot_memory_map_t* mmap_entry =
         (multiboot_memory_map_t*)(m_info->mmap_addr + i);
-    if (i == 0) print_num_to_serial("mmap_addr: ", m_info->mmap_addr);
     if (mmap_entry->type == MULTIBOOT_MEMORY_AVAILABLE ||
         mmap_entry->type == MULTIBOOT_MEMORY_ACPI_RECLAIMABLE) {
       available_mem_bytes += mmap_entry->len;
-      if (mmap_entry->len > 0)
-        print_num_to_serial("mmap_entry->len: ", mmap_entry->len);
-      if (mmap_entry->len > max_section_length &&
-          mmap_entry->type == MULTIBOOT_MEMORY_AVAILABLE) {
+      if (mmap_entry->len > max_section_length) {
         max_section_length = mmap_entry->len;
         max_section_start_addr = mmap_entry->addr;
       }
     }
   }
 
-  uint32_t bitmap_size = available_mem_bytes >> 12;
+  // Divide by page size (log base 2 (4096) == 12)
+  uint32_t page_count = available_mem_bytes >> 12;
+  uint32_t bitmap_size = page_count >> 3;
+  total_pages = page_count;
   if (max_section_length < (kernel_end - kernel_start + bitmap_size)) {
     printf("Not enough memory to load memory bitmap. Halt.");
     abort();
   }
 
-  total_pages = max_section_length;
+  // Mark all memory as used
   mem_bitmap = (uint8_t*)((align_to_next_page(kernel_end + 1) + 1) * PAGE_SIZE);
   memset(mem_bitmap, 0xFF, bitmap_size);
 
-  uint32_t kernel_start_page = align_to_prev_page(kernel_start);
-  uint32_t kernel_end_page = align_to_next_page(kernel_end + 1);
-
-  uint32_t last_page_in_largest_section =
-      align_to_prev_page(max_section_start_addr + max_section_length);
-  uint32_t first_page_after_bitmap =
+  last_page = align_to_prev_page(max_section_start_addr + max_section_length);
+  first_page_after_bitmap =
       align_to_next_page((uint32_t)(mem_bitmap) + bitmap_size);
 
-  if (first_page_after_bitmap >= last_page_in_largest_section) {
+  if (first_page_after_bitmap >= last_page) {
     printf("No free pages after PMM initialization. Halt.");
     abort();
   }
 
-  for (uint32_t i = first_page_after_bitmap; i <= last_page_in_largest_section;
-       ++i) {
+  // Make available only the largest region after kernel + bitmap
+  for (uint32_t i = first_page_after_bitmap; i <= last_page; ++i) {
     clear_page(i);
   }
+
+  char buf[100];
+  itoa((uint32_t)mem_bitmap, buf, 16);
+  serial_write_string("mem_bitmap: ");
+  serial_write_string(buf);
+}
+
+uint8_t get_lowest_zero_bit(uint8_t num) {
+  for (int i = 0; i < 8; ++i) {
+    if (~(num >> i) & 0b1) {
+      return i;
+    }
+  }
+  return 7;
+}
+
+uint32_t pmm_alloc_frame() {
+  uint32_t bitmap_idx;
+  for (bitmap_idx = first_page_after_bitmap; bitmap_idx <= last_page;
+       ++bitmap_idx) {
+    if (mem_bitmap[bitmap_idx] != 0xFF) {
+      uint8_t pos = get_lowest_zero_bit(mem_bitmap[bitmap_idx]);
+      uint32_t page_idx = (bitmap_idx << 3) + pos;
+      mark_page(page_idx);
+      return page_idx << 12;
+    }
+  }
+  // OOM
+  return 0;
 }
 
