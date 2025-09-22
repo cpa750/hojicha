@@ -5,12 +5,14 @@
 #include <drivers/pic.h>
 #include <drivers/pit.h>
 #include <drivers/serial.h>
+#include <kernel/multiboot.h>
 #include <kernel/tty.h>
+#include <memory/pmm.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-void kernel_main(void) {
+void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
   if (!is_protected_mode()) {
     printf(
         "Fatal: bootloader handed over with protected mode disabled. Abort.");
@@ -30,6 +32,8 @@ void kernel_main(void) {
   printf("[OK] PIT\n");
   initialize_keyboard();
   printf("[OK] Keyboard\n");
+  initialize_pmm(multiboot_info);
+  printf("[OK] PMM\n");
 
   printf("\n------------------------------------------------------------\n");
   printf("|                Hojicha kernel initialized.               |\n");

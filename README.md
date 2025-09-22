@@ -9,7 +9,7 @@ Under (early) active development.
 
 ## Current goal:
 A malloc implementation using virtual memory.
-### In progres:
+### In progress:
 - Physical memory manager
 ### Planned
 - Virtual memory manager (paging)

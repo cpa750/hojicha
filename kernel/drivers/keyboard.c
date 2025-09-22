@@ -2,6 +2,7 @@
 #include <drivers/pic.h>
 #include <io.h>
 #include <kernel/tty.h>
+#include <memory/pmm.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -74,7 +75,6 @@ void handle_scancode(uint8_t scancode) {
 }
 
 void handle_keyboard() {
-  // char buf[100];
   uint8_t status = inb(0x64);
   if (status & 0x1) {
     uint8_t scancode = inb(0x60);
