@@ -117,3 +117,5 @@ uint32_t pmm_alloc_frame() {
   return 0;
 }
 
+void pmm_free_frame(uint32_t addr) { clear_page(addr >> 12); }
+
