@@ -14,7 +14,7 @@ uint32_t kernel_end = (uint32_t)&__kernel_end;
 
 // 0 -> Free
 // 1 -> Reserved
-static uint8_t* mem_bitmap;
+uint8_t* mem_bitmap;
 
 uint32_t total_pages = 0;
 uint32_t free_pages = 0;
@@ -90,11 +90,6 @@ void initialize_pmm(multiboot_info_t* m_info) {
   for (uint32_t i = first_page_after_bitmap; i <= last_page; ++i) {
     clear_page(i);
   }
-
-  char buf[100];
-  itoa((uint32_t)mem_bitmap, buf, 16);
-  serial_write_string("mem_bitmap: ");
-  serial_write_string(buf);
 }
 
 uint8_t get_lowest_zero_bit(uint8_t num) {
@@ -108,13 +103,14 @@ uint8_t get_lowest_zero_bit(uint8_t num) {
 
 uint32_t pmm_alloc_frame() {
   uint32_t bitmap_idx;
-  for (bitmap_idx = first_page_after_bitmap; bitmap_idx <= last_page;
-       ++bitmap_idx) {
+  for (bitmap_idx = (first_page_after_bitmap >> 3);
+       bitmap_idx <= (last_page >> 3); ++bitmap_idx) {
+    uint32_t base_page_idx = bitmap_idx << 3;
     if (mem_bitmap[bitmap_idx] != 0xFF) {
-      uint8_t pos = get_lowest_zero_bit(mem_bitmap[bitmap_idx]);
-      uint32_t page_idx = (bitmap_idx << 3) + pos;
-      mark_page(page_idx);
-      return page_idx << 12;
+      uint8_t offset = get_lowest_zero_bit(mem_bitmap[bitmap_idx]);
+
+      mark_page(base_page_idx + offset);
+      return (base_page_idx + offset) << 12;
     }
   }
   // OOM
