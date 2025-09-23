@@ -3,7 +3,9 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static bool print(const char* data, size_t length) {
@@ -65,6 +67,51 @@ int printf(const char* restrict format, ...) {
           return -1;
         }
         if (!print(s, len)) {
+          return -1;
+        }
+        bytes_written += len;
+        break;
+      }
+      case 'd': {
+        format++;
+        const uint32_t d = (const uint32_t)va_arg(parameters, const uint32_t);
+        char buf[33];
+        itoa(d, buf, 10);
+        size_t len = strlen(buf + 2);
+        if (writeable_bytes < len) {
+          return -1;
+        }
+        if (!print(buf + 2, len)) {
+          return -1;
+        }
+        bytes_written += len;
+        break;
+      }
+      case 'x': {
+        format++;
+        const uint32_t x = (const uint32_t)va_arg(parameters, const uint32_t);
+        char buf[33];
+        itoa(x, buf, 16);
+        size_t len = strlen(buf);
+        if (writeable_bytes < len) {
+          return -1;
+        }
+        if (!print(buf, len)) {
+          return -1;
+        }
+        bytes_written += len;
+        break;
+      }
+      case 'b': {
+        format++;
+        const uint32_t x = (const uint32_t)va_arg(parameters, const uint32_t);
+        char buf[33];
+        itoa(x, buf, 2);
+        size_t len = strlen(buf);
+        if (writeable_bytes < len) {
+          return -1;
+        }
+        if (!print(buf, len)) {
           return -1;
         }
         bytes_written += len;
