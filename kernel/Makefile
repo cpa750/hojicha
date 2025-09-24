@@ -37,6 +37,7 @@ drivers/keyboard.o \
 drivers/pic.o \
 drivers/pit.o \
 drivers/serial.o \
+kernel/kernel_state.o \
 kernel/kernel.o \
 memory/pmm.o \
 utils/io.o \

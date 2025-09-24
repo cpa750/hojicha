@@ -113,6 +113,13 @@ void terminal_putchar(char c) {
     return;
   }
 
+  if (c == '\t') {
+    for (uint8_t i = terminal_column % 4; i < 4; ++i) {
+      terminal_putchar(' ');
+    }
+    return;
+  }
+
   terminal_put_entry_at(c, terminal_color, terminal_column, terminal_row);
 
   if (++terminal_column == VGA_WIDTH) {

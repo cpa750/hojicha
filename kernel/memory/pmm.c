@@ -1,6 +1,7 @@
 #include <drivers/serial.h>
-#include <limits.h>
+#include <kernel/kernel_state.h>
 #include <memory/pmm.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,47 +17,73 @@ uint32_t kernel_end = (uint32_t)&__kernel_end;
 // 1 -> Reserved
 uint8_t* mem_bitmap;
 
-uint32_t total_pages = 0;
-uint32_t free_pages = 0;
 uint32_t last_page = 0;
 uint32_t first_page_after_bitmap = 0;
+
+struct pmm_state {
+  uint32_t total_mem;
+  uint32_t total_pages;
+  uint32_t free_pages;
+  uint32_t page_size;
+  uint32_t mem_bitmap;
+};
+typedef struct pmm_state pmm_state_t;
+uint32_t pmm_state_get_total_mem(pmm_state_t* p) { return p->total_mem; };
+uint32_t pmm_state_get_free_mem(pmm_state_t* p) { return p->free_pages << 12; };
+uint32_t pmm_state_get_total_pages(pmm_state_t* p) { return p->total_pages; };
+uint32_t pmm_state_get_free_pages(pmm_state_t* p) { return p->free_pages; };
+uint32_t pmm_state_get_page_size(pmm_state_t* p) { return p->page_size; };
+uint32_t pmm_state_get_mem_bitmap(pmm_state_t* p) { return p->mem_bitmap; };
+void pmm_state_dump(pmm_state_t* p) {
+  printf("[PMM] Total memory:\t\t\t\t%d B\n", p->total_mem);
+  printf("[PMM] Free memory:\t\t\t\t%d B\n", p->free_pages << 12);
+  printf("[PMM] Total pages:\t\t\t\t%d\n", p->total_pages);
+  printf("[PMM] Free pages:\t\t\t\t%d\n", p->free_pages);
+  printf("[PMM] Page size:\t\t\t\t%d B\n", p->page_size);
+  printf("[PMM] Memory bitmap address:\t%x\n", p->mem_bitmap);
+}
+
+pmm_state_t* pmm;
 
 void mark_page(uint32_t idx) {
   uint32_t mask = 1 << (idx & 7);
   // Convert page idx to bitmap idx by log base 2 (8) = 3 right shift
   mem_bitmap[idx >> 3] |= mask;
-  --free_pages;
+  pmm->free_pages--;
 }
 
 void clear_page(uint32_t idx) {
   uint32_t mask = ~(1 << (idx & 7));
   mem_bitmap[idx >> 3] &= mask;
-  ++free_pages;
+  pmm->free_pages++;
 }
 
 uint32_t align_to_next_page(uint32_t addr) { return (addr >> 12) + 1; }
 uint32_t align_to_prev_page(uint32_t addr) { return addr >> 12; }
 
 void pmm_reserve_region(uint16_t idx, uint16_t len) {
-  // TODO figure out a more efficient way of doing this
   for (int i = 0; i < len; ++i) {
     mark_page(idx + i);
   }
 }
 
 void initialize_pmm(multiboot_info_t* m_info) {
+  pmm->page_size = PAGE_SIZE;
+  pmm->total_mem = 0;
+  pmm->total_pages = 0;
+  pmm->free_pages = 0;
+
   uint32_t max_section_length = 0;
   uint64_t max_section_start_addr = 0;
-  uint32_t available_mem_bytes = 0;
 
   // Calculate total available memory and find largest free area
   for (uint32_t i = 0; i < m_info->mmap_length;
        i += sizeof(multiboot_memory_map_t)) {
     multiboot_memory_map_t* mmap_entry =
         (multiboot_memory_map_t*)(m_info->mmap_addr + i);
+    pmm->total_mem += mmap_entry->len;
     if (mmap_entry->type == MULTIBOOT_MEMORY_AVAILABLE ||
         mmap_entry->type == MULTIBOOT_MEMORY_ACPI_RECLAIMABLE) {
-      available_mem_bytes += mmap_entry->len;
       if (mmap_entry->len > max_section_length) {
         max_section_length = mmap_entry->len;
         max_section_start_addr = mmap_entry->addr;
@@ -65,9 +92,8 @@ void initialize_pmm(multiboot_info_t* m_info) {
   }
 
   // Divide by page size (log base 2 (4096) == 12)
-  uint32_t page_count = available_mem_bytes >> 12;
-  uint32_t bitmap_size = page_count >> 3;
-  total_pages = page_count;
+  pmm->total_pages = pmm->total_mem >> 12;
+  uint32_t bitmap_size = pmm->total_pages >> 3;
   if (max_section_length < (kernel_end - kernel_start + bitmap_size)) {
     printf("Not enough memory to load memory bitmap. Halt.");
     abort();
@@ -90,6 +116,8 @@ void initialize_pmm(multiboot_info_t* m_info) {
   for (uint32_t i = first_page_after_bitmap; i <= last_page; ++i) {
     clear_page(i);
   }
+  pmm->mem_bitmap = (uint32_t)mem_bitmap;
+  g_kernel.pmm = pmm;
 }
 
 uint8_t get_lowest_zero_bit(uint8_t num) {
@@ -116,4 +144,6 @@ uint32_t pmm_alloc_frame() {
   // OOM
   return 0;
 }
+
+void pmm_free_frame(uint32_t addr) { clear_page(addr >> 12); }
 
