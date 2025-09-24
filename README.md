@@ -10,11 +10,9 @@ Under (early) active development.
 ## Current goal:
 A malloc implementation using virtual memory.
 ### In progress:
-- Physical memory manager
-### Planned
 - Virtual memory manager (paging)
+### Planned
 - kmalloc()
-- Maybe even get to userland?
 
 ## MVP Done:
 - Boot hello world
@@ -24,6 +22,7 @@ A malloc implementation using virtual memory.
 - IDT, simple PIC driver
 - Timer interrupts
 - Keyboard input
+- Physical memory manager
 
 If you're reading this and you have feedback, please don't hesitate to let me know!
 
