@@ -33,7 +33,6 @@ uint32_t pmm_state_get_free_mem(pmm_state_t* p) { return p->free_pages << 12; };
 uint32_t pmm_state_get_total_pages(pmm_state_t* p) { return p->total_pages; };
 uint32_t pmm_state_get_free_pages(pmm_state_t* p) { return p->free_pages; };
 uint32_t pmm_state_get_page_size(pmm_state_t* p) { return p->page_size; };
-uint32_t pmm_state_get_mem_bitmap(pmm_state_t* p) { return p->mem_bitmap; };
 void pmm_state_dump(pmm_state_t* p) {
   printf("[PMM] Total memory:\t\t\t\t%d B\n", p->total_mem);
   printf("[PMM] Free memory:\t\t\t\t%d B\n", p->free_pages << 12);
