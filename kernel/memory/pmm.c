@@ -25,6 +25,9 @@ struct pmm_state {
   uint32_t total_pages;
   uint32_t free_pages;
   uint32_t page_size;
+  uint32_t kernel_start;
+  uint32_t kernel_end;
+  uint32_t kernel_page_count;
   uint32_t mem_bitmap;
 };
 typedef struct pmm_state pmm_state_t;
@@ -33,6 +36,11 @@ uint32_t pmm_state_get_free_mem(pmm_state_t* p) { return p->free_pages << 12; };
 uint32_t pmm_state_get_total_pages(pmm_state_t* p) { return p->total_pages; };
 uint32_t pmm_state_get_free_pages(pmm_state_t* p) { return p->free_pages; };
 uint32_t pmm_state_get_page_size(pmm_state_t* p) { return p->page_size; };
+uint32_t pmm_state_get_kernel_start(pmm_state_t* p) { return p->kernel_start; };
+uint32_t pmm_state_get_kernel_end(pmm_state_t* p) { return p->kernel_end; };
+uint32_t pmm_state_get_kernel_page_count(pmm_state_t* p) {
+  return p->kernel_page_count;
+};
 void pmm_state_dump(pmm_state_t* p) {
   printf("[PMM] Total memory:\t\t\t\t%d B\n", p->total_mem);
   printf("[PMM] Free memory:\t\t\t\t%d B\n", p->free_pages << 12);
@@ -116,6 +124,9 @@ void initialize_pmm(multiboot_info_t* m_info) {
     clear_page(i);
   }
   pmm->mem_bitmap = (uint32_t)mem_bitmap;
+  pmm->kernel_start = kernel_start;
+  pmm->kernel_end = first_page_after_bitmap << 12;
+  pmm->kernel_page_count = ((kernel_end - kernel_start + 4095) >> 12);
   g_kernel.pmm = pmm;
 }
 

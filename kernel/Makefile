@@ -40,6 +40,7 @@ drivers/serial.o \
 kernel/kernel_state.o \
 kernel/kernel.o \
 memory/pmm.o \
+memory/vmm.o \
 utils/io.o \
 
 OBJS=\
