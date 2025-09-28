@@ -12,6 +12,10 @@
 #define KERNEL_VIRT_START 0xC0000000
 #define KERNEL_PD_START_IDX KERNEL_VIRT_START >> 22
 
+void check_kernel_size(uint32_t kernel_page_count);
+extern void load_pd(uint32_t* pd_addr);
+extern void enable_paging();
+
 void initialize_vmm() {
   uint32_t* page_directory = (uint32_t*)pmm_alloc_frame();
   memset(page_directory, 0, 4096);
@@ -25,13 +29,7 @@ void initialize_vmm() {
   memset(pd_kernel_entry, 0, 4096);
   uint32_t kernel_page_count = pmm_state_get_kernel_page_count(g_kernel.pmm);
 
-  if (kernel_page_count > 1023 - 256) {
-    // TODO: we need support for more than one PDE for the kernel
-    printf(
-        "Kernels requiring more than one page directory entry are not yet "
-        "supported. Halt.\n");
-    abort();
-  }
+  check_kernel_size(kernel_page_count);
 
   uint32_t kernel_start = pmm_state_get_kernel_start(g_kernel.pmm);
   uint32_t kernel_end = pmm_state_get_kernel_end(g_kernel.pmm);
@@ -39,11 +37,24 @@ void initialize_vmm() {
     pd_identity_entry[addr >> 12] = addr | PAGE_PRESENT | PAGE_WRITABLE;
   }
 
-  page_directory[0] = (uint32_t)pd_identity_entry;
-  page_directory[1023] = *page_directory;
+  page_directory[0] = ((uint32_t)pd_identity_entry) | 0x03;
+  page_directory[1023] = ((uint32_t)page_directory) | 0x03;
+
+  load_pd(page_directory);
+  enable_paging();
 }
 
 void vmm_map(uint32_t virt, uint32_t phys) {}
 
 void vmm_unmap(uint32_t virt, uint32_t phys) {}
+
+void check_kernel_size(uint32_t kernel_page_count) {
+  if (kernel_page_count > 1023 - 256) {
+    // TODO: we need support for more than one PDE for the kernel
+    printf(
+        "Kernels requiring more than one page directory entry are not yet "
+        "supported. Halt.\n");
+    abort();
+  }
+}
 
