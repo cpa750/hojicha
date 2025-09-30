@@ -67,18 +67,42 @@ uint32_t vmm_map(uint32_t virt, uint32_t phys, uint32_t flags) {
 
   uint16_t entry_idx = virt_to_entry_idx(virt);
   pd_entry[entry_idx] = phys | flags;
+  // TODO: check this is the write mask to clear flags
   uint32_t virt_base = virt & 0xFFFFFF00;
   return virt_base;
 }
 
 uint32_t vmm_unmap(uint32_t virt) {
-  // TODO
-  return 0;
+  uint16_t directory_idx = virt_to_directory_idx(virt);
+  uint32_t* pd_entry;
+
+  if (page_directory[directory_idx] == 0) {
+    // Don't need to free something that doesn't exist
+    return 0;
+  } else {
+    pd_entry = (uint32_t*)page_directory[directory_idx];
+  }
+
+  uint16_t entry_idx = virt_to_entry_idx(virt);
+  pd_entry[entry_idx] = 0;
+  // TODO: check this is the write mask to clear flags
+  uint32_t virt_base = virt & 0xFFFFFF00;
+  return virt_base;
 }
 
 uint32_t vmm_to_physical(uint32_t virt) {
-  // TODO
-  return 0;
+  uint16_t directory_idx = virt_to_directory_idx(virt);
+  uint32_t* pd_entry;
+
+  if (page_directory[directory_idx] == 0) {
+    return 0;
+  } else {
+    pd_entry = (uint32_t*)page_directory[directory_idx];
+  }
+
+  uint16_t entry_idx = virt_to_entry_idx(virt);
+  uint32_t phys_base = pd_entry[entry_idx] | 0xFFFFF000;  // Clear flags
+  return phys_base;
 }
 
 uint16_t virt_to_directory_idx(uint32_t virt) { return virt >> 22; }
