@@ -52,21 +52,15 @@ void pmm_state_dump(pmm_state_t* p) {
 
 pmm_state_t* pmm;
 
-void mark_page(uint32_t idx) {
-  uint32_t mask = 1 << (idx & 7);
-  // Convert page idx to bitmap idx by log base 2 (8) = 3 right shift
-  mem_bitmap[idx >> 3] |= mask;
-  pmm->free_pages--;
-}
+void mark_page(uint32_t idx);
+uint8_t get_lowest_zero_bit(uint8_t num);
+void clear_page(uint32_t idx);
+uint32_t align_to_next_page(uint32_t addr);
+uint32_t align_to_prev_page(uint32_t addr);
 
-void clear_page(uint32_t idx) {
-  uint32_t mask = ~(1 << (idx & 7));
-  mem_bitmap[idx >> 3] &= mask;
-  pmm->free_pages++;
-}
+uint32_t pmm_addr_to_page(uint32_t addr) { return align_to_prev_page(addr); }
 
-uint32_t align_to_next_page(uint32_t addr) { return (addr >> 12) + 1; }
-uint32_t align_to_prev_page(uint32_t addr) { return addr >> 12; }
+uint32_t pmm_page_to_addr_base(uint32_t page) { return page << 12; }
 
 void pmm_reserve_region(uint16_t idx, uint16_t len) {
   for (int i = 0; i < len; ++i) {
@@ -125,18 +119,9 @@ void initialize_pmm(multiboot_info_t* m_info) {
   }
   pmm->mem_bitmap = (uint32_t)mem_bitmap;
   pmm->kernel_start = kernel_start;
-  pmm->kernel_end = first_page_after_bitmap << 12;
-  pmm->kernel_page_count = ((kernel_end - kernel_start + 4095) >> 12);
+  pmm->kernel_end = pmm_page_to_addr_base(first_page_after_bitmap);
+  pmm->kernel_page_count = pmm_addr_to_page(kernel_end - kernel_start + 4095);
   g_kernel.pmm = pmm;
-}
-
-uint8_t get_lowest_zero_bit(uint8_t num) {
-  for (int i = 0; i < 8; ++i) {
-    if (~(num >> i) & 0b1) {
-      return i;
-    }
-  }
-  return 7;
 }
 
 uint32_t pmm_alloc_frame() {
@@ -148,12 +133,38 @@ uint32_t pmm_alloc_frame() {
       uint8_t offset = get_lowest_zero_bit(mem_bitmap[bitmap_idx]);
 
       mark_page(base_page_idx + offset);
-      return (base_page_idx + offset) << 12;
+      return pmm_page_to_addr_base(base_page_idx + offset);
     }
   }
   // OOM
   return 0;
 }
 
-void pmm_free_frame(uint32_t addr) { clear_page(addr >> 12); }
+void pmm_free_frame(uint32_t addr) { clear_page(pmm_addr_to_page(addr)); }
+
+uint32_t align_to_next_page(uint32_t addr) { return (addr >> 12) + 1; }
+
+uint32_t align_to_prev_page(uint32_t addr) { return addr >> 12; }
+
+void mark_page(uint32_t idx) {
+  uint32_t mask = 1 << (idx & 7);
+  // Convert page idx to bitmap idx by log base 2 (8) = 3 right shift
+  mem_bitmap[idx >> 3] |= mask;
+  pmm->free_pages--;
+}
+
+void clear_page(uint32_t idx) {
+  uint32_t mask = ~(1 << (idx & 7));
+  mem_bitmap[idx >> 3] &= mask;
+  pmm->free_pages++;
+}
+
+uint8_t get_lowest_zero_bit(uint8_t num) {
+  for (int i = 0; i < 8; ++i) {
+    if (~(num >> i) & 0b1) {
+      return i;
+    }
+  }
+  return 7;
+}
 
