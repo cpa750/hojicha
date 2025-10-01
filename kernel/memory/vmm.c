@@ -93,8 +93,7 @@ uint32_t vmm_map_single(uint32_t virt, uint32_t flags) {
   uint16_t entry_idx = virt_to_entry_idx(virt);
 
   pd_entry[entry_idx] = pmm_page_to_addr_base(new_page) | flags;
-  // TODO: check this is the write mask to clear flags
-  uint32_t virt_base = virt & 0xFFFFFF00;
+  uint32_t virt_base = virt & 0xFFFFF000;
   return virt_base;
 }
 
@@ -107,7 +106,7 @@ uint32_t vmm_map(uint32_t virt, uint32_t size, uint32_t flags) {
     }
     virt += PAGE_SIZE;
   }
-  uint32_t virt_base = virt & 0xFFFFFF00;
+  uint32_t virt_base = virt & 0xFFFFF000;
   return virt_base;
 }
 
@@ -124,8 +123,7 @@ uint32_t vmm_unmap(uint32_t virt) {
 
   uint16_t entry_idx = virt_to_entry_idx(virt);
   pd_entry[entry_idx] = 0;
-  // TODO: check this is the write mask to clear flags
-  uint32_t virt_base = virt & 0xFFFFFF00;
+  uint32_t virt_base = virt & 0xFFFFF000;
   return virt_base;
 }
 
