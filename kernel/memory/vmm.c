@@ -5,27 +5,43 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define PAGE_PRESENT 0x1
-#define PAGE_WRITABLE 0x2
-#define PAGE_USER_ACCESIBLE 0x4
 #define PAGE_SIZE 4096
+
+struct vmm_state {
+  uint32_t first_available_vaddr;
+  uint32_t last_available_vaddr;
+};
+typedef struct vmm_state vmm_state_t;
+uint32_t vmm_state_get_first_available_vaddr(vmm_state_t* vmm_state) {
+  return vmm_state->first_available_vaddr;
+}
+uint32_t vmm_state_get_last_available_vaddr(vmm_state_t* vmm_state) {
+  return vmm_state->last_available_vaddr;
+}
+void vmm_state_dump(vmm_state_t* v) {
+  printf("[VMM] Struct addr:\t\t\t\t%x B\n", (uint32_t)v);
+  printf("[VMM] First available vaddr:\t%x\n", v->first_available_vaddr);
+  printf("[VMM] Last available vaddr:\t\t%x\n", v->last_available_vaddr);
+}
 
 extern void load_pd(uint32_t* pd_addr);
 extern void enable_paging();
-
 uint16_t virt_to_directory_idx(uint32_t virt);
 uint16_t virt_to_entry_idx(uint32_t virt);
+uint32_t idx_to_vaddr(uint32_t directory_idx, uint32_t entry_idx);
 void check_kernel_size(uint32_t kernel_page_count);
 
 uint32_t* page_directory;
 
 void initialize_vmm() {
+  static vmm_state_t vmm = {0};
   page_directory = (uint32_t*)pmm_alloc_frame();
   memset(page_directory, 0, 4096);
 
   uint32_t* pd_identity_entry = (uint32_t*)pmm_alloc_frame();
   for (uint32_t addr = 0; addr < 0x100000; addr += 4096) {
-    pd_identity_entry[addr >> 12] = addr | PAGE_PRESENT | PAGE_WRITABLE;
+    pd_identity_entry[pmm_addr_to_page(addr)] =
+        addr | PAGE_PRESENT | PAGE_WRITABLE;
   }
 
   uint32_t* pd_kernel_entry = (uint32_t*)pmm_alloc_frame();
@@ -33,18 +49,36 @@ void initialize_vmm() {
   uint32_t kernel_page_count = pmm_state_get_kernel_page_count(g_kernel.pmm);
 
   check_kernel_size(kernel_page_count);
+  // ok
 
   uint32_t kernel_start = pmm_state_get_kernel_start(g_kernel.pmm);
   uint32_t kernel_end = pmm_state_get_kernel_end(g_kernel.pmm);
-  for (uint32_t addr = kernel_start; addr < kernel_end; ++addr) {
-    pd_identity_entry[addr >> 12] = addr | PAGE_PRESENT | PAGE_WRITABLE;
+  for (uint32_t addr = kernel_start; addr <= kernel_end; ++addr) {
+    pd_identity_entry[pmm_addr_to_page(addr)] =
+        addr | PAGE_PRESENT | PAGE_WRITABLE;
   }
 
   page_directory[0] = ((uint32_t)pd_identity_entry) | 0x03;
   page_directory[1023] = ((uint32_t)page_directory) | 0x03;
 
+  // ok
+
   load_pd(page_directory);
   enable_paging();
+
+  // ok
+
+  // uint32_t lav = idx_to_vaddr(1022, 1023);
+  uint32_t lav = 1022 << 21;
+  printf("lav: %d (%x, %b)\n", lav, lav, lav);
+  vmm.first_available_vaddr = kernel_end + PAGE_SIZE;
+  vmm.last_available_vaddr = idx_to_vaddr(1022, 1023);
+  g_kernel.vmm = &vmm;
+
+  g_kernel_dump();
+
+  // printf("Total available memory (in vmm init): %d B\n",
+  //        pmm_state_get_total_mem(g_kernel.pmm));
 }
 
 uint32_t vmm_map_single(uint32_t virt, uint32_t flags) {
@@ -127,6 +161,10 @@ uint16_t virt_to_directory_idx(uint32_t virt) { return virt >> 22; }
 
 uint16_t virt_to_entry_idx(uint32_t virt) {
   return (virt >> 12) & 0b1111111111;
+}
+
+uint32_t idx_to_vaddr(uint32_t directory_idx, uint32_t entry_idx) {
+  return (directory_idx << 21) | (entry_idx << 12);
 }
 
 void check_kernel_size(uint32_t kernel_page_count) {
