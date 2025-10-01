@@ -4,7 +4,8 @@
 #include <stdint.h>
 
 void initialize_vmm();
-uint32_t vmm_map(uint32_t virt, uint32_t phys, uint32_t flags);
+uint32_t vmm_map_single(uint32_t virt, uint32_t flags);
+uint32_t vmm_map(uint32_t virt, uint32_t size, uint32_t flags);
 uint32_t vmm_unmap(uint32_t virt);
 uint32_t vmm_to_physical(uint32_t virt);
 

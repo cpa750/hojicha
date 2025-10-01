@@ -8,9 +8,7 @@
 #define PAGE_PRESENT 0x1
 #define PAGE_WRITABLE 0x2
 #define PAGE_USER_ACCESIBLE 0x4
-
-#define KERNEL_VIRT_START 0xC0000000
-#define KERNEL_PD_START_IDX KERNEL_VIRT_START >> 22
+#define PAGE_SIZE 4096
 
 extern void load_pd(uint32_t* pd_addr);
 extern void enable_paging();
@@ -49,7 +47,13 @@ void initialize_vmm() {
   enable_paging();
 }
 
-uint32_t vmm_map(uint32_t virt, uint32_t phys, uint32_t flags) {
+uint32_t vmm_map_single(uint32_t virt, uint32_t flags) {
+  uint32_t new_page = pmm_alloc_frame();
+  // OOM
+  if (new_page == 0) {
+    return 0;
+  }
+
   uint16_t directory_idx = virt_to_directory_idx(virt);
   uint32_t* pd_entry;
 
@@ -66,8 +70,22 @@ uint32_t vmm_map(uint32_t virt, uint32_t phys, uint32_t flags) {
   }
 
   uint16_t entry_idx = virt_to_entry_idx(virt);
-  pd_entry[entry_idx] = phys | flags;
+
+  pd_entry[entry_idx] = pmm_page_to_addr_base(new_page) | flags;
   // TODO: check this is the write mask to clear flags
+  uint32_t virt_base = virt & 0xFFFFFF00;
+  return virt_base;
+}
+
+uint32_t vmm_map(uint32_t virt, uint32_t size, uint32_t flags) {
+  while (size-- > 0) {
+    uint32_t res = vmm_map_single(virt, flags);
+    // OOM
+    if (res == 0) {
+      return res;
+    }
+    virt += PAGE_SIZE;
+  }
   uint32_t virt_base = virt & 0xFFFFFF00;
   return virt_base;
 }
