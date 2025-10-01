@@ -4,8 +4,12 @@
 struct pmm_state;
 typedef struct pmm_state pmm_state_t;
 
+struct vmm_state;
+typedef struct vmm_state vmm_state_t;
+
 struct kernel_state {
   pmm_state_t* pmm;
+  vmm_state_t* vmm;
 };
 typedef struct kernel_state kernel_state_t;
 

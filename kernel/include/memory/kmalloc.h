@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 
+void kmalloc_initialize();
 void* kmalloc(size_t size);
 
 #endif  // KMALLOC_H
