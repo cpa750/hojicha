@@ -9,6 +9,7 @@
 #include <kernel/multiboot.h>
 #include <kernel/tty.h>
 #include <memory/pmm.h>
+#include <memory/vmm.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,6 +37,8 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
   printf("[OK] Keyboard\n");
   initialize_pmm(multiboot_info);
   printf("[OK] PMM\n");
+  initialize_vmm(multiboot_info);
+  printf("[OK] VMM\n");
 
   printf("\n");
 
@@ -45,10 +48,6 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
   printf("[INFO] Total free memory:\t\t%d MB (%d B)\n",
          pmm_state_get_free_mem(g_kernel.pmm) >> 20,
          pmm_state_get_free_mem(g_kernel.pmm));
-  printf("[INFO] PMM Bitmap address:\t\t%x\n",
-         pmm_state_get_mem_bitmap(g_kernel.pmm));
-  printf("[INFO] Page size:\t\t\t\t%d B\n",
-         pmm_state_get_page_size(g_kernel.pmm));
 
   printf("\n------------------------------------------------------------\n");
   printf("|                Hojicha kernel initialized.               |\n");
