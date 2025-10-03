@@ -70,6 +70,7 @@ void initialize_vmm() {
 
 uint32_t vmm_map_single(uint32_t virt, uint32_t flags) {
   uint32_t new_page = pmm_alloc_frame();
+  printf("successful call to pmm_alloc_frame, virt=%x\n", virt);
   // OOM
   if (new_page == 0) {
     return 0;
@@ -100,7 +101,8 @@ uint32_t vmm_map_single(uint32_t virt, uint32_t flags) {
 uint32_t vmm_map(uint32_t virt, uint32_t size, uint32_t flags) {
   while (size-- > 0) {
     uint32_t res = vmm_map_single(virt, flags);
-    // OOM
+    // printf("successful vmm map single, size=%d\n", size);
+    //  OOM
     if (res == 0) {
       return res;
     }

@@ -8,6 +8,7 @@
 #include <kernel/kernel_state.h>
 #include <kernel/multiboot.h>
 #include <kernel/tty.h>
+#include <memory/kmalloc.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
 #include <stddef.h>
@@ -39,6 +40,8 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
   printf("[OK] PMM\n");
   initialize_vmm(multiboot_info);
   printf("[OK] VMM\n");
+  kmalloc_initialize();
+  printf("[OK] kmalloc\n");
 
   printf("\n");
 
