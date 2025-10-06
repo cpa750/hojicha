@@ -1,11 +1,15 @@
 #include <kernel/kernel_state.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define PAGE_SIZE 4096
+#define VIRT_PD_START 0xFFFFF000
+#define VIRT_PT_START 0xFFC00000
 
 struct vmm_state {
   uint32_t first_available_vaddr;
@@ -26,12 +30,15 @@ void vmm_state_dump(vmm_state_t* v) {
 
 extern void load_pd(uint32_t* pd_addr);
 extern void enable_paging();
+uint32_t* get_page_table(uint32_t idx);
 uint16_t virt_to_directory_idx(uint32_t virt);
 uint16_t virt_to_entry_idx(uint32_t virt);
 uint32_t idx_to_vaddr(uint32_t directory_idx, uint32_t entry_idx);
 void check_kernel_size(uint32_t kernel_page_count);
+void _invlpg(uint32_t virt);
 
 uint32_t* page_directory;
+uint32_t* virtual_directory;
 
 void initialize_vmm() {
   static vmm_state_t vmm = {0};
@@ -58,10 +65,11 @@ void initialize_vmm() {
   }
 
   page_directory[0] = ((uint32_t)pd_identity_entry) | 0x03;
-  page_directory[1023] = ((uint32_t)page_directory) | 0x03;
-
+  page_directory[1023] = (uint32_t)page_directory | 0x03;
   load_pd(page_directory);
   enable_paging();
+
+  virtual_directory = (uint32_t*)VIRT_PD_START;
 
   vmm.first_available_vaddr = kernel_end + PAGE_SIZE;
   vmm.last_available_vaddr = idx_to_vaddr(1022, 1023);
@@ -69,63 +77,55 @@ void initialize_vmm() {
 }
 
 uint32_t vmm_map_single(uint32_t virt, uint32_t flags) {
+  uint32_t virt_base = virt & 0xFFFFF000;
   uint32_t new_page = pmm_alloc_frame();
-  printf("successful call to pmm_alloc_frame, virt=%x\n", virt);
   // OOM
   if (new_page == 0) {
     return 0;
   }
 
   uint16_t directory_idx = virt_to_directory_idx(virt);
-  uint32_t* pd_entry;
-
-  if (page_directory[directory_idx] == 0) {
-    pd_entry = (uint32_t*)pmm_alloc_frame();
-    page_directory[directory_idx] = (uint32_t)pd_entry;
-  } else {
-    pd_entry = (uint32_t*)page_directory[directory_idx];
-  }
-
-  // OOM
-  if (pd_entry == 0) {
-    return 0;
-  }
-
   uint16_t entry_idx = virt_to_entry_idx(virt);
 
-  pd_entry[entry_idx] = pmm_page_to_addr_base(new_page) | flags;
-  uint32_t virt_base = virt & 0xFFFFF000;
+  uint32_t* pd_entry = get_page_table(directory_idx);
+  if (virtual_directory[directory_idx] & PAGE_PRESENT) {
+    pd_entry[entry_idx] = new_page | PAGE_PRESENT | PAGE_WRITABLE;
+  } else {
+    uint32_t* new_pd_entry = (uint32_t*)pmm_alloc_frame();
+    virtual_directory[directory_idx] =
+        (uint32_t)new_pd_entry | PAGE_PRESENT | PAGE_WRITABLE;
+    pd_entry[entry_idx] = new_page | PAGE_PRESENT | PAGE_WRITABLE;
+  }
+  _invlpg(virt_base);
   return virt_base;
 }
 
 uint32_t vmm_map(uint32_t virt, uint32_t size, uint32_t flags) {
+  uint32_t base = virt;
   while (size-- > 0) {
     uint32_t res = vmm_map_single(virt, flags);
-    // printf("successful vmm map single, size=%d\n", size);
     //  OOM
     if (res == 0) {
       return res;
     }
     virt += PAGE_SIZE;
   }
-  uint32_t virt_base = virt & 0xFFFFF000;
+  uint32_t virt_base = base & 0xFFFFF000;
   return virt_base;
 }
 
 uint32_t vmm_unmap(uint32_t virt) {
   uint16_t directory_idx = virt_to_directory_idx(virt);
-  uint32_t* pd_entry;
 
+  uint32_t* pd_entry = get_page_table(directory_idx);
   if (page_directory[directory_idx] == 0) {
     // Don't need to free something that doesn't exist
     return 0;
-  } else {
-    pd_entry = (uint32_t*)page_directory[directory_idx];
   }
-
   uint16_t entry_idx = virt_to_entry_idx(virt);
   pd_entry[entry_idx] = 0;
   uint32_t virt_base = virt & 0xFFFFF000;
+  _invlpg(virt_base);
   return virt_base;
 }
 
@@ -142,6 +142,10 @@ uint32_t vmm_to_physical(uint32_t virt) {
   uint16_t entry_idx = virt_to_entry_idx(virt);
   uint32_t phys_base = pd_entry[entry_idx] | 0xFFFFF000;  // Clear flags
   return phys_base;
+}
+
+uint32_t* get_page_table(uint32_t idx) {
+  return (uint32_t*)VIRT_PT_START + (idx << 12);
 }
 
 uint16_t virt_to_directory_idx(uint32_t virt) { return virt >> 22; }
@@ -162,5 +166,9 @@ void check_kernel_size(uint32_t kernel_page_count) {
         "supported. Halt.\n");
     abort();
   }
+}
+
+void _invlpg(uint32_t virt) {
+  asm volatile("invlpg (%0)" ::"r"(virt) : "memory");
 }
 
