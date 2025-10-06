@@ -14,6 +14,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
   if (!is_protected_mode()) {
@@ -43,8 +44,6 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
   kmalloc_initialize();
   printf("[OK] kmalloc\n");
 
-  printf("\n");
-
   printf("[INFO] Total available memory:\t%d MB (%d B)\n",
          pmm_state_get_total_mem(g_kernel.pmm) >> 20,
          pmm_state_get_total_mem(g_kernel.pmm));
@@ -57,6 +56,10 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
   printf("------------------------------------------------------------\n\n");
 
   asm volatile("sti");
+
+  char* a = (char*)kmalloc(sizeof(char) * 20);
+  memcpy(a, "hello, world\0", 13);
+  printf("a: %s\n", a);
 
   while (1) asm volatile("hlt");
 }
