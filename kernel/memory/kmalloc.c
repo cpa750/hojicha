@@ -45,13 +45,9 @@ uint32_t last_footer;
 void kmalloc_initialize() {
   kernel_heap_grow_size = 5;  // Allocate 5 pages to start
   first_available_vaddr = vmm_state_get_first_available_vaddr(g_kernel.vmm);
-  printf("vmm mapping free regions...\n");
-  printf("first_available_vaddr: %x\n", first_available_vaddr);
-  printf("kernel_heap_grow_size: %x\n", kernel_heap_grow_size);
   free_regions =
       (block_header_t*)vmm_map(first_available_vaddr, kernel_heap_grow_size,
                                PAGE_PRESENT | PAGE_WRITABLE);
-  printf("vmm mapped free regions\n");
 
   if (free_regions == 0) {
     printf("OOM initializing kmalloc. Halt.");
@@ -59,12 +55,12 @@ void kmalloc_initialize() {
   }
 
   free_regions->is_free = true;
+
   free_regions->size_bytes =
       pmm_page_to_addr_base(kernel_heap_grow_size) - sizeof(block_footer_t);
   free_regions->next = NULL;
   block_footer_t* free_region_footer =
-      (block_footer_t*)(((uint32_t)free_regions) + free_regions->size_bytes +
-                        sizeof(block_footer_t));
+      (block_footer_t*)(((uint32_t)free_regions) + free_regions->size_bytes);
   free_region_footer->header = free_regions;
   free_regions->footer = free_region_footer;
   last_footer = (uint32_t)free_region_footer;
