@@ -57,9 +57,19 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
 
   asm volatile("sti");
 
-  char* a = (char*)kmalloc(sizeof(char) * 20);
+  char* a = (char*)malloc(sizeof(char) * 20);
   strcpy(a, "hello, world!");
   printf("%s\n", a);
+
+  char* b = (char*)malloc(sizeof(char) * 30);
+  strcpy(b, "this is so cool!!!");
+  printf("%s\n", b);
+
+  char* c = (char*)malloc(sizeof(char) * 40);
+  strcpy(c, "look at me ma, no stack!");
+  printf("%s\n", c);
+
+  printf("a=%x, b=%x, c=%x\n", (uint32_t)a, (uint32_t)b, (uint32_t)c);
 
   while (1) asm volatile("hlt");
 }

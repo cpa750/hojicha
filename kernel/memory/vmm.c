@@ -87,13 +87,14 @@ uint32_t vmm_map_single(uint32_t virt, uint32_t flags) {
   uint16_t directory_idx = virt_to_directory_idx(virt);
   uint16_t entry_idx = virt_to_entry_idx(virt);
 
-  uint32_t* pd_entry = get_page_table(directory_idx);
+  uint32_t* pd_entry;
   if (virtual_directory[directory_idx] & PAGE_PRESENT) {
+    pd_entry = get_page_table(directory_idx);
     pd_entry[entry_idx] = new_page | PAGE_PRESENT | PAGE_WRITABLE;
   } else {
-    uint32_t* new_pd_entry = (uint32_t*)pmm_alloc_frame();
+    uint32_t* pd_entry = (uint32_t*)pmm_alloc_frame();
     virtual_directory[directory_idx] =
-        (uint32_t)new_pd_entry | PAGE_PRESENT | PAGE_WRITABLE;
+        (uint32_t)pd_entry | PAGE_PRESENT | PAGE_WRITABLE;
     pd_entry[entry_idx] = new_page | PAGE_PRESENT | PAGE_WRITABLE;
   }
   _invlpg(virt_base);
@@ -118,7 +119,7 @@ uint32_t vmm_unmap(uint32_t virt) {
   uint16_t directory_idx = virt_to_directory_idx(virt);
 
   uint32_t* pd_entry = get_page_table(directory_idx);
-  if (page_directory[directory_idx] == 0) {
+  if (virtual_directory[directory_idx] == 0) {
     // Don't need to free something that doesn't exist
     return 0;
   }
