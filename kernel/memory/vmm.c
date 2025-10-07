@@ -28,13 +28,14 @@ void vmm_state_dump(vmm_state_t* v) {
   printf("[VMM] Last available vaddr:\t\t%x\n", v->last_available_vaddr);
 }
 
-extern void load_pd(uint32_t* pd_addr);
 extern void enable_paging();
+extern void load_pd(uint32_t* pd_addr);
+
+void check_kernel_size(uint32_t kernel_page_count);
 uint32_t* get_page_table(uint32_t idx);
+uint32_t idx_to_vaddr(uint32_t directory_idx, uint32_t entry_idx);
 uint16_t virt_to_directory_idx(uint32_t virt);
 uint16_t virt_to_entry_idx(uint32_t virt);
-uint32_t idx_to_vaddr(uint32_t directory_idx, uint32_t entry_idx);
-void check_kernel_size(uint32_t kernel_page_count);
 void _invlpg(uint32_t virt);
 
 uint32_t* page_directory;
@@ -145,20 +146,6 @@ uint32_t vmm_to_physical(uint32_t virt) {
   return phys_base;
 }
 
-uint32_t* get_page_table(uint32_t idx) {
-  return (uint32_t*)VIRT_PT_START + (idx << 12);
-}
-
-uint16_t virt_to_directory_idx(uint32_t virt) { return virt >> 22; }
-
-uint16_t virt_to_entry_idx(uint32_t virt) {
-  return (virt >> 12) & 0b1111111111;
-}
-
-uint32_t idx_to_vaddr(uint32_t directory_idx, uint32_t entry_idx) {
-  return (directory_idx << 22) | (entry_idx << 12);
-}
-
 void check_kernel_size(uint32_t kernel_page_count) {
   if (kernel_page_count > 1023 - 256) {
     // TODO: we need support for more than one PDE for the kernel
@@ -167,6 +154,20 @@ void check_kernel_size(uint32_t kernel_page_count) {
         "supported. Halt.\n");
     abort();
   }
+}
+
+uint32_t* get_page_table(uint32_t idx) {
+  return (uint32_t*)VIRT_PT_START + (idx << 12);
+}
+
+uint32_t idx_to_vaddr(uint32_t directory_idx, uint32_t entry_idx) {
+  return (directory_idx << 22) | (entry_idx << 12);
+}
+
+uint16_t virt_to_directory_idx(uint32_t virt) { return virt >> 22; }
+
+uint16_t virt_to_entry_idx(uint32_t virt) {
+  return (virt >> 12) & 0b1111111111;
 }
 
 void _invlpg(uint32_t virt) {

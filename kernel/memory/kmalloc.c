@@ -26,14 +26,14 @@ struct block_footer {
 };
 
 block_header_t* find_first_fit_block(block_header_t* free_regions, size_t size);
-void occupy_block(block_header_t* block, size_t size);
-block_header_t* get_previous_free(block_header_t* block);
 block_header_t* get_previous(block_header_t* block);
-block_header_t* split_region(block_header_t* block, size_t size);
+block_header_t* get_previous_free(block_header_t* block);
 block_header_t* grow_heap();
 block_header_t* grow_heap_by(size_t size);
-void set_footer_at(block_header_t* block, uint32_t addr);
+void occupy_block(block_header_t* block, size_t size);
 void remove_from_free_list(block_header_t* block);
+block_header_t* split_region(block_header_t* block, size_t size);
+void set_footer_at(block_header_t* block, uint32_t addr);
 // bool are_contiguous(block_header_t* first, block_header_t* second);
 // void merge_blocks(block_header_t* first, block_header_t* second);
 
@@ -95,22 +95,6 @@ void* kmalloc(size_t size) {
   return (void*)((uint32_t)first_fit + sizeof(block_header_t));
 }
 
-void occupy_block(block_header_t* block, size_t size) {
-  block->is_free = false;
-  uint32_t size_needed_for_split =
-      size + sizeof(block_header_t) + sizeof(block_footer_t);
-  if (block->size_bytes < size_needed_for_split) {
-    remove_from_free_list(block);
-  } else {
-    // This call to this function needs to account for the fact we need to write
-    // the footer at the end as well!
-    block_header_t* leftover =
-        split_region(block, size + sizeof(block_footer_t));
-    block->next = leftover;
-    remove_from_free_list(block);
-  }
-}
-
 block_header_t* find_first_fit_block(block_header_t* block, size_t size) {
   if (block == NULL) {
     return NULL;
@@ -123,19 +107,14 @@ block_header_t* find_first_fit_block(block_header_t* block, size_t size) {
   return find_first_fit_block(block->next, size);
 }
 
-block_header_t* split_region(block_header_t* block, size_t size) {
-  block_header_t* leftover =
-      (block_header_t*)((uint32_t)block + sizeof(block_header_t) +
-                        (uint32_t)size);
+block_header_t* get_previous(block_header_t* block) {
+  if ((uint32_t)block <= first_available_vaddr) {
+    return NULL;
+  }
 
-  set_footer_at(block, (uint32_t)(leftover) - sizeof(block_footer_t));
-
-  leftover->footer = block->footer;
-  leftover->size_bytes = block->size_bytes - size - sizeof(block_header_t) -
-                         sizeof(block_footer_t);
-  leftover->next = block->next;
-  leftover->is_free = true;
-  return leftover;
+  block_footer_t* previous_footer =
+      (block_footer_t*)((uint32_t)block - sizeof(block_footer_t));
+  return previous_footer->header;
 }
 
 block_header_t* get_previous_free(block_header_t* block) {
@@ -149,29 +128,6 @@ block_header_t* get_previous_free(block_header_t* block) {
     return get_previous_free(prev);
   }
   return prev;
-}
-
-block_header_t* get_previous(block_header_t* block) {
-  if ((uint32_t)block <= first_available_vaddr) {
-    return NULL;
-  }
-
-  block_footer_t* previous_footer =
-      (block_footer_t*)((uint32_t)block - sizeof(block_footer_t));
-  return previous_footer->header;
-}
-
-void set_footer_at(block_header_t* block, uint32_t addr) {
-  block_footer_t* footer = (block_footer_t*)addr;
-  footer->header = block;
-  block->footer = footer;
-}
-
-void remove_from_free_list(block_header_t* block) {
-  block_header_t* previous_header = get_previous_free(block);
-  if (previous_header != NULL) {
-    previous_header->next = block->next;
-  }
 }
 
 block_header_t* grow_heap() { return grow_heap_by(kernel_heap_grow_size++); }
@@ -193,6 +149,50 @@ block_header_t* grow_heap_by(size_t size) {
   new_block->footer = new_block_footer;
   last_footer = (uint32_t)new_block_footer;
   return new_block;
+}
+
+void occupy_block(block_header_t* block, size_t size) {
+  block->is_free = false;
+  uint32_t size_needed_for_split =
+      size + sizeof(block_header_t) + sizeof(block_footer_t);
+  if (block->size_bytes < size_needed_for_split) {
+    remove_from_free_list(block);
+  } else {
+    // This call to this function needs to account for the fact we need to write
+    // the footer at the end as well!
+    block_header_t* leftover =
+        split_region(block, size + sizeof(block_footer_t));
+    block->next = leftover;
+    remove_from_free_list(block);
+  }
+}
+
+void remove_from_free_list(block_header_t* block) {
+  block_header_t* previous_header = get_previous_free(block);
+  if (previous_header != NULL) {
+    previous_header->next = block->next;
+  }
+}
+
+void set_footer_at(block_header_t* block, uint32_t addr) {
+  block_footer_t* footer = (block_footer_t*)addr;
+  footer->header = block;
+  block->footer = footer;
+}
+
+block_header_t* split_region(block_header_t* block, size_t size) {
+  block_header_t* leftover =
+      (block_header_t*)((uint32_t)block + sizeof(block_header_t) +
+                        (uint32_t)size);
+
+  set_footer_at(block, (uint32_t)(leftover) - sizeof(block_footer_t));
+
+  leftover->footer = block->footer;
+  leftover->size_bytes = block->size_bytes - size - sizeof(block_header_t) -
+                         sizeof(block_footer_t);
+  leftover->next = block->next;
+  leftover->is_free = true;
+  return leftover;
 }
 
 // bool are_contiguous(block_header_t* first, block_header_t* second) {}
