@@ -16,6 +16,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+void print_ok(const char* component);
+
 void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
   if (!is_protected_mode()) {
     printf(
@@ -26,23 +28,25 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
   initialize_g_kernel();
   terminal_initialize();
   initialize_serial();
-  printf("[OK] Serial\n");
+  print_ok("Serial");
   initialize_gdt();
-  printf("[OK] GDT\n");
+  print_ok("GDT");
   initialize_idt();
-  printf("[OK] IDT\n");
+  print_ok("IDT");
   initialize_pic();
-  printf("[OK] PICs\n");
+  print_ok("PICs");
   initialize_pit();
-  printf("[OK] PIT\n");
+  print_ok("PIT");
   initialize_keyboard();
-  printf("[OK] Keyboard\n");
+  print_ok("Keyboard");
   initialize_pmm(multiboot_info);
-  printf("[OK] PMM\n");
+  print_ok("PMM");
   initialize_vmm(multiboot_info);
-  printf("[OK] VMM\n");
+  print_ok("VMM");
   kmalloc_initialize();
-  printf("[OK] kmalloc\n");
+  print_ok("kmalloc");
+
+  printf("\n");
 
   printf("[INFO] Total available memory:\t%d MB (%d B)\n",
          pmm_state_get_total_mem(g_kernel.pmm) >> 20,
@@ -72,5 +76,13 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
   printf("a=%x, b=%x, c=%x\n", (uint32_t)a, (uint32_t)b, (uint32_t)c);
 
   while (1) asm volatile("hlt");
+}
+
+void print_ok(const char* component) {
+  printf("[");
+  terminal_set_color(2);
+  printf("OK");
+  terminal_set_color(7);
+  printf("] %s\n", component);
 }
 
