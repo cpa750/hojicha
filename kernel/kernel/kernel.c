@@ -75,6 +75,18 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
 
   printf("a=%x, b=%x, c=%x\n", (uint32_t)a, (uint32_t)b, (uint32_t)c);
 
+  free(b);
+
+  // Should be allocated in old b
+  char* d = (char*)malloc(sizeof(char) * 10);
+  strcpy(d, "test");
+  printf("%s\n", d);
+  printf("%x\n", (uint32_t)d);
+
+  free(a);
+
+  kmalloc_print_free_blocks();
+
   while (1) asm volatile("hlt");
 }
 
