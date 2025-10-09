@@ -61,6 +61,8 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
 
   asm volatile("sti");
 
+  printf("sum=%d\n", 30 - (10 + 13 + 4));
+
   char* a = (char*)malloc(sizeof(char) * 20);
   strcpy(a, "hello, world!");
   printf("%s\n", a);
@@ -86,6 +88,25 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
   free(a);
 
   kmalloc_print_free_blocks();
+
+  // force us to grow the heap
+  for (int i = 0; i < 500; ++i) {
+    char* n = (char*)malloc(sizeof(char) * 2000);
+    printf("\n\nnew iteration i=%d n=%x\n", i, n);
+    strcpy(n, "grow");
+    memset(n, 0xF, 1999);
+  }
+
+  printf("c: %s\n", c);
+
+  // kmalloc_print_free_blocks();
+
+  printf("[INFO] Total available memory:\t%d MB (%d B)\n",
+         pmm_state_get_total_mem(g_kernel.pmm) >> 20,
+         pmm_state_get_total_mem(g_kernel.pmm));
+  printf("[INFO] Total free memory:\t\t%d MB (%d B)\n",
+         pmm_state_get_free_mem(g_kernel.pmm) >> 20,
+         pmm_state_get_free_mem(g_kernel.pmm));
 
   while (1) asm volatile("hlt");
 }

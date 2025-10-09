@@ -64,8 +64,8 @@ void kmalloc_initialize() {
 
   free_regions->is_free = true;
 
-  free_regions->size_bytes = pmm_page_to_addr_base(kernel_heap_grow_size) -
-                             (sizeof(block_footer_t) * 8);
+  free_regions->size_bytes =
+      pmm_page_to_addr_base(kernel_heap_grow_size) - (SIZEOF_FOOTER * 8);
   free_regions->next = NULL;
   block_footer_t* free_region_footer =
       (block_footer_t*)(((uint32_t)free_regions) + free_regions->size_bytes);
@@ -90,9 +90,10 @@ void* kmalloc(size_t size) {
   }
 
   block_header_t* first_fit = find_first_fit_block(free_regions, size);
-
   if (first_fit == NULL) {
+    printf("growing heap\n");
     first_fit = grow_heap();
+    printf("grew heap\n");
     if (first_fit == NULL) {
       return NULL;
     }
@@ -100,12 +101,12 @@ void* kmalloc(size_t size) {
 
   occupy_block(first_fit, size);
 
-  return (void*)((uint32_t)first_fit + sizeof(block_header_t));
+  return (void*)((uint32_t)first_fit + SIZEOF_HEADER);
 }
 
 void kfree(void* ptr) {
   block_header_t* current_block =
-      (block_header_t*)((uint32_t)ptr - sizeof(block_header_t));
+      (block_header_t*)((uint32_t)ptr - SIZEOF_HEADER);
   current_block->is_free = true;
   // Special case to handle when the first available block is freed
   if ((uint32_t)current_block == first_available_vaddr) {
@@ -161,7 +162,7 @@ bool are_contiguous(block_header_t* first, block_header_t* second) {
     return false;
   }
 
-  if (first - sizeof(block_footer_t) == second) {
+  if (first - SIZEOF_FOOTER == second) {
     return true;
   }
   return false;
@@ -171,7 +172,6 @@ block_header_t* find_first_fit_block(block_header_t* block, size_t size) {
   if (block == NULL) {
     return NULL;
   }
-
   if (block->size_bytes >= size && block->is_free) {
     return block;
   }
@@ -180,10 +180,10 @@ block_header_t* find_first_fit_block(block_header_t* block, size_t size) {
 }
 
 block_header_t* get_next(block_header_t* block) {
-  if (((uint32_t)block->footer + sizeof(block_footer_t)) >= last_footer) {
+  if (((uint32_t)block->footer + SIZEOF_FOOTER) >= last_footer) {
     return NULL;
   }
-  return (block_header_t*)((uint32_t)block->footer + sizeof(block_footer_t));
+  return (block_header_t*)((uint32_t)block->footer + SIZEOF_FOOTER);
 }
 
 block_header_t* get_next_free(block_header_t* block) {
@@ -198,19 +198,17 @@ block_header_t* get_next_free(block_header_t* block) {
 }
 
 block_header_t* get_previous(block_header_t* block) {
-  if ((uint32_t)block - sizeof(block_header_t) - sizeof(block_footer_t) <
-      first_available_vaddr) {
+  if ((uint32_t)block - SIZEOF_HEADER - SIZEOF_FOOTER < first_available_vaddr) {
     return NULL;
   }
 
   block_footer_t* previous_footer =
-      (block_footer_t*)((uint32_t)block - sizeof(block_footer_t));
+      (block_footer_t*)((uint32_t)block - SIZEOF_FOOTER);
   return previous_footer->header;
 }
 
 block_header_t* get_previous_free(block_header_t* block) {
   block_header_t* prev = get_previous(block);
-
   if (prev == NULL) {
     return prev;
   }
@@ -223,44 +221,51 @@ block_header_t* get_previous_free(block_header_t* block) {
 
 block_header_t* grow_heap() { return grow_heap_by(kernel_heap_grow_size++); }
 block_header_t* grow_heap_by(size_t size) {
-  block_header_t* new_block = (block_header_t*)vmm_map(
-      last_footer + sizeof(last_footer), size, PAGE_PRESENT | PAGE_WRITABLE);
-
-  if (new_block == 0) {
+  uint32_t addr_to_map =
+      ((uint32_t)last_footer + sizeof(last_footer) + 4095) & ~((uint64_t)4095);
+  printf("in grow heap\n");
+  uint32_t new_pages = vmm_map(addr_to_map, size, PAGE_PRESENT | PAGE_WRITABLE);
+  if (new_pages == 0) {
     return NULL;
   }
 
+  block_header_t* new_block = (block_header_t*)(last_footer + SIZEOF_FOOTER);
+  uint32_t difference = new_pages - ((uint32_t)last_footer + SIZEOF_FOOTER);
+
+  printf("addr to map=%x\n", addr_to_map);
+  printf("old last footer=%x\n", (uint32_t)last_footer);
+  printf("new block=%x\n", (uint32_t)new_block);
+
   new_block->is_free = true;
-  new_block->size_bytes = pmm_page_to_addr_base(size) - sizeof(block_footer_t);
+  new_block->size_bytes =
+      pmm_page_to_addr_base(size) + difference - SIZEOF_FOOTER;
   new_block->next = NULL;
   block_footer_t* new_block_footer =
       (block_footer_t*)(((uint32_t)new_block) + new_block->size_bytes);
   new_block_footer->header = new_block;
   new_block->footer = new_block_footer;
   last_footer = (uint32_t)new_block_footer;
+  block_header_t* prev_free = get_previous_free(new_block);
+  if (prev_free != NULL) {
+    prev_free->next = new_block;
+  }
   return new_block;
 }
 
 void merge_blocks(block_header_t* first, block_header_t* second) {
   first->footer = second->footer;
   first->next = second->next;
-  memset(first->footer, 0, sizeof(block_footer_t));
-  memset(second, 0, sizeof(block_header_t));
+  memset(first->footer, 0, SIZEOF_FOOTER);
+  memset(second, 0, SIZEOF_HEADER);
 }
 
 void occupy_block(block_header_t* block, size_t size) {
   block->is_free = false;
-  // print_free_blocks_internal(block);
-  uint32_t size_needed_for_split =
-      size + sizeof(block_header_t) + sizeof(block_footer_t);
+  uint32_t size_needed_for_split = size + SIZEOF_HEADER + SIZEOF_FOOTER;
   if (block->size_bytes < size_needed_for_split) {
     remove_from_free_list(block);
   } else {
-    // This call to this function needs to account for the fact we need to write
-    // the footer at the end as well!
-    block_header_t* leftover =
-        split_region(block, size + sizeof(block_footer_t));
-    // print_free_blocks_internal(leftover);
+    block_header_t* leftover = split_region(block, size);
     block->next = leftover;
     block->size_bytes = size;
     remove_from_free_list(block);
@@ -268,10 +273,8 @@ void occupy_block(block_header_t* block, size_t size) {
 }
 
 void remove_from_free_list(block_header_t* block) {
-  // print_free_blocks_internal(block->next);
   block_header_t* previous_header = get_previous_free(block);
   if (previous_header != NULL) {
-    print_free_blocks_internal(previous_header);
     previous_header->next = block->next;
   }
 }
@@ -284,14 +287,13 @@ void set_footer_at(block_header_t* block, uint32_t addr) {
 
 block_header_t* split_region(block_header_t* block, size_t size) {
   block_header_t* leftover =
-      (block_header_t*)((uint32_t)block + sizeof(block_header_t) +
-                        (uint32_t)size);
+      (block_header_t*)((uint32_t)block + SIZEOF_HEADER + (uint32_t)size);
   leftover->footer = block->footer;
   leftover->footer->header = leftover;
 
-  set_footer_at(block, (uint32_t)(leftover) - sizeof(block_footer_t));
-  leftover->size_bytes = block->size_bytes - size - sizeof(block_header_t) -
-                         sizeof(block_footer_t);
+  set_footer_at(block, (uint32_t)(leftover)-SIZEOF_FOOTER);
+  leftover->size_bytes =
+      block->size_bytes - size - SIZEOF_HEADER - SIZEOF_FOOTER;
   leftover->next = block->next;
   leftover->is_free = true;
   return leftover;
@@ -324,7 +326,7 @@ void print_free_blocks_internal(block_header_t* block) {
   }
   block_header_t* a = (block_header_t*)0x215025;
   print_free_blocks_internal(
-      (block_header_t*)((uint32_t)block->footer + sizeof(block_footer_t)));
+      (block_header_t*)((uint32_t)block->footer + SIZEOF_FOOTER));
 }
 
 void kmalloc_print_free_blocks() {
