@@ -10,8 +10,6 @@ Under (early) active development.
 ## Current goal:
 A malloc implementation using virtual memory.
 ### In progress:
-- Virtual memory manager (paging)
-### Planned
 - kmalloc()
 
 ## MVP Done:
@@ -23,6 +21,7 @@ A malloc implementation using virtual memory.
 - Timer interrupts
 - Keyboard input
 - Physical memory manager
+- Virtual memory manager (paging)
 
 If you're reading this and you have feedback, please don't hesitate to let me know!
 

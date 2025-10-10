@@ -88,6 +88,7 @@ int printf(const char* restrict format, ...) {
         break;
       }
       case 'x': {
+        // TODO: Fix garbled output when parameter is >= 0xF0000000
         format++;
         const uint32_t x = (const uint32_t)va_arg(parameters, const uint32_t);
         char buf[33];

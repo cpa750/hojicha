@@ -33,12 +33,14 @@ stdio/printf.o \
 stdio/putchar.o \
 stdio/puts.o \
 stdlib/abort.o \
+stdlib/free.o \
 stdlib/itoa.o \
 stdlib/malloc.o \
 string/memcmp.o \
 string/memcpy.o \
 string/memmove.o \
 string/memset.o \
+string/strcpy.o \
 string/strlen.o \
 
 HOSTEDOBJS=\

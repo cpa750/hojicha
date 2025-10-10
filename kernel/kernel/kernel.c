@@ -8,11 +8,15 @@
 #include <kernel/kernel_state.h>
 #include <kernel/multiboot.h>
 #include <kernel/tty.h>
+#include <memory/kmalloc.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+void print_ok(const char* component);
 
 void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
   if (!is_protected_mode()) {
@@ -24,21 +28,23 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
   initialize_g_kernel();
   terminal_initialize();
   initialize_serial();
-  printf("[OK] Serial\n");
+  print_ok("Serial");
   initialize_gdt();
-  printf("[OK] GDT\n");
+  print_ok("GDT");
   initialize_idt();
-  printf("[OK] IDT\n");
+  print_ok("IDT");
   initialize_pic();
-  printf("[OK] PICs\n");
+  print_ok("PICs");
   initialize_pit();
-  printf("[OK] PIT\n");
+  print_ok("PIT");
   initialize_keyboard();
-  printf("[OK] Keyboard\n");
+  print_ok("Keyboard");
   initialize_pmm(multiboot_info);
-  printf("[OK] PMM\n");
+  print_ok("PMM");
   initialize_vmm(multiboot_info);
-  printf("[OK] VMM\n");
+  print_ok("VMM");
+  kmalloc_initialize();
+  print_ok("kmalloc");
 
   printf("\n");
 
@@ -56,5 +62,13 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
   asm volatile("sti");
 
   while (1) asm volatile("hlt");
+}
+
+void print_ok(const char* component) {
+  printf("[");
+  terminal_set_color(2);
+  printf("OK");
+  terminal_set_color(7);
+  printf("] %s\n", component);
 }
 
