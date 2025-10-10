@@ -85,28 +85,55 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
   printf("%s\n", d);
   printf("%x\n", (uint32_t)d);
 
-  free(a);
+  // free(a);
 
   kmalloc_print_free_blocks();
 
   // force us to grow the heap
-  for (int i = 0; i < 500; ++i) {
-    char* n = (char*)malloc(sizeof(char) * 2000);
-    printf("\n\nnew iteration i=%d n=%x\n", i, n);
-    strcpy(n, "grow");
-    memset(n, 0xF, 1999);
-  }
+  // for (int i = 0; i < 500; ++i) {
+  //  char* n = (char*)malloc(sizeof(char) * 2000);
+  //  printf("\n\nnew iteration i=%d n=%x\n", i, n);
+  //  strcpy(n, "grow");
+  //  memset(n, 0xF, 1999);
+  //}
 
   printf("c: %s\n", c);
 
-  // kmalloc_print_free_blocks();
+  char *e, *f, *g, *h, *i, *j, *k, *l, *m, *n, *o, *p;
+  e = malloc(sizeof(char) * 10);
+  f = malloc(sizeof(char) * 10);
+  g = malloc(sizeof(char) * 10);
+  h = malloc(sizeof(char) * 10);
+  i = malloc(sizeof(char) * 10);
+  j = malloc(sizeof(char) * 10);
+  k = malloc(sizeof(char) * 10);
+  l = malloc(sizeof(char) * 10);
+  m = malloc(sizeof(char) * 10);
+  n = malloc(sizeof(char) * 10);
+  o = malloc(sizeof(char) * 10);
+  p = malloc(sizeof(char) * 10);
 
-  printf("[INFO] Total available memory:\t%d MB (%d B)\n",
-         pmm_state_get_total_mem(g_kernel.pmm) >> 20,
-         pmm_state_get_total_mem(g_kernel.pmm));
-  printf("[INFO] Total free memory:\t\t%d MB (%d B)\n",
-         pmm_state_get_free_mem(g_kernel.pmm) >> 20,
-         pmm_state_get_free_mem(g_kernel.pmm));
+  printf("e=%x, f=%x, g=%x, h=%x\n", (uint32_t)e, (uint32_t)f, (uint32_t)g,
+         (uint32_t)h);
+  printf("i=%x, j=%x, k=%x, l=%x\n", (uint32_t)i, (uint32_t)j, (uint32_t)k,
+         (uint32_t)l);
+  printf("m=%x, n=%x, o=%x, p=%x\n", (uint32_t)m, (uint32_t)n, (uint32_t)o,
+         (uint32_t)p);
+
+  free(f);
+  free(e);
+
+  free(h);
+  free(j);
+  free(i);
+
+  free(l);
+  free(m);
+
+  free(o);
+  free(p);
+
+  kmalloc_print_free_blocks();
 
   while (1) asm volatile("hlt");
 }

@@ -129,13 +129,25 @@ void kfree(void* ptr) {
   }
 
   if (are_contiguous(previous_free, current_block)) {
-    if (are_contiguous(previous_free, next_free)) {
+    if (are_contiguous(current_block, next_free)) {
+      printf("merging 3\n");
+      merge_blocks(previous_free, current_block);
       merge_blocks(previous_free, next_free);
     } else {
       merge_blocks(previous_free, current_block);
+      // printf("previous_free->footer=%x\n", (uint32_t)previous_free->footer);
+      // printf("previous_free->footer->header=%x\n",
+      //        (uint32_t)previous_free->footer->header);
+      // printf("previous_free->next=%x\n", (uint32_t)previous_free->next);
+      // printf("previous_free->size_bytes=%d\n", previous_free->size_bytes);
     }
   } else if (are_contiguous(current_block, next_free)) {
     merge_blocks(current_block, next_free);
+    // printf("current_block->footer=%x\n", (uint32_t)current_block->footer);
+    // printf("current_block->footer->header=%x\n",
+    //        (uint32_t)current_block->footer->header);
+    // printf("current_block->next=%x\n", (uint32_t)current_block->next);
+    // printf("current_block->size_bytes=%d\n", current_block->size_bytes);
   } else {
     add_to_free_list(previous_free, current_block);
   }
@@ -162,7 +174,14 @@ bool are_contiguous(block_header_t* first, block_header_t* second) {
     return false;
   }
 
-  if (first - SIZEOF_FOOTER == second) {
+  printf("are_contiguous\n");
+  printf("first footer=%x, second=%x, second - footer=%x\n",
+         (uint32_t)first->footer, (uint32_t)second,
+         (uint32_t)second - SIZEOF_FOOTER);
+
+  if ((uint32_t)first->footer == (uint32_t)second - SIZEOF_FOOTER) {
+    printf("%x == %x\n", (uint32_t)first->footer,
+           (uint32_t)second - SIZEOF_FOOTER);
     return true;
   }
   return false;
@@ -253,9 +272,11 @@ block_header_t* grow_heap_by(size_t size) {
 }
 
 void merge_blocks(block_header_t* first, block_header_t* second) {
-  first->footer = second->footer;
-  first->next = second->next;
   memset(first->footer, 0, SIZEOF_FOOTER);
+  first->footer = second->footer;
+  first->footer->header = first;
+  first->next = second->next;
+  first->size_bytes += second->size_bytes;
   memset(second, 0, SIZEOF_HEADER);
 }
 
