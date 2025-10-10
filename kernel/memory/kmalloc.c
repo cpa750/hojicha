@@ -124,6 +124,7 @@ void kfree(void* ptr) {
     next_free = NULL;
   }
 
+  // TODO make this clearer
   if (are_contiguous(previous_free, current_block)) {
     if (are_contiguous(current_block, next_free)) {
       merge_blocks(previous_free, current_block);
