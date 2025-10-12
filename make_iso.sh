@@ -12,4 +12,4 @@ menuentry "hojicha" {
 	multiboot /boot/hojicha.kernel
 }
 EOF
-grub-mkrescue -o hojicha.iso isodir
+grub2-mkrescue -o hojicha.iso isodir
