@@ -1,0 +1,25 @@
+{
+  "configurations": {
+    "Attach to QEMU": {
+      "adapter": "vscode-cpptools",
+      "configuration": {
+        "name": "Attach Remote GDB",
+        "type": "cppdbg",
+        "request": "launch",
+        "MIMode": "gdb",
+        "miDebuggerServerAddress": "127.0.0.1:1234",
+        "program": "${workspaceRoot}/kernel/hojicha.kernel",
+        "cwd": "${workspaceRoot}",
+        "externalConsole": false,
+        "setupCommands": [
+          {
+            "description": "Enable pretty-printing for gdb",
+            "text": "-enable-pretty-printing",
+            "ignoreFailures": true
+          }
+        ]
+      }
+    }
+  }
+}
+

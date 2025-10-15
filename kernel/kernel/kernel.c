@@ -61,14 +61,105 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
 
   asm volatile("sti");
 
+  printf("sum=%d\n", 30 - (10 + 13 + 4));
+
+  char* a = (char*)malloc(sizeof(char) * 20);
+  strcpy(a, "hello, world!");
+  printf("%s\n", a);
+
+  char* b = (char*)malloc(sizeof(char) * 30);
+  strcpy(b, "this is so cool!!!");
+  printf("%s\n", b);
+
+  kmalloc_print_free_blocks();
+
+  char* c = (char*)malloc(sizeof(char) * 40);
+  strcpy(c, "look at me ma, no stack!");
+  printf("%s\n", c);
+
+  //kmalloc_print_free_blocks();
+  printf("a=%x, b=%x, c=%x\n", (uint32_t)a, (uint32_t)b, (uint32_t)c);
+
+  kmalloc_print_free_blocks();
+
+  free(b);
+
+  // Should be allocated in old b
+  char* d = (char*)malloc(sizeof(char) * 10);
+  strcpy(d, "test");
+  printf("%s\n", d);
+  printf("%x\n", (uint32_t)d);
+
+  free(a);
+
+  // force us to grow the heap
+  for (int i = 0; i < 500; ++i) {
+    char* n = (char*)malloc(sizeof(char) * 2000);
+    printf("\n\nnew iteration i=%d n=%x\n", i, n);
+    strcpy(n, "grow");
+    memset(n, 0xFF, 2000);
+  }
+  
+  //char* large = (char*)malloc(sizeof(char) * 2000);
+  //printf("\n\nlarge=%x\n", (uint32_t)large);
+  //memset(large, 0xFF, 1996);
+
+  printf("c: %s\n", c);
+  printf("c: %x\n", (uint32_t)c);
+
+  kmalloc_print_free_blocks();
+  printf_safe("starting malloc sequence\n");
+
+  char *e, *f, *g, *h, *i, *j, *k, *l, *m, *n, *o, *p;
+  e = malloc(sizeof(char) * 10);
+  f = malloc(sizeof(char) * 10);
+  g = malloc(sizeof(char) * 10);
+  h = malloc(sizeof(char) * 10);
+  i = malloc(sizeof(char) * 10);
+  j = malloc(sizeof(char) * 10);
+  k = malloc(sizeof(char) * 10);
+  l = malloc(sizeof(char) * 10);
+  m = malloc(sizeof(char) * 10);
+  n = malloc(sizeof(char) * 10);
+  o = malloc(sizeof(char) * 10);
+  p = malloc(sizeof(char) * 10);
+
+  printf("e=%x, f=%x, g=%x, h=%x\n", (uint32_t)e, (uint32_t)f, (uint32_t)g,
+         (uint32_t)h);
+  printf("i=%x, j=%x, k=%x, l=%x\n", (uint32_t)i, (uint32_t)j, (uint32_t)k,
+         (uint32_t)l);
+  printf("m=%x\n", (uint32_t)m);
+  printf("m=%x, n=%x, o=%x, p=%x\n", (uint32_t)m, (uint32_t)n, (uint32_t)o,
+         (uint32_t)p);
+
+  free(f);
+  free(e);
+
+  free(h);
+  free(j);
+  free(i);
+
+  free(l);
+  free(m);
+
+  free(o);
+  free(p);
+
+  char* q = (char*)malloc(10);
+  char* r = (char*)malloc(10);
+  printf("r=%x\n");
+  memset(r, 0xFF, 10);
+
+  kmalloc_print_free_blocks();
+
   while (1) asm volatile("hlt");
 }
 
 void print_ok(const char* component) {
-  printf("[");
+  printf_safe("[");
   terminal_set_color(2);
-  printf("OK");
+  printf_safe("OK");
   terminal_set_color(7);
-  printf("] %s\n", component);
+  printf_safe("] %s\n", component);
 }
 
