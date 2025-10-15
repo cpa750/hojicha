@@ -2,7 +2,7 @@ DEFAULT_HOST!=../default_host.sh
 HOST?=DEFAULT_HOST
 HOSTARCH!=../target_triplet_to_arch.sh $(HOST)
 
-CFLAGS?=-O2 -g
+CFLAGS?=-O3
 CPPFLAGS?=
 LDFLAGS?=
 LIBS?=
@@ -15,8 +15,12 @@ LIBDIR?=$(EXEC_PREFIX)/lib
 
 CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra
 CPPFLAGS:=$(CPPFLAGS) -D__is_libc -Iinclude
-LIBK_CFLAGS:=$(CFLAGS)
-LIBK_CPPFLAGS:=$(CPPFLAGS) -D__is_libk
+LIBK_CFLAGS:=$(CFLAGS) -D__printf_serial
+LIBK_CPPFLAGS:=$(CPPFLAGS) -D__is_libk -D__printf_serial
+
+ifeq ($(DEBUG_QEMU),1)
+	CFLAGS :=$(CFLAGS) -g
+endif
 
 ARCHDIR=arch/$(HOSTARCH)
 

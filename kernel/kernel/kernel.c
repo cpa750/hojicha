@@ -14,7 +14,6 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 void print_ok(const char* component);
 
@@ -25,6 +24,11 @@ void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
     abort();
   }
   asm volatile("cli");
+
+#if defined (__debug_virtual)
+  printf("Hojicha running with virtual debugging enabled.\n");
+#endif
+
   initialize_g_kernel();
   terminal_initialize();
   initialize_serial();

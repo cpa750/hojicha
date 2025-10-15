@@ -1,4 +1,5 @@
 #include <drivers/serial.h>
+#include <memory/kmalloc.h>
 #include <limits.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -11,8 +12,9 @@
 static bool print(const char* data, size_t length) {
   const unsigned char* raw_bytes = (const unsigned char*)data;
   for (size_t i = 0; i < length; i++) {
-    // TODO: put serial write behind a compile time feature flag
+#if defined (__printf_serial)
     serial_write_char(raw_bytes[i]);
+#endif
     if (putchar(raw_bytes[i]) == EOF) {
       return false;
     }
@@ -75,7 +77,7 @@ int printf(const char* restrict format, ...) {
       case 'd': {
         format++;
         const uint32_t d = (const uint32_t)va_arg(parameters, const uint32_t);
-        char* buf = malloc(sizeof(char) * 40);
+        char* buf = (char*) malloc(sizeof(char)*40);
         itoa(d, buf, 10);
         size_t len = strlen(buf + 2);
         if (writeable_bytes < len) {
@@ -92,7 +94,7 @@ int printf(const char* restrict format, ...) {
         // TODO: Fix garbled output when parameter is >= 0xF0000000
         format++;
         const uint32_t x = (const uint32_t)va_arg(parameters, const uint32_t);
-        char* buf = malloc(sizeof(char) * 40);
+        char* buf = (char*) malloc(sizeof(char)*40);
         itoa(x, buf, 16);
         size_t len = strlen(buf);
         if (writeable_bytes < len) {
@@ -108,7 +110,7 @@ int printf(const char* restrict format, ...) {
       case 'b': {
         format++;
         const uint32_t x = (const uint32_t)va_arg(parameters, const uint32_t);
-        char* buf = malloc(sizeof(char) * 40);
+        char* buf = (char*) malloc(sizeof(char)*40);
         itoa(x, buf, 2);
         size_t len = strlen(buf);
         if (writeable_bytes < len) {

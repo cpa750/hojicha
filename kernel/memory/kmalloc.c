@@ -87,6 +87,7 @@ void* kmalloc(size_t size) {
     return new_block;
   }
 
+
   block_header_t* first_fit = find_first_fit_block(free_regions, size);
   if (first_fit == NULL) {
     first_fit = grow_heap();
@@ -121,7 +122,7 @@ void kfree(void* ptr) {
   if (previous_free != NULL && previous_free->next != NULL) {
     next_free = previous_free->next;
   } else {
-    next_free = NULL;
+    next_free = get_next_free(current_block);
   }
 
   // TODO make this clearer
@@ -134,6 +135,9 @@ void kfree(void* ptr) {
     }
   } else if (are_contiguous(current_block, next_free)) {
     merge_blocks(current_block, next_free);
+    if (previous_free != NULL) {
+      previous_free->next = current_block;
+    }
   } else {
     add_to_free_list(previous_free, current_block);
   }
@@ -254,7 +258,7 @@ void merge_blocks(block_header_t* first, block_header_t* second) {
   memset(second, 0, SIZEOF_HEADER);
 }
 
-void occupy_block(block_header_t* block, size_t size) {
+void __attribute__((noinline)) occupy_block(block_header_t* block, size_t size) {
   block->is_free = false;
   uint32_t size_needed_for_split = size + SIZEOF_HEADER + SIZEOF_FOOTER;
   if (block->size_bytes < size_needed_for_split) {
@@ -282,7 +286,7 @@ void set_footer_at(block_header_t* block, uint32_t addr) {
 
 block_header_t* split_region(block_header_t* block, size_t size) {
   block_header_t* leftover =
-      (block_header_t*)((uint32_t)block + SIZEOF_HEADER + (uint32_t)size);
+      (block_header_t*)((uint32_t)block + SIZEOF_HEADER + SIZEOF_FOOTER + (uint32_t)size);
   leftover->footer = block->footer;
   leftover->footer->header = leftover;
 
