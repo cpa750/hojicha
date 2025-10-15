@@ -12,8 +12,9 @@
 static bool print(const char* data, size_t length) {
   const unsigned char* raw_bytes = (const unsigned char*)data;
   for (size_t i = 0; i < length; i++) {
-    // TODO: put serial write behind a compile time feature flag
+#if defined (__printf_serial)
     serial_write_char(raw_bytes[i]);
+#endif
     if (putchar(raw_bytes[i]) == EOF) {
       return false;
     }

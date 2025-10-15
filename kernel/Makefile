@@ -2,7 +2,7 @@ DEFAULT_HOST!=../default_host.sh
 HOST?=DEFAULT_HOST
 HOSTARCH!=../target_triplet_to_arch.sh $(HOST)
 
-CFLAGS?=-O2 -g
+CFLAGS?=-O3
 CPPFLAGS?=
 LDFLAGS?=
 LIBS?=
@@ -13,10 +13,14 @@ EXEC_PREFIX?=$(PREFIX)
 BOOTDIR?=$(EXEC_PREFIX)/boot
 INCLUDEDIR?=$(PREFIX)/include
 
-CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -O3 -g
+CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra
 CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -Iinclude
 LDFLAGS:=$(LDFLAGS)
 LIBS:=$(LIBS) -nostdlib -lk -lgcc
+
+ifeq ($(DEBUG_QEMU),1)
+	CFLAGS :=$(CFLAGS) -g -D__debug_virtual
+endif
 
 ARCHDIR=arch/$(HOSTARCH)
 
