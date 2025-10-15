@@ -174,9 +174,6 @@ block_header_t* find_first_fit_block(block_header_t* block, size_t size) {
   if (block == NULL) {
     return NULL;
   }
-  //printf_safe("%x\n", (uint32_t)block);
-  //printf_safe("\t%x\n", (uint32_t)block->next);
-  //printf_safe("\t%d\n", block->size_bytes);
   if (block->size_bytes >= size && block->is_free) {
     return block;
   }
@@ -226,7 +223,6 @@ block_header_t* get_previous_free(block_header_t* block) {
 
 block_header_t* grow_heap() { return grow_heap_by(kernel_heap_grow_size++); }
 block_header_t* grow_heap_by(size_t size) {
-  printf_safe("in grow heap by\n");
   uint32_t addr_to_map =
       ((uint32_t)last_footer + sizeof(last_footer) + 4095) & ~((uint64_t)4095);
   uint32_t new_pages = vmm_map(addr_to_map, size, PAGE_PRESENT | PAGE_WRITABLE);
@@ -302,74 +298,3 @@ block_header_t* split_region(block_header_t* block, size_t size) {
   return leftover;
 }
 
-void print_free_blocks_internal(block_header_t* block) {
-  if (block == NULL || (uint32_t)block >= last_footer) {
-    return;
-  }
-  printf("header:\n");
-  printf("\taddr: %x\n", (uint32_t)block);
-  if (block->is_free) {
-    printf("\tfree: true\n");
-  } else {
-    printf("\tfree: false\n");
-  }
-  printf("\tsize_bytes: %d\n", block->size_bytes);
-  printf("\tfooter: %x\n", (uint32_t)block->footer);
-  if (block->next != NULL) {
-    printf("\tnext (free): %x\n", (uint32_t)block->next);
-  } else {
-    printf("\tno next\n");
-  }
-  if (block->footer != NULL && block->footer <= last_footer) {
-    printf("footer:\n");
-    printf("\taddr: %x\n", (uint32_t)block->footer);
-    printf("\theader: %x\n", block->footer->header);
-  } else {
-    printf("invalid footer\n");
-  }
-  block_header_t* a = (block_header_t*)0x215025;
-  print_free_blocks_internal(
-      (block_header_t*)((uint32_t)block->footer + SIZEOF_FOOTER));
-}
-
-void kmalloc_print_free_blocks() {
-  printf("Begin kmalloc dump:\n\n");
-  print_free_blocks_internal(free_regions);
-  printf("end kmalloc dump\n\n");
-}
-
-void print_free_blocks_internal_safe(block_header_t* block) {
-  if (block == NULL || (uint32_t)block >= last_footer) {
-    return;
-  }
-  printf_safe("header:\n");
-  printf_safe("\taddr: %x\n", (uint32_t)block);
-  if (block->is_free) {
-    printf_safe("\tfree: true\n");
-  } else {
-    printf_safe("\tfree: false\n");
-  }
-  printf_safe("\tsize_bytes: %d\n", block->size_bytes);
-  printf_safe("\tfooter: %x\n", (uint32_t)block->footer);
-  if (block->next != NULL) {
-    printf_safe("\tnext (free): %x\n", (uint32_t)block->next);
-  } else {
-    printf_safe("\tno next\n");
-  }
-  if (block->footer != NULL && block->footer <= last_footer) {
-    printf_safe("footer:\n");
-    printf_safe("\taddr: %x\n", (uint32_t)block->footer);
-    printf_safe("\theader: %x\n", block->footer->header);
-  } else {
-    printf_safe("invalid footer\n");
-  }
-  block_header_t* a = (block_header_t*)0x215025;
-  print_free_blocks_internal(
-      (block_header_t*)((uint32_t)block->footer + SIZEOF_FOOTER));
-}
-
-void kmalloc_print_free_blocks_safe() {
-  printf_safe("Begin kmalloc dump:\n\n");
-  print_free_blocks_internal_safe(free_regions);
-  printf_safe("end kmalloc dump\n\n");
-}
