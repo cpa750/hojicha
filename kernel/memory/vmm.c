@@ -12,74 +12,74 @@
 #define VIRT_PT_START 0xFFC00000
 
 struct vmm_state {
-  uint32_t first_available_vaddr;
-  uint32_t last_available_vaddr;
+  haddr_t first_available_vaddr;
+  haddr_t last_available_vaddr;
 };
 typedef struct vmm_state vmm_state_t;
-uint32_t vmm_state_get_first_available_vaddr(vmm_state_t* vmm_state) {
+haddr_t vmm_state_get_first_available_vaddr(vmm_state_t* vmm_state) {
   return vmm_state->first_available_vaddr;
 }
-uint32_t vmm_state_get_last_available_vaddr(vmm_state_t* vmm_state) {
+haddr_t vmm_state_get_last_available_vaddr(vmm_state_t* vmm_state) {
   return vmm_state->last_available_vaddr;
 }
 void vmm_state_dump(vmm_state_t* v) {
-  printf("[VMM] Struct addr:\t\t\t\t%x B\n", (uint32_t)v);
+  printf("[VMM] Struct addr:\t\t\t\t%x B\n", (haddr_t)v);
   printf("[VMM] First available vaddr:\t%x\n", v->first_available_vaddr);
   printf("[VMM] Last available vaddr:\t\t%x\n", v->last_available_vaddr);
 }
 
 extern void enable_paging();
-extern void load_pd(uint32_t* pd_addr);
+extern void load_pd(haddr_t* pd_addr);
 
-void check_kernel_size(uint32_t kernel_page_count);
-uint32_t* get_page_table(uint32_t idx);
-uint32_t idx_to_vaddr(uint32_t directory_idx, uint32_t entry_idx);
-uint16_t virt_to_directory_idx(uint32_t virt);
-uint16_t virt_to_entry_idx(uint32_t virt);
-void _invlpg(uint32_t virt);
+void check_kernel_size(haddr_t kernel_page_count);
+haddr_t* get_page_table(haddr_t idx);
+haddr_t idx_to_vaddr(haddr_t directory_idx, haddr_t entry_idx);
+uint16_t virt_to_directory_idx(haddr_t virt);
+uint16_t virt_to_entry_idx(haddr_t virt);
+void _invlpg(haddr_t virt);
 
-uint32_t* page_directory;
-uint32_t* virtual_directory;
+haddr_t* page_directory;
+haddr_t* virtual_directory;
 
 void initialize_vmm() {
   static vmm_state_t vmm = {0};
-  page_directory = (uint32_t*)pmm_alloc_frame();
+  page_directory = (haddr_t*)pmm_alloc_frame();
   memset(page_directory, 0, 4096);
 
-  uint32_t* pd_identity_entry = (uint32_t*)pmm_alloc_frame();
-  for (uint32_t addr = 0; addr < 0x100000; addr += 4096) {
+  haddr_t* pd_identity_entry = (haddr_t*)pmm_alloc_frame();
+  for (haddr_t addr = 0; addr < 0x100000; addr += 4096) {
     pd_identity_entry[pmm_addr_to_page(addr)] =
         addr | PAGE_PRESENT | PAGE_WRITABLE;
   }
 
-  uint32_t* pd_kernel_entry = (uint32_t*)pmm_alloc_frame();
+  haddr_t* pd_kernel_entry = (haddr_t*)pmm_alloc_frame();
   memset(pd_kernel_entry, 0, 4096);
-  uint32_t kernel_page_count = pmm_state_get_kernel_page_count(g_kernel.pmm);
+  haddr_t kernel_page_count = pmm_state_get_kernel_page_count(g_kernel.pmm);
 
   check_kernel_size(kernel_page_count);
 
-  uint32_t kernel_start = pmm_state_get_kernel_start(g_kernel.pmm);
-  uint32_t kernel_end = pmm_state_get_kernel_end(g_kernel.pmm);
-  for (uint32_t addr = kernel_start; addr <= kernel_end; ++addr) {
+  haddr_t kernel_start = pmm_state_get_kernel_start(g_kernel.pmm);
+  haddr_t kernel_end = pmm_state_get_kernel_end(g_kernel.pmm);
+  for (haddr_t addr = kernel_start; addr <= kernel_end; ++addr) {
     pd_identity_entry[pmm_addr_to_page(addr)] =
         addr | PAGE_PRESENT | PAGE_WRITABLE;
   }
 
-  page_directory[0] = ((uint32_t)pd_identity_entry) | 0x03;
-  page_directory[1023] = (uint32_t)page_directory | 0x03;
+  page_directory[0] = ((haddr_t)pd_identity_entry) | 0x03;
+  page_directory[1023] = (haddr_t)page_directory | 0x03;
   load_pd(page_directory);
   enable_paging();
 
-  virtual_directory = (uint32_t*)VIRT_PD_START;
+  virtual_directory = (haddr_t*)VIRT_PD_START;
 
   vmm.first_available_vaddr = kernel_end + PAGE_SIZE;
   vmm.last_available_vaddr = idx_to_vaddr(1022, 1023);
   g_kernel.vmm = &vmm;
 }
 
-uint32_t vmm_map_single(uint32_t virt, uint32_t flags) {
-  uint32_t virt_base = virt & 0xFFFFF000;
-  uint32_t new_page = pmm_alloc_frame();
+haddr_t vmm_map_single(haddr_t virt, haddr_t flags) {
+  haddr_t virt_base = virt & 0xFFFFF000;
+  haddr_t new_page = pmm_alloc_frame();
   // OOM
   if (new_page == 0) {
     return 0;
@@ -88,65 +88,65 @@ uint32_t vmm_map_single(uint32_t virt, uint32_t flags) {
   uint16_t directory_idx = virt_to_directory_idx(virt);
   uint16_t entry_idx = virt_to_entry_idx(virt);
 
-  uint32_t* pd_entry;
+  haddr_t* pd_entry;
   if (virtual_directory[directory_idx] & PAGE_PRESENT) {
     pd_entry = get_page_table(directory_idx);
     pd_entry[entry_idx] = new_page | PAGE_PRESENT | PAGE_WRITABLE;
   } else {
-    uint32_t* pd_entry = (uint32_t*)pmm_alloc_frame();
+    haddr_t* pd_entry = (haddr_t*)pmm_alloc_frame();
     virtual_directory[directory_idx] =
-        (uint32_t)pd_entry | PAGE_PRESENT | PAGE_WRITABLE;
+        (haddr_t)pd_entry | PAGE_PRESENT | PAGE_WRITABLE;
     pd_entry[entry_idx] = new_page | PAGE_PRESENT | PAGE_WRITABLE;
   }
   _invlpg(virt_base);
   return virt_base;
 }
 
-uint32_t vmm_map(uint32_t virt, uint32_t size, uint32_t flags) {
-  uint32_t base = virt;
+haddr_t vmm_map(haddr_t virt, haddr_t size, haddr_t flags) {
+  haddr_t base = virt;
   while (size-- > 0) {
-    uint32_t res = vmm_map_single(virt, flags);
+    haddr_t res = vmm_map_single(virt, flags);
     //  OOM
     if (res == 0) {
       return res;
     }
     virt += PAGE_SIZE;
   }
-  uint32_t virt_base = base & 0xFFFFF000;
+  haddr_t virt_base = base & 0xFFFFF000;
   return virt_base;
 }
 
-uint32_t vmm_unmap(uint32_t virt) {
+haddr_t vmm_unmap(haddr_t virt) {
   uint16_t directory_idx = virt_to_directory_idx(virt);
 
-  uint32_t* pd_entry = get_page_table(directory_idx);
+  haddr_t* pd_entry = get_page_table(directory_idx);
   if (virtual_directory[directory_idx] == 0) {
     // Don't need to free something that doesn't exist
     return 0;
   }
   uint16_t entry_idx = virt_to_entry_idx(virt);
   pd_entry[entry_idx] = 0;
-  uint32_t virt_base = virt & 0xFFFFF000;
+  haddr_t virt_base = virt & 0xFFFFF000;
   _invlpg(virt_base);
   return virt_base;
 }
 
-uint32_t vmm_to_physical(uint32_t virt) {
+haddr_t vmm_to_physical(haddr_t virt) {
   uint16_t directory_idx = virt_to_directory_idx(virt);
-  uint32_t* pd_entry;
+  haddr_t* pd_entry;
 
   if (page_directory[directory_idx] == 0) {
     return 0;
   } else {
-    pd_entry = (uint32_t*)page_directory[directory_idx];
+    pd_entry = (haddr_t*)page_directory[directory_idx];
   }
 
   uint16_t entry_idx = virt_to_entry_idx(virt);
-  uint32_t phys_base = pd_entry[entry_idx] | 0xFFFFF000;  // Clear flags
+  haddr_t phys_base = pd_entry[entry_idx] | 0xFFFFF000;  // Clear flags
   return phys_base;
 }
 
-void check_kernel_size(uint32_t kernel_page_count) {
+void check_kernel_size(haddr_t kernel_page_count) {
   if (kernel_page_count > 1023 - 256) {
     // TODO: we need support for more than one PDE for the kernel
     printf(
@@ -156,21 +156,21 @@ void check_kernel_size(uint32_t kernel_page_count) {
   }
 }
 
-uint32_t* get_page_table(uint32_t idx) {
-  return (uint32_t*)VIRT_PT_START + (idx << 12);
+haddr_t* get_page_table(haddr_t idx) {
+  return (haddr_t*)VIRT_PT_START + (idx << 12);
 }
 
-uint32_t idx_to_vaddr(uint32_t directory_idx, uint32_t entry_idx) {
+haddr_t idx_to_vaddr(haddr_t directory_idx, haddr_t entry_idx) {
   return (directory_idx << 22) | (entry_idx << 12);
 }
 
-uint16_t virt_to_directory_idx(uint32_t virt) { return virt >> 22; }
+uint16_t virt_to_directory_idx(haddr_t virt) { return virt >> 22; }
 
-uint16_t virt_to_entry_idx(uint32_t virt) {
+uint16_t virt_to_entry_idx(haddr_t virt) {
   return (virt >> 12) & 0b1111111111;
 }
 
-void _invlpg(uint32_t virt) {
+void _invlpg(haddr_t virt) {
   asm volatile("invlpg (%0)" ::"r"(virt) : "memory");
 }
 

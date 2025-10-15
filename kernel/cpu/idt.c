@@ -2,6 +2,7 @@
 #include <cpu/isr.h>
 #include <drivers/pic.h>
 #include <drivers/pit.h>
+#include <haddr.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -18,8 +19,8 @@ void create_idt_entry(IDTEntry* entries, uint8_t index, void* base,
   // Even though the entries are u16, we need to cast to u32 here.
   // This is because casting to u16 would effectively wipe the higher
   // half-word from the address, leading to an invalid IDT entry.
-  entries[index].base_low = (uint32_t)base & 0xFFFF;
-  entries[index].base_high = ((uint32_t)base >> 16) & 0xFFFF;
+  entries[index].base_low = (haddr_t)base & 0xFFFF;
+  entries[index].base_high = ((haddr_t)base >> 16) & 0xFFFF;
 }
 
 void create_isr_entries();
