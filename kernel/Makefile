@@ -21,6 +21,33 @@ LIBS:=$(LIBS) -nostdlib -lk -lgcc
 ifeq ($(DEBUG_QEMU),1)
 	CFLAGS :=$(CFLAGS) -g -D__debug_virtual
 endif
+ifeq ($(H_64),1)
+	CFLAGS:=$(CFLAGS) \
+						-std=gnu11 \
+						-ffreestanding \
+						-fno-stack-protector \
+						-fno-stack-check \
+						-fPIE \
+						-m64 \
+						-march=x86-64 \
+						-mno-80387 \
+						-mno-mmx \
+						-mno-sse \
+						-mno-sse2 \
+						-fno-omit-frame-pointer \
+						-mno-red-zone
+	CPPFLAGS:=$(CPPFLAGS) \
+						-DLIMINE_API_REVISION=3 \
+						-MMD \
+						-MP
+	LDFLAGS:=$(CPPFLAGS) \
+						-m elf_x86_64 \
+						-nostdlib \
+						-static \
+						-z max-page-size=0x1000 \
+						--gc-sections \
+						-T linker.ld
+endif
 
 ARCHDIR=arch/$(HOSTARCH)
 
