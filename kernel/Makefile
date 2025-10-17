@@ -75,12 +75,15 @@ memory/pmm.o \
 memory/vmm.o \
 utils/io.o \
 
+#OBJS=\
+#$(ARCHDIR)/crti.o \
+#$(ARCHDIR)/crtbegin.o \
+#$(KERNEL_OBJS) \
+#$(ARCHDIR)/crtend.o \
+#$(ARCHDIR)/crtn.o \
+
 OBJS=\
-$(ARCHDIR)/crti.o \
-$(ARCHDIR)/crtbegin.o \
 $(KERNEL_OBJS) \
-$(ARCHDIR)/crtend.o \
-$(ARCHDIR)/crtn.o \
 
 LINK_LIST=\
 $(LDFLAGS) \

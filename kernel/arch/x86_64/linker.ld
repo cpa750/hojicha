@@ -42,12 +42,12 @@ SECTIONS
 
   . = ALIGN(CONSTANT(MAXPAGESIZE));
 
-  .data:
+  .data :
   {
     *(.data .data.*)
   } :data
 
-  .bss:
+  .bss :
   {
     *(.bss)
     *(COMMON)
