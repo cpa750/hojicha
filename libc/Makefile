@@ -1,3 +1,4 @@
+$(info CC is $(CC))
 DEFAULT_HOST!=../default_host.sh
 HOST?=DEFAULT_HOST
 HOSTARCH!=../target_triplet_to_arch.sh $(HOST)

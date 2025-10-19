@@ -7,5 +7,5 @@ for PROJECT in $PROJECTS; do
 done
 
 rm -rf sysroot
-rm -rf isodir
+rm -rf iso_root
 rm -rf hojicha.iso

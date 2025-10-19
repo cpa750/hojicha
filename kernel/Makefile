@@ -13,41 +13,45 @@ EXEC_PREFIX?=$(PREFIX)
 BOOTDIR?=$(EXEC_PREFIX)/boot
 INCLUDEDIR?=$(PREFIX)/include
 
-CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra -Dh32
+CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra
 CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -Iinclude
 LDFLAGS:=$(LDFLAGS)
-LIBS:=$(LIBS) -nostdlib -lk -lgcc
+#LIBS:=$(LIBS) -nostdlib -lk -lgcc
+LIBS:=$(LIBS) -L$(SYSROOT)/usr/lib -nostdlib -lk -lgcc
 
 ifeq ($(DEBUG_QEMU),1)
 	CFLAGS :=$(CFLAGS) -g -D__debug_virtual
 endif
-ifeq ($(H_64),1)
-	CFLAGS:=$(CFLAGS) \
-						-std=gnu11 \
-						-ffreestanding \
-						-fno-stack-protector \
-						-fno-stack-check \
-						-fPIE \
-						-m64 \
-						-march=x86-64 \
-						-mno-80387 \
-						-mno-mmx \
-						-mno-sse \
-						-mno-sse2 \
-						-fno-omit-frame-pointer \
-						-mno-red-zone
-	CPPFLAGS:=$(CPPFLAGS) \
-						-DLIMINE_API_REVISION=3 \
-						-MMD \
-						-MP
-	LDFLAGS:=$(CPPFLAGS) \
-						-m elf_x86_64 \
-						-nostdlib \
-						-static \
-						-z max-page-size=0x1000 \
-						--gc-sections \
-						-T linker.ld
-endif
+
+CFLAGS:=$(CFLAGS) \
+					-std=gnu11 \
+					-ffreestanding \
+					-fno-stack-protector \
+					-fno-stack-check \
+					-fPIE \
+					-m64 \
+					-march=x86-64 \
+					-mno-80387 \
+					-mno-mmx \
+					-mno-sse \
+					-mno-sse2 \
+					-fno-omit-frame-pointer \
+					-mno-red-zone \
+					-Dh64 \
+					--sysroot=$(SYSROOT)
+
+CPPFLAGS:=$(CPPFLAGS) \
+					-DLIMINE_API_REVISION=3 \
+					-MMD \
+					-MP
+
+LDFLAGS:=$(LDFLAGS) \
+					-Wl,-melf_x86_64 \
+					-Wl,-nostdlib \
+					-Wl,-static \
+					-Wl,-zmax-page-size=0x1000 \
+					-Wl,--gc-sections \
+					-Wl,--sysroot=$(SYSROOT) \
 
 ARCHDIR=arch/$(HOSTARCH)
 
@@ -60,30 +64,16 @@ LIBS:=$(LIBS) $(KERNEL_ARCH_LIBS)
 
 KERNEL_OBJS=\
 $(KERNEL_ARCH_OBJS) \
-cpu/gdt.o \
-cpu/isr.o \
-cpu/irq.o \
-cpu/idt.o \
-drivers/keyboard.o \
-drivers/pic.o \
-drivers/pit.o \
 drivers/serial.o \
-kernel/kernel_state.o \
 kernel/kernel.o \
-memory/kmalloc.o \
-memory/pmm.o \
-memory/vmm.o \
 utils/io.o \
 
-#OBJS=\
-#$(ARCHDIR)/crti.o \
-#$(ARCHDIR)/crtbegin.o \
-#$(KERNEL_OBJS) \
-#$(ARCHDIR)/crtend.o \
-#$(ARCHDIR)/crtn.o \
-
 OBJS=\
+$(ARCHDIR)/crti.o \
+$(ARCHDIR)/crtbegin.o \
 $(KERNEL_OBJS) \
+$(ARCHDIR)/crtend.o \
+$(ARCHDIR)/crtn.o \
 
 LINK_LIST=\
 $(LDFLAGS) \
@@ -100,8 +90,7 @@ $(ARCHDIR)/crtn.o \
 all: hojicha.kernel
 
 hojicha.kernel: $(OBJS) $(ARCHDIR)/linker.ld
-	$(CC) -T $(ARCHDIR)/linker.ld -o $@ $(CFLAGS) $(LINK_LIST)
-	grub2-file --is-x86-multiboot hojicha.kernel
+	$(CC) $(CFLAGS) -T $(ARCHDIR)/linker.ld -o $@ $(LINK_LIST)
 
 $(ARCHDIR)/crtbegin.o $(ARCHDIR)/crtend.o:
 	OBJ=`$(CC) $(CFLAGS) $(LDFLAGS) -print-file-name=$(@F)` && cp "$$OBJ" $@
@@ -113,7 +102,7 @@ $(ARCHDIR)/crtbegin.o $(ARCHDIR)/crtend.o:
 	$(CC) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS)
 
 .asm.o:
-	nasm -Wall -f elf32 $< -o $@
+	nasm -Wall -f elf64 $< -o $@
 
 clean:
 	rm -f hojicha.kernel
