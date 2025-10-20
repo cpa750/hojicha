@@ -77,7 +77,8 @@ int printf(const char* restrict format, ...) {
       case 'd': {
         format++;
         const uint32_t d = (const uint32_t)va_arg(parameters, const uint32_t);
-        char* buf = (char*) malloc(sizeof(char)*40);
+        // char* buf = (char*) malloc(sizeof(char)*40);
+        char buf[40];
         itoa(d, buf, 10);
         size_t len = strlen(buf + 2);
         if (writeable_bytes < len) {
@@ -87,14 +88,15 @@ int printf(const char* restrict format, ...) {
           return -1;
         }
         bytes_written += len;
-        free(buf);
+        // free(buf);
         break;
       }
       case 'x': {
         // TODO: Fix garbled output when parameter is >= 0xF0000000
         format++;
         const uint32_t x = (const uint32_t)va_arg(parameters, const uint32_t);
-        char* buf = (char*) malloc(sizeof(char)*40);
+        // char* buf = (char*) malloc(sizeof(char)*40);
+        char buf[40];
         itoa(x, buf, 16);
         size_t len = strlen(buf);
         if (writeable_bytes < len) {
@@ -104,13 +106,14 @@ int printf(const char* restrict format, ...) {
           return -1;
         }
         bytes_written += len;
-        free(buf);
+        // free(buf);
         break;
       }
       case 'b': {
         format++;
         const uint32_t x = (const uint32_t)va_arg(parameters, const uint32_t);
-        char* buf = (char*) malloc(sizeof(char)*40);
+        // char* buf = (char*) malloc(sizeof(char)*40);
+        char buf[40];
         itoa(x, buf, 2);
         size_t len = strlen(buf);
         if (writeable_bytes < len) {
@@ -120,7 +123,7 @@ int printf(const char* restrict format, ...) {
           return -1;
         }
         bytes_written += len;
-        free(buf);
+        // free(buf);
         break;
       }
       default: {

@@ -16,8 +16,8 @@ INCLUDEDIR?=$(PREFIX)/include
 CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra
 CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -Iinclude
 LDFLAGS:=$(LDFLAGS)
-#LIBS:=$(LIBS) -nostdlib -lk -lgcc
-LIBS:=$(LIBS) -L$(SYSROOT)/usr/lib -nostdlib -lk -lgcc
+LIBS:=$(LIBS) -nostdlib -lk -lgcc
+#LIBS:=$(LIBS) -L$(SYSROOT)/usr/lib -nostdlib -lk -lgcc
 
 ifeq ($(DEBUG_QEMU),1)
 	CFLAGS :=$(CFLAGS) -g -D__debug_virtual
@@ -37,6 +37,7 @@ CFLAGS:=$(CFLAGS) \
 					-mno-sse2 \
 					-fno-omit-frame-pointer \
 					-mno-red-zone \
+					-mcmodel=large \
 					-Dh64 \
 					--sysroot=$(SYSROOT)
 
@@ -65,7 +66,9 @@ LIBS:=$(LIBS) $(KERNEL_ARCH_LIBS)
 KERNEL_OBJS=\
 $(KERNEL_ARCH_OBJS) \
 drivers/serial.o \
+fonts/inconsolata.o \
 kernel/kernel.o \
+kernel/kernel_state.o \
 utils/io.o \
 
 OBJS=\

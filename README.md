@@ -8,17 +8,15 @@ This project is a first effort at developing an operating system for the i386 pl
 Under (early) active development.
 
 ## Current goal:
-Migrate to x86_64
+Migrate to x86_64.
+- Implement TTY with a framebuffer
 ### Planned:
-- Boot x86_64 with Limine or BOOTBOOT
 - Refactor GDT/IDT code to work with x86_64
 - Higher half kernel (if required by chosen bootloader)
-- Write to framebuffer instead of VGA buffer (limine requirement?)
 - Refactor PMM code for 64 bits
 - Refactor VMM for 64 bits, implement 4 level paging directory
 - Migrate build to CMake
 ### In progress:
-- Refactor current code so all hardcoded address types (uint32_t) are typedef'd to something that can be compile-time switched
 
 ## MVP Done:
 - Boot hello world

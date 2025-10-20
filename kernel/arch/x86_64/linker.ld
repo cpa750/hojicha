@@ -5,10 +5,11 @@ ENTRY(kernel_main)
 
 PHDRS
 {
-  text    PT_LOAD    FLAGS((1 << 0) | (1 << 2)) ;
-  rodata  PT_LOAD    FLAGS((1 << 2)) ;
-  data    PT_LOAD    FLAGS((1 << 1) | (1 << 2)) ;
-  dynamic PT_DYNAMIC FLAGS((1 << 1) | (1 << 2)) ;
+  limine_requests PT_LOAD ;
+  text            PT_LOAD    FLAGS((1 << 0) | (1 << 2)) ;
+  rodata          PT_LOAD    FLAGS((1 << 2)) ;
+  data            PT_LOAD    FLAGS((1 << 1) | (1 << 2)) ;
+  dynamic         PT_DYNAMIC FLAGS((1 << 1) | (1 << 2)) ;
 }
 
 SECTIONS

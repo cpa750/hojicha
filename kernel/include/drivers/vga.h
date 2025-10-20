@@ -1,5 +1,5 @@
-#ifndef ARCH_I386_VGA_H
-#define ARCH_I386_VGA_H
+#ifndef VGA_H
+#define VGA_H
 
 #include <stdint.h>
 
@@ -21,11 +21,18 @@ enum vga_color {
   VGA_COLOR_LIGHT_BROWN = 14,
   VGA_COLOR_WHITE = 15,
 };
+typedef enum vga_color vga_color_t;
+
+struct vga_state;
+typedef struct vga_state vga_state_t;
+uint32_t* vga_state_get_framebuffer_addr(vga_state_t* v);
+
+void vga_initialize(void);
+void vga_set_pixel(uint32_t x, uint32_t y, vga_color_t color);
 
 static inline uint8_t vga_entry_color(enum vga_color fg, enum vga_color bg) {
   return fg | bg << 4;
 }
-
 static inline uint16_t vga_entry(unsigned char uc, uint8_t color) {
   return (uint16_t)uc | (uint16_t)color << 8;
 }
