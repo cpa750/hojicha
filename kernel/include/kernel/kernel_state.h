@@ -7,9 +7,17 @@ typedef struct pmm_state pmm_state_t;
 struct vmm_state;
 typedef struct vmm_state vmm_state_t;
 
+struct vga_state;
+typedef struct vga_state vga_state_t;
+
+struct tty_state;
+typedef struct tty_state tty_state_t;
+
 struct kernel_state {
-  pmm_state_t* pmm;
-  vmm_state_t* vmm;
+  tty_state_t* tty;
+  vga_state_t* vga;
+  // pmm_state_t* pmm;
+  // vmm_state_t* vmm;
 };
 typedef struct kernel_state kernel_state_t;
 

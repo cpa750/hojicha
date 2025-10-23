@@ -22,13 +22,28 @@ enum vga_color {
   VGA_COLOR_WHITE = 15,
 };
 typedef enum vga_color vga_color_t;
+typedef uint32_t rgb32_t;
 
 struct vga_state;
 typedef struct vga_state vga_state_t;
+uint64_t vga_state_get_height(vga_state_t* v);
+uint64_t vga_state_get_width(vga_state_t* v);
+uint8_t vga_state_get_bpp(vga_state_t* v);
+uint64_t vga_state_get_pitch(vga_state_t* v);
 uint32_t* vga_state_get_framebuffer_addr(vga_state_t* v);
+uint32_t* vga_state_get_framebuffer_end(vga_state_t* v);
+void vga_state_dump(vga_state_t* v);
+
+struct vga_position {
+  uint32_t x;
+  uint32_t y;
+};
+typedef struct vga_position vga_position_t;
 
 void vga_initialize(void);
-void vga_set_pixel(uint32_t x, uint32_t y, vga_color_t color);
+void vga_draw_bitmap_16h8w(vga_position_t* start_pos, uint8_t* bitmap16,
+                           rgb32_t color);
+void vga_set_pixel(vga_position_t* pos, rgb32_t color);
 
 static inline uint8_t vga_entry_color(enum vga_color fg, enum vga_color bg) {
   return fg | bg << 4;

@@ -1,15 +1,13 @@
 // #include <cpu/gdt.h>
 // #include <cpu/idt.h>
-// #include <cpu/protected.h>
 // #include <drivers/keyboard.h>
 // #include <drivers/pic.h>
 // #include <drivers/pit.h>
 #include <drivers/serial.h>
+#include <drivers/tty.h>
 #include <drivers/vga.h>
 #include <kernel/kernel_state.h>
 #include <limine.h>
-// #include <kernel/multiboot.h>
-// #include <kernel/tty.h>
 // #include <memory/kmalloc.h>
 // #include <memory/pmm.h>
 // #include <memory/vmm.h>
@@ -37,14 +35,18 @@ __attribute__((
 void kernel_main() {
   asm volatile("cli");
 
+  if (LIMINE_BASE_REVISION_SUPPORTED == false) {
+    abort();
+  }
+
 #if defined(__debug_virtual)
-  printf("Hojicha running with virtual debugging enabled.\n");
+  // printf("Hojicha running with virtual debugging enabled.\n");
 #endif
 
   initialize_g_kernel();
   initialize_serial();
   vga_initialize();
-  // terminal_initialize();
+  terminal_initialize();
   // print_ok("Serial");
   // initialize_gdt();
   // print_ok("GDT");
@@ -79,8 +81,20 @@ void kernel_main() {
   // asm volatile("sti");
   //     // Ensure the bootloader actually understands our base revision (see
   //     spec).
-  if (LIMINE_BASE_REVISION_SUPPORTED == false) {
-    abort();
+
+  terminal_write("hello, world\n", 13);
+  terminal_write("this is pretty cool\n", 20);
+  char buf[100];
+  for (int i = 0; i < 10000; ++i) {
+    itoa(i, buf, 10);
+    if (i < 10) {
+      terminal_write(buf, 3);
+    } else if (i < 100) {
+      terminal_write(buf, 4);
+    } else {
+      terminal_write(buf, 5);
+    }
+    terminal_write("\n", 1);
   }
 
   while (1) asm volatile("hlt");

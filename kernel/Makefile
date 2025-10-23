@@ -65,6 +65,8 @@ LIBS:=$(LIBS) $(KERNEL_ARCH_LIBS)
 
 KERNEL_OBJS=\
 $(KERNEL_ARCH_OBJS) \
+drivers/keyboard.o \
+drivers/tty.o \
 drivers/serial.o \
 fonts/inconsolata.o \
 kernel/kernel.o \

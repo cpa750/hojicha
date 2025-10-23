@@ -3,7 +3,10 @@
 
 #include <stdint.h>
 
-extern const uint8_t font[256][16];
+#define INCONSOLATA_HEIGHT 16
+#define INCONSOLATA_WIDTH 8
 
-#endif // INCONSOLATA_H
+extern const uint8_t inconsolata_bitmaps[256][16];
+
+#endif  // INCONSOLATA_H
 

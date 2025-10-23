@@ -1,7 +1,7 @@
 #include <drivers/keyboard.h>
 #include <drivers/pic.h>
+#include <drivers/tty.h>
 #include <io.h>
-#include <kernel/tty.h>
 #include <memory/pmm.h>
 #include <stdint.h>
 #include <stdio.h>
