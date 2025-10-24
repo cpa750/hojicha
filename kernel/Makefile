@@ -65,6 +65,7 @@ LIBS:=$(LIBS) $(KERNEL_ARCH_LIBS)
 
 KERNEL_OBJS=\
 $(KERNEL_ARCH_OBJS) \
+cpu/gdt.o \
 drivers/keyboard.o \
 drivers/tty.o \
 drivers/serial.o \
@@ -107,7 +108,7 @@ $(ARCHDIR)/crtbegin.o $(ARCHDIR)/crtend.o:
 	$(CC) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS)
 
 .asm.o:
-	nasm -Wall -f elf64 $< -o $@
+	nasm -Wall -f elf64 -g $< -o $@
 
 clean:
 	rm -f hojicha.kernel

@@ -1,4 +1,4 @@
-// #include <cpu/gdt.h>
+#include <cpu/gdt.h>
 // #include <cpu/idt.h>
 // #include <drivers/keyboard.h>
 // #include <drivers/pic.h>
@@ -12,12 +12,12 @@
 // #include <memory/pmm.h>
 // #include <memory/vmm.h>
 // #include <stddef.h>
-// #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
-// void print_ok(const char* component);
+void print_ok(const char* component);
 
 __attribute__((
     used, section(".limine_requests"))) static volatile LIMINE_BASE_REVISION(3);
@@ -44,12 +44,14 @@ void kernel_main() {
 #endif
 
   initialize_g_kernel();
-  initialize_serial();
   vga_initialize();
   terminal_initialize();
-  // print_ok("Serial");
-  // initialize_gdt();
-  // print_ok("GDT");
+
+  printf("[INFO] Starting Hojicha kernel initialization...\n");
+  initialize_serial();
+  print_ok("Serial");
+  initialize_gdt();
+  print_ok("GDT");
   // initialize_idt();
   // print_ok("IDT");
   // initialize_pic();
@@ -84,6 +86,7 @@ void kernel_main() {
 
   terminal_write("hello, world\n", 13);
   terminal_write("this is pretty cool\n", 20);
+  terminal_set_fg(0x00FFFF);
   char buf[100];
   for (int i = 0; i < 10000; ++i) {
     itoa(i, buf, 10);
@@ -100,11 +103,11 @@ void kernel_main() {
   while (1) asm volatile("hlt");
 }
 
-// void print_ok(const char* component) {
-//   printf("[");
-//   terminal_set_color(2);
-//   printf("OK");
-//   terminal_set_color(7);
-//   printf("] %s\n", component);
-// }
+void print_ok(const char* component) {
+  printf("[");
+  terminal_set_fg(0x00FF00);
+  printf("OK");
+  terminal_set_fg(0xFFFFFF);
+  printf("] %s\n", component);
+}
 

@@ -10,7 +10,7 @@
 
 static uint16_t terminal_row;
 static uint16_t terminal_column;
-static uint8_t terminal_color;
+static uint32_t terminal_color;
 
 static uint32_t* framebuffer;
 static uint32_t* framebuffer_end;
@@ -25,7 +25,7 @@ static uint16_t terminal_buffer[5000];
 struct tty_state {
   uint64_t height;
   uint64_t width;
-  uint8_t color;
+  uint32_t fg;
 };
 typedef struct tty_state tty_state_t;
 static tty_state_t tty;
@@ -38,7 +38,7 @@ void terminal_initialize(void) {
   terminal_column = 0;
   tty.height = vga_state_get_height(g_kernel.vga) / INCONSOLATA_HEIGHT;
   tty.width = vga_state_get_width(g_kernel.vga) / INCONSOLATA_WIDTH;
-  terminal_color = vga_entry_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
+  tty.fg = 0xFFFFFF;
   g_kernel.tty = &tty;
 
   uint32_t* framebuffer_end = vga_state_get_framebuffer_end(g_kernel.vga);
@@ -50,9 +50,9 @@ void terminal_initialize(void) {
   clear_start = framebuffer_end - ((vga_pitch * INCONSOLATA_HEIGHT) >> 2);
 }
 
-void terminal_set_color(uint8_t color) { tty.color = color; }
+void terminal_set_fg(uint32_t fg) { tty.fg = fg; }
 
-void terminal_put_entry_at(unsigned char c, uint8_t color, size_t x, size_t y) {
+void terminal_put_entry_at(unsigned char c, uint32_t fg, size_t x, size_t y) {
   if (c == '\n') {
     return;
   }
@@ -60,7 +60,7 @@ void terminal_put_entry_at(unsigned char c, uint8_t color, size_t x, size_t y) {
   uint64_t fb_start_x = x * INCONSOLATA_WIDTH;
   uint64_t fb_start_y = y * INCONSOLATA_HEIGHT;
   vga_position_t pos = {fb_start_x, fb_start_y};
-  vga_draw_bitmap_16h8w(&pos, inconsolata_bitmaps[c], 0xFFFFFF);
+  vga_draw_bitmap_16h8w(&pos, inconsolata_bitmaps[c], fg);
 }
 
 void scroll() {
@@ -120,7 +120,7 @@ void terminal_putchar(char c) {
     return;
   }
 
-  terminal_put_entry_at(c, terminal_color, terminal_column, terminal_row);
+  terminal_put_entry_at(c, tty.fg, terminal_column, terminal_row);
 
   if (++terminal_column == tty.width) {
     terminal_column = 0;

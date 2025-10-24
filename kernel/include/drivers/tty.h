@@ -9,7 +9,7 @@ typedef struct tty_state tty_state_h;
 
 void terminal_initialize(void);
 void terminal_putchar(char c);
-void terminal_set_color(uint8_t color);
+void terminal_set_fg(uint32_t fg);
 void terminal_write(const char* data, size_t len);
 
 #endif
