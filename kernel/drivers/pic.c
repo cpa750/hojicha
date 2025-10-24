@@ -2,8 +2,6 @@
 #include <io.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 void remap_pics(uint32_t main_offset, uint32_t sub_offset);
 void full_mask_pics();

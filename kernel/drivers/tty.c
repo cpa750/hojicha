@@ -63,6 +63,8 @@ void terminal_put_entry_at(unsigned char c, uint32_t fg, size_t x, size_t y) {
   vga_draw_bitmap_16h8w(&pos, inconsolata_bitmaps[c], fg);
 }
 
+// TODO implement a cursor
+
 void scroll() {
   // TODO does a generalized version of this belong in the VGA driver?
   for (uint64_t i = 0; i < vga_width * (vga_height - INCONSOLATA_HEIGHT); ++i) {
@@ -76,15 +78,11 @@ void scroll() {
 }
 
 void terminal_erase() {
-  // TODO when we have kerboard interrupt support
   if (terminal_column == 0 && terminal_row > 0) {
     terminal_column = tty.width;
     --terminal_row;
   }
-  if (terminal_buffer[terminal_row * tty.width + terminal_column] != 0) {
-    const size_t idx = terminal_row * tty.width + terminal_column;
-    terminal_buffer[idx - 1] = vga_entry(' ', terminal_color);
-  }
+  terminal_put_entry_at(' ', tty.fg, terminal_column - 1, terminal_row);
   if (terminal_column == 0 && terminal_row == 0) {
     return;
   }
@@ -98,7 +96,7 @@ void terminal_set_caret_pos(uint16_t terminal_row, uint16_t terminal_column) {
 
 void terminal_putchar(char c) {
   if (c == 0x08) {
-    // terminal_erase();
+    terminal_erase();
     terminal_set_caret_pos(terminal_row, terminal_column);
     return;
   }

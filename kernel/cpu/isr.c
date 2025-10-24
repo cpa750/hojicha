@@ -22,10 +22,10 @@ char* error_messages[] = {"Divide-by-zero",
                           "Alignment check",
                           "Machine check"};
 
-void handle_fault(InterruptRegisters r) {
-  if (r.interrupt_number < 19) {
-    printf("%s exception.\n", error_messages[r.interrupt_number]);
-  } else if (r.interrupt_number < 32) {
+void handle_fault(interrupt_frame_t* frame) {
+  if (frame->int_no < 19) {
+    printf("%s exception.\n", error_messages[frame->int_no]);
+  } else if (frame->int_no < 32) {
     printf("Reserved exception.\n");
   }
   abort();

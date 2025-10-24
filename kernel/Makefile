@@ -66,7 +66,12 @@ LIBS:=$(LIBS) $(KERNEL_ARCH_LIBS)
 KERNEL_OBJS=\
 $(KERNEL_ARCH_OBJS) \
 cpu/gdt.o \
+cpu/idt.o \
+cpu/irq.o \
+cpu/isr.o \
 drivers/keyboard.o \
+drivers/pic.o \
+drivers/pit.o \
 drivers/tty.o \
 drivers/serial.o \
 fonts/inconsolata.o \

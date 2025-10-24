@@ -36,7 +36,7 @@ char lookup_scancode_no_shift(uint8_t scancode) {
   } else if (scancode < 0x38) {
     return keyboard_characters[scancode - 0x05];
   } else if (scancode == 0x39) {
-    return keyboard_characters[scancode - 0x07];
+    return keyboard_characters[scancode - 0x08];
   } else {
     return 0;
   }
