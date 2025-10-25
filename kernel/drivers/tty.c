@@ -74,7 +74,7 @@ void scroll() {
       framebuffer[i] = 0;
     }
   }
-  memset(clear_start, 0, vga_pitch);
+  memset(clear_start, 0, vga_pitch * INCONSOLATA_HEIGHT);
 }
 
 void terminal_erase() {
