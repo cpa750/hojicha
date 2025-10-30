@@ -16,8 +16,8 @@ typedef struct tty_state tty_state_t;
 struct kernel_state {
   tty_state_t* tty;
   vga_state_t* vga;
-  // pmm_state_t* pmm;
-  // vmm_state_t* vmm;
+  pmm_state_t* pmm;
+  vmm_state_t* vmm;
 };
 typedef struct kernel_state kernel_state_t;
 

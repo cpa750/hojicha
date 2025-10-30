@@ -52,6 +52,10 @@ SECTIONS
   {
     *(.bss)
     *(COMMON)
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
+    __stack_start = .;
+    . += 0x10000;
+    __stack_end = .;
   } :data
 
   __kernel_end = .;

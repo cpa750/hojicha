@@ -1,6 +1,8 @@
 #include <drivers/serial.h>
 #include <kernel/kernel_state.h>
+#include <limine.h>
 #include <memory/pmm.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,10 +10,14 @@
 
 #define PAGE_SIZE 4096
 
-extern haddr_t __kernel_start;
-haddr_t kernel_start = (haddr_t)&__kernel_start;
-extern haddr_t __kernel_end;
-haddr_t kernel_end = (haddr_t)&__kernel_end;
+__attribute__((
+    used,
+    section(".limine_requests"))) static volatile struct limine_memmap_request
+    memmap_request = {.id = LIMINE_MEMMAP_REQUEST, .revision = 0};
+
+__attribute__((used, section(".limine_requests"))) static volatile struct
+    limine_executable_address_request executable_addr_request = {
+        .id = LIMINE_EXECUTABLE_ADDRESS_REQUEST, .revision = 0};
 
 // 0 -> Free
 // 1 -> Reserved
@@ -20,15 +26,28 @@ uint8_t* mem_bitmap;
 haddr_t last_page = 0;
 haddr_t first_page_after_bitmap = 0;
 
+extern haddr_t __kernel_start;
+haddr_t kernel_start_vaddr = (haddr_t)&__kernel_start;
+extern haddr_t __kernel_end;
+haddr_t kernel_end_vaddr = (haddr_t)&__kernel_end;
+
 struct pmm_state {
   haddr_t total_mem;
   haddr_t total_pages;
   haddr_t free_pages;
   haddr_t page_size;
   haddr_t kernel_start;
+  haddr_t kernel_vstart;
   haddr_t kernel_end;
+  haddr_t kernel_vend;
   haddr_t kernel_page_count;
   haddr_t mem_bitmap;
+  haddr_t bitmap_size;
+  haddr_t max_section_length;
+  haddr_t max_section_start_addr;
+  haddr_t first_early_alloc_addr = 0;
+  haddr_t last_early_alloc_addr = 0;
+  bool memmap_is_initialized;
 };
 typedef struct pmm_state pmm_state_t;
 haddr_t pmm_state_get_total_mem(pmm_state_t* p) { return p->total_mem; };
@@ -37,6 +56,9 @@ haddr_t pmm_state_get_total_pages(pmm_state_t* p) { return p->total_pages; };
 haddr_t pmm_state_get_free_pages(pmm_state_t* p) { return p->free_pages; };
 haddr_t pmm_state_get_page_size(pmm_state_t* p) { return p->page_size; };
 haddr_t pmm_state_get_kernel_start(pmm_state_t* p) { return p->kernel_start; };
+haddr_t pmm_state_get_kernel_vstart(pmm_state_t* p) {
+  return p->kernel_vstart;
+};
 haddr_t pmm_state_get_kernel_end(pmm_state_t* p) { return p->kernel_end; };
 haddr_t pmm_state_get_kernel_page_count(pmm_state_t* p) {
   return p->kernel_page_count;
@@ -51,63 +73,91 @@ void pmm_state_dump(pmm_state_t* p) {
   printf("[PMM] Memory bitmap address:\t%x\n", p->mem_bitmap);
 }
 
-void mark_page(haddr_t idx);
-uint8_t get_lowest_zero_bit(uint8_t num);
-void clear_page(haddr_t idx);
-haddr_t align_to_next_page(haddr_t addr);
 haddr_t align_to_prev_page(haddr_t addr);
+haddr_t align_to_next_page(haddr_t addr);
+void clear_page(haddr_t idx);
+haddr_t early_alloc();
+uint8_t get_lowest_zero_bit(uint8_t num);
+void mark_page(haddr_t idx);
 
 haddr_t pmm_addr_to_page(haddr_t addr) { return align_to_prev_page(addr); }
-
 haddr_t pmm_page_to_addr_base(haddr_t page) { return page << 12; }
-
-void pmm_reserve_region(uint16_t idx, uint16_t len) {
-  for (int i = 0; i < len; ++i) {
-    mark_page(idx + i);
-  }
-}
 
 pmm_state_t pmm;
 
-void initialize_pmm(multiboot_info_t* m_info) {
+void initialize_pmm() {
   pmm.page_size = PAGE_SIZE;
   pmm.total_mem = 0;
   pmm.total_pages = 0;
   pmm.free_pages = 0;
+  pmm.kernel_start = 0;
+  pmm.kernel_end = 0;
+  pmm.max_section_length = 0;
+  pmm.max_section_start_addr = 0;
+  pmm.memmap_is_initialized = false;
 
-  haddr_t max_section_length = 0;
-  uint64_t max_section_start_addr = 0;
+  uint64_t kernel_size_bytes = kernel_end_vaddr - kernel_start_vaddr;
+
+  struct limine_executable_address_response* exec_addr =
+      executable_addr_request.response;
+
+  pmm.kernel_start = (haddr_t)exec_addr->physical_base;
+  pmm.kernel_vstart = (haddr_t)exec_addr->virtual_base;
+  pmm.kernel_vend = align_to_next_page((haddr_t)exec_addr->virtual_base +
+                                       kernel_size_bytes + 1);
+  haddr_t kernel_end = pmm.kernel_start + kernel_size_bytes;
+
+  pmm.kernel_end = pmm_page_to_addr_base(align_to_next_page(kernel_end));
+  pmm.kernel_page_count =
+      pmm_addr_to_page(kernel_end - pmm.kernel_start + 4095);
+  g_kernel.pmm = &pmm;
+
+  struct limine_memmap_response* m_info = memmap_request.response;
+  uint64_t entry_count = m_info->entry_count;
 
   // Calculate total available memory and find largest free area
-  for (haddr_t i = 0; i < m_info->mmap_length;
-       i += sizeof(multiboot_memory_map_t)) {
-    multiboot_memory_map_t* mmap_entry =
-        (multiboot_memory_map_t*)(m_info->mmap_addr + i);
-    pmm.total_mem += mmap_entry->len;
-    if (mmap_entry->type == MULTIBOOT_MEMORY_AVAILABLE ||
-        mmap_entry->type == MULTIBOOT_MEMORY_ACPI_RECLAIMABLE) {
-      if (mmap_entry->len > max_section_length) {
-        max_section_length = mmap_entry->len;
-        max_section_start_addr = mmap_entry->addr;
+  for (uint64_t i = 0; i < entry_count; ++i) {
+    struct limine_memmap_entry* mmap_entry =
+        (struct limine_memmap_entry*)(m_info->entries[i]);
+    pmm.total_mem += mmap_entry->length;
+    if (mmap_entry->type == LIMINE_MEMMAP_USABLE ||
+        mmap_entry->type == LIMINE_MEMMAP_ACPI_RECLAIMABLE) {
+      if (mmap_entry->length > max_section_length) {
+        pmm.max_section_length = mmap_entry->length;
+        pmm.max_section_start_addr = mmap_entry->base;
       }
     }
   }
 
   // Divide by page size (log base 2 (4096) == 12)
   pmm.total_pages = pmm.total_mem >> 12;
-  haddr_t bitmap_size = pmm.total_pages >> 3;
-  if (max_section_length < (kernel_end - kernel_start + bitmap_size)) {
+  pmm.bitmap_size = pmm.total_pages >> 3;
+  if (max_section_length <
+      (pmm.kernel_end - pmm.kernel_start + pmm.bitmap_size)) {
     printf("Not enough memory to load memory bitmap. Halt.");
     abort();
   }
 
+  pmm.first_early_alloc_addr =
+      pmm_page_to_addr_base(align_to_next_page(pmm.max_section_start_addr));
+  pmm.last_early_alloc_addr = pmm.first_early_alloc_addr;
+}
+
+void pmm_initialize_bitmap() {
+  uint64_t pages_for_bitmap = (pmm.bitmap_size + PAGE_SIZE - 1) / PAGE_SIZE;
+  for (int i = 1; i <= pages_for_bitmap; ++i) {
+    // uint64_t addr = max_section_start_addr + pmm_page_to_addr_base(i);
+    vmm_map_at_paddr(pmm.kernel_vend + addr, addr,
+                     PAGE_PRESENT | PAGE_WRITABLE);
+  }
+
   // Mark all memory as used
-  mem_bitmap = (uint8_t*)((align_to_next_page(kernel_end + 1) + 1) * PAGE_SIZE);
-  memset(mem_bitmap, 0xFF, bitmap_size);
+  // haddr_t bitmap_paddr = max_section_start_addr + pmm_page_to_addr_base(1);
+  mem_bitmap = (uint8_t*)(pmm.kernel_vend + bitmap_paddr);
+  memset(mem_bitmap, 0xFF, pmm.bitmap_size);
 
   last_page = align_to_prev_page(max_section_start_addr + max_section_length);
-  first_page_after_bitmap =
-      align_to_next_page((haddr_t)(mem_bitmap) + bitmap_size);
+  first_page_after_bitmap = align_to_next_page(bitmap_paddr + pmm.bitmap_size);
 
   if (first_page_after_bitmap >= last_page) {
     printf("No free pages after PMM initialization. Halt.");
@@ -115,24 +165,25 @@ void initialize_pmm(multiboot_info_t* m_info) {
   }
 
   // Make available only the largest region after kernel + bitmap
-  for (haddr_t i = first_page_after_bitmap; i <= last_page; ++i) {
+  for (haddr_t i = align_to_next_page(mem_bitmap + pmm.bitmap_size);
+       i <=
+       align_to_next_page(mem_bitmap + pmm.bitmap_size + max_section_length);
+       ++i) {
     clear_page(i);
   }
   pmm.mem_bitmap = (haddr_t)mem_bitmap;
-  pmm.kernel_start = kernel_start;
-  pmm.kernel_end = pmm_page_to_addr_base(first_page_after_bitmap);
-  pmm.kernel_page_count = pmm_addr_to_page(kernel_end - kernel_start + 4095);
-  g_kernel.pmm = &pmm;
 }
 
 haddr_t pmm_alloc_frame() {
+  if (!pmm.memmap_is_initialized) {
+    return early_alloc();
+  }
+
   haddr_t bitmap_idx;
-  for (bitmap_idx = (first_page_after_bitmap >> 3);
-       bitmap_idx <= (last_page >> 3); ++bitmap_idx) {
+  for (bitmap_idx = 0; bitmap_idx <= pmm.bitmap_size; ++bitmap_idx) {
     haddr_t base_page_idx = bitmap_idx << 3;
     if (mem_bitmap[bitmap_idx] != 0xFF) {
       uint8_t offset = get_lowest_zero_bit(mem_bitmap[bitmap_idx]);
-
       mark_page(base_page_idx + offset);
       return pmm_page_to_addr_base(base_page_idx + offset);
     }
@@ -146,6 +197,12 @@ void pmm_free_frame(haddr_t addr) { clear_page(pmm_addr_to_page(addr)); }
 haddr_t align_to_next_page(haddr_t addr) { return (addr >> 12) + 1; }
 
 haddr_t align_to_prev_page(haddr_t addr) { return addr >> 12; }
+
+haddr_t early_alloc() {
+  haddr_t ret = pmm.last_early_alloc_addr;
+  pmm.last_early_alloc_addr += PAGE_SIZE;
+  return ret;
+}
 
 void mark_page(haddr_t idx) {
   haddr_t mask = 1 << (idx & 7);
