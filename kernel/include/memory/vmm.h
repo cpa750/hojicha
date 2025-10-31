@@ -18,7 +18,6 @@ haddr_t vmm_map_at_paddr(haddr_t virt, haddr_t phys, haddr_t flags);
 haddr_t vmm_map_single(haddr_t virt, haddr_t flags);
 haddr_t vmm_map(haddr_t virt, haddr_t size, haddr_t flags);
 haddr_t vmm_unmap(haddr_t virt);
-haddr_t vmm_to_physical(haddr_t virt);
 
 #endif  // VMM_H
 

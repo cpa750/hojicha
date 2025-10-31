@@ -45,8 +45,8 @@ struct pmm_state {
   haddr_t bitmap_size;
   haddr_t max_section_length;
   haddr_t max_section_start_addr;
-  haddr_t first_early_alloc_addr = 0;
-  haddr_t last_early_alloc_addr = 0;
+  haddr_t first_early_alloc_addr;
+  haddr_t last_early_alloc_addr;
   bool memmap_is_initialized;
 };
 typedef struct pmm_state pmm_state_t;
@@ -122,7 +122,7 @@ void initialize_pmm() {
     pmm.total_mem += mmap_entry->length;
     if (mmap_entry->type == LIMINE_MEMMAP_USABLE ||
         mmap_entry->type == LIMINE_MEMMAP_ACPI_RECLAIMABLE) {
-      if (mmap_entry->length > max_section_length) {
+      if (mmap_entry->length > pmm.max_section_length) {
         pmm.max_section_length = mmap_entry->length;
         pmm.max_section_start_addr = mmap_entry->base;
       }
@@ -132,7 +132,7 @@ void initialize_pmm() {
   // Divide by page size (log base 2 (4096) == 12)
   pmm.total_pages = pmm.total_mem >> 12;
   pmm.bitmap_size = pmm.total_pages >> 3;
-  if (max_section_length <
+  if (pmm.max_section_length <
       (pmm.kernel_end - pmm.kernel_start + pmm.bitmap_size)) {
     printf("Not enough memory to load memory bitmap. Halt.");
     abort();
@@ -147,16 +147,17 @@ void pmm_initialize_bitmap() {
   uint64_t pages_for_bitmap = (pmm.bitmap_size + PAGE_SIZE - 1) / PAGE_SIZE;
   for (int i = 1; i <= pages_for_bitmap; ++i) {
     // uint64_t addr = max_section_start_addr + pmm_page_to_addr_base(i);
-    vmm_map_at_paddr(pmm.kernel_vend + addr, addr,
-                     PAGE_PRESENT | PAGE_WRITABLE);
+    // vmm_map_at_paddr(pmm.kernel_vend + addr, addr,
+    //                  PAGE_PRESENT | PAGE_WRITABLE);
   }
 
   // Mark all memory as used
-  // haddr_t bitmap_paddr = max_section_start_addr + pmm_page_to_addr_base(1);
+  haddr_t bitmap_paddr = pmm.max_section_start_addr + pmm_page_to_addr_base(1);
   mem_bitmap = (uint8_t*)(pmm.kernel_vend + bitmap_paddr);
   memset(mem_bitmap, 0xFF, pmm.bitmap_size);
 
-  last_page = align_to_prev_page(max_section_start_addr + max_section_length);
+  last_page =
+      align_to_prev_page(pmm.max_section_start_addr + pmm.max_section_length);
   first_page_after_bitmap = align_to_next_page(bitmap_paddr + pmm.bitmap_size);
 
   if (first_page_after_bitmap >= last_page) {
@@ -165,9 +166,9 @@ void pmm_initialize_bitmap() {
   }
 
   // Make available only the largest region after kernel + bitmap
-  for (haddr_t i = align_to_next_page(mem_bitmap + pmm.bitmap_size);
-       i <=
-       align_to_next_page(mem_bitmap + pmm.bitmap_size + max_section_length);
+  for (haddr_t i = align_to_next_page((haddr_t)mem_bitmap + pmm.bitmap_size);
+       i <= align_to_next_page((haddr_t)mem_bitmap + pmm.bitmap_size +
+                               pmm.max_section_length);
        ++i) {
     clear_page(i);
   }

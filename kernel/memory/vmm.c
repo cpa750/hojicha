@@ -10,8 +10,12 @@
 #include <string.h>
 
 #define PAGE_SIZE 4096
-#define KERNEL_VOFFSET 0xFFFFFFFF80000000
+#define KERNEL_VOFFSET 0xFFFFFFFF80000000ULL
 #define VIRT_PT_START 0
+#define RECURSIVE_IDX 510ULL
+#define PD_ENTRIES 511ULL
+#define CANONICAL_HIGH 0xFFFFULL << 48
+#define MAPPING_STRUCTURE_MASK 0xFFFFFFFFFFFFF000ULL
 
 __attribute__((
     used,
@@ -40,8 +44,16 @@ extern void load_pd(haddr_t* pd_addr);
 void check_kernel_size(haddr_t kernel_page_count);
 haddr_t* get_page_table(haddr_t idx);
 haddr_t idx_to_vaddr(haddr_t directory_idx, haddr_t entry_idx);
-uint16_t virt_to_directory_idx(haddr_t virt);
-uint16_t virt_to_entry_idx(haddr_t virt);
+
+haddr_t* get_pml4_entry(haddr_t virt);
+haddr_t* get_pml3_entry(haddr_t virt);
+haddr_t* get_pd_entry(haddr_t virt);
+haddr_t* get_pt_entry(haddr_t virt);
+uint16_t get_pml4_idx(haddr_t virt);
+uint16_t get_pml3_idx(haddr_t virt);
+uint16_t get_pd_idx(haddr_t virt);
+uint16_t get_pt_idx(haddr_t virt);
+
 void _invlpg(haddr_t virt);
 
 haddr_t* page_directory;
@@ -87,7 +99,8 @@ void initialize_vmm() {
   // pml4[0] = ((haddr_t)low_identity_pde - KERNEL_VOFFSET) | 0x03;
   haddr_t kernel_pstart = pmm_state_get_kernel_start(g_kernel.pmm);
   haddr_t kernel_vstart = pmm_state_get_kernel_vstart(g_kernel.pmm);
-  pml4[510] = kernel_pstart + ((haddr_t)pml4 - kernel_vstart) | 0x03;
+  pml4[RECURSIVE_IDX] =
+      (kernel_pstart + ((haddr_t)pml4 - kernel_vstart)) | 0x03;
   haddr_t pml4_kernel_entry = kernel_pstart + ((haddr_t)pml3 - kernel_vstart);
   haddr_t pml3_kernel_entry = kernel_pstart + ((haddr_t)pd - kernel_vstart);
   haddr_t pd_kernel_entry =
@@ -133,37 +146,13 @@ void initialize_vmm() {
 
   load_pd((haddr_t*)pml4_physical);
 
+  vmm_map(0xFFFFFEDCBA987000, 1, PAGE_PRESENT | PAGE_WRITABLE);
+  uint64_t* test = (uint64_t*)0xFFFFFEDCBA987000;
+  *test = 0xABCD;
+
   vmm.first_available_vaddr = kernel_end + PAGE_SIZE;
   vmm.last_available_vaddr = idx_to_vaddr(1022, 1023);
   g_kernel.vmm = &vmm;
-}
-
-haddr_t vmm_map_at_paddr(haddr_t virt, haddr_t phys, haddr_t flags) {
-  haddr_t virt_base = virt & 0xFFFFFFFFFFFFF000;
-  uint16_t directory_idx = virt_to_directory_idx(virt);
-  uint16_t entry_idx = virt_to_entry_idx(virt);
-
-  haddr_t* pd_entry;
-  if (virtual_directory[directory_idx] & PAGE_PRESENT) {
-    pd_entry = get_page_table(directory_idx);
-    pd_entry[entry_idx] = phys | PAGE_PRESENT | PAGE_WRITABLE;
-  } else {
-    haddr_t* pd_entry = (haddr_t*)pmm_alloc_frame();
-    virtual_directory[directory_idx] =
-        (haddr_t)pd_entry | PAGE_PRESENT | PAGE_WRITABLE;
-    pd_entry[entry_idx] = phys | PAGE_PRESENT | PAGE_WRITABLE;
-  }
-  _invlpg(virt_base);
-  return virt_base;
-}
-
-haddr_t vmm_map_single(haddr_t virt, haddr_t flags) {
-  haddr_t new_page = pmm_alloc_frame();
-  // OOM
-  if (new_page == 0) {
-    return 0;
-  }
-  return vmm_map_at_paddr(int virt, int phys, int flags);
 }
 
 haddr_t vmm_map(haddr_t virt, haddr_t size, haddr_t flags) {
@@ -176,38 +165,76 @@ haddr_t vmm_map(haddr_t virt, haddr_t size, haddr_t flags) {
     }
     virt += PAGE_SIZE;
   }
-  haddr_t virt_base = base & 0xFFFFFFFFFFFFF000;
+  haddr_t virt_base = base & MAPPING_STRUCTURE_MASK;
+  return virt_base;
+}
+
+haddr_t vmm_map_single(haddr_t virt, haddr_t flags) {
+  haddr_t new_page = pmm_alloc_frame();
+  // OOM
+  if (new_page == 0) {
+    return 0;
+  }
+  return vmm_map_at_paddr(virt, new_page, flags);
+}
+
+haddr_t vmm_map_at_paddr(haddr_t virt, haddr_t phys, haddr_t flags) {
+  haddr_t virt_base = virt & MAPPING_STRUCTURE_MASK;
+
+  haddr_t* pml3 = get_pml4_entry(virt);
+  if (!((haddr_t)pml3 & (PAGE_PRESENT | PAGE_WRITABLE))) {
+    uint16_t pml4_idx = get_pml4_idx(virt);
+    if (pml4_idx == RECURSIVE_IDX) {
+      return 0;
+    }
+    virtual_directory[get_pml4_idx(virt)] =
+        pmm_alloc_frame() | PAGE_PRESENT | PAGE_WRITABLE;
+  }
+
+  haddr_t* pd = get_pml3_entry(virt);
+  if (!((haddr_t)pd & (PAGE_PRESENT | PAGE_WRITABLE))) {
+    pml3[get_pml3_idx(virt)] = pmm_alloc_frame() | PAGE_PRESENT | PAGE_WRITABLE;
+  }
+
+  haddr_t* pt = get_pd_entry(virt);
+  if (!((haddr_t)pt & (PAGE_PRESENT | PAGE_WRITABLE))) {
+    pd[get_pd_idx(virt)] = pmm_alloc_frame() | PAGE_PRESENT | PAGE_WRITABLE;
+    pt = get_pd_entry(virt);
+  }
+
+  uint16_t pt_idx = get_pt_idx(virt);
+  pt[pt_idx] = phys | flags;
+
+  _invlpg(virt);
   return virt_base;
 }
 
 haddr_t vmm_unmap(haddr_t virt) {
-  uint16_t directory_idx = virt_to_directory_idx(virt);
+  haddr_t virt_base = virt & MAPPING_STRUCTURE_MASK;
 
-  haddr_t* pd_entry = get_page_table(directory_idx);
-  if (virtual_directory[directory_idx] == 0) {
-    // Don't need to free something that doesn't exist
+  haddr_t* pml3 = get_pml4_entry(virt);
+  if (!((haddr_t)pml3 & (PAGE_PRESENT | PAGE_WRITABLE))) {
+    uint16_t pml4_idx = get_pml4_idx(virt);
+    if (pml4_idx == RECURSIVE_IDX) {
+      return 0;
+    }
+  }
+
+  haddr_t* pd = get_pml3_entry(virt);
+  if (!((haddr_t)pd & (PAGE_PRESENT | PAGE_WRITABLE))) {
     return 0;
   }
-  uint16_t entry_idx = virt_to_entry_idx(virt);
-  pd_entry[entry_idx] = 0;
-  haddr_t virt_base = virt & 0xFFFFFFFFFFFFF000;
+
+  haddr_t* pt = get_pd_entry(virt);
+  if (!((haddr_t)pt & (PAGE_PRESENT | PAGE_WRITABLE))) {
+    return 0;
+  }
+
+  uint16_t pt_idx = get_pt_idx(virt);
+  pt[pt_idx] = 0;
+
   _invlpg(virt_base);
   return virt_base;
-}
-
-haddr_t vmm_to_physical(haddr_t virt) {
-  uint16_t directory_idx = virt_to_directory_idx(virt);
-  haddr_t* pd_entry;
-
-  if (page_directory[directory_idx] == 0) {
-    return 0;
-  } else {
-    pd_entry = (haddr_t*)page_directory[directory_idx];
-  }
-
-  uint16_t entry_idx = virt_to_entry_idx(virt);
-  haddr_t phys_base = pd_entry[entry_idx] | 0xFFFFFFFFFFFFF000;  // Clear flags
-  return phys_base;
 }
 
 void check_kernel_size(haddr_t kernel_page_count) {
@@ -219,6 +246,46 @@ void check_kernel_size(haddr_t kernel_page_count) {
     abort();
   }
 }
+
+haddr_t* get_pml4_entry(haddr_t virt) {
+  uint32_t pml4_idx = get_pml4_idx(virt);
+
+  haddr_t entry = CANONICAL_HIGH | (RECURSIVE_IDX << 39) |
+                  (RECURSIVE_IDX << 30) | (RECURSIVE_IDX << 21) |
+                  (pml4_idx << 12);
+  return (haddr_t*)entry;
+}
+
+haddr_t* get_pml3_entry(haddr_t virt) {
+  uint32_t pml4_idx = get_pml4_idx(virt);
+  uint32_t pml3_idx = get_pml3_idx(virt);
+
+  haddr_t entry = CANONICAL_HIGH | (RECURSIVE_IDX << 39) |
+                  (RECURSIVE_IDX << 30) | (pml4_idx << 21) | (pml3_idx << 12);
+  return (haddr_t*)entry;
+}
+
+haddr_t* get_pd_entry(haddr_t virt) {
+  uint64_t pml4_idx = get_pml4_idx(virt);
+  uint32_t pml3_idx = get_pml3_idx(virt);
+  uint32_t pd_idx = get_pd_idx(virt);
+
+  haddr_t entry = (CANONICAL_HIGH | (RECURSIVE_IDX << 39) | (pml4_idx << 30) |
+                   (pml3_idx << 21) | (pd_idx << 12));
+  return (haddr_t*)entry;
+}
+
+haddr_t* get_pt_entry(haddr_t virt) {
+  uint16_t pd_idx = get_pt_idx(virt);
+
+  haddr_t* pt = get_pd_entry(virt);
+  return (haddr_t*)pt[pd_idx];
+}
+
+uint16_t get_pml4_idx(haddr_t virt) { return (virt >> 39) & PD_ENTRIES; }
+uint16_t get_pml3_idx(haddr_t virt) { return (virt >> 30) & PD_ENTRIES; }
+uint16_t get_pd_idx(haddr_t virt) { return (virt >> 21) & PD_ENTRIES; }
+uint16_t get_pt_idx(haddr_t virt) { return (virt >> 12) & PD_ENTRIES; }
 
 haddr_t* get_page_table(haddr_t idx) {
   return (haddr_t*)VIRT_PT_START + (idx << 12);
