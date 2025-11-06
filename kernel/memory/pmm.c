@@ -2,6 +2,7 @@
 #include <kernel/kernel_state.h>
 #include <limine.h>
 #include <memory/pmm.h>
+#include <memory/vmm.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -22,9 +23,6 @@ __attribute__((used, section(".limine_requests"))) static volatile struct
 // 0 -> Free
 // 1 -> Reserved
 uint8_t* mem_bitmap;
-
-haddr_t last_page = 0;
-haddr_t first_page_after_bitmap = 0;
 
 extern haddr_t __kernel_start;
 haddr_t kernel_start_vaddr = (haddr_t)&__kernel_start;
@@ -60,6 +58,7 @@ haddr_t pmm_state_get_kernel_vstart(pmm_state_t* p) {
   return p->kernel_vstart;
 };
 haddr_t pmm_state_get_kernel_end(pmm_state_t* p) { return p->kernel_end; };
+haddr_t pmm_state_get_kernel_vend(pmm_state_t* p) { return p->kernel_vend; };
 haddr_t pmm_state_get_kernel_page_count(pmm_state_t* p) {
   return p->kernel_page_count;
 };
@@ -103,8 +102,8 @@ void initialize_pmm() {
 
   pmm.kernel_start = (haddr_t)exec_addr->physical_base;
   pmm.kernel_vstart = (haddr_t)exec_addr->virtual_base;
-  pmm.kernel_vend = align_to_next_page((haddr_t)exec_addr->virtual_base +
-                                       kernel_size_bytes + 1);
+  pmm.kernel_vend = pmm_page_to_addr_base(align_to_next_page(
+      (haddr_t)exec_addr->virtual_base + kernel_size_bytes + 1));
   haddr_t kernel_end = pmm.kernel_start + kernel_size_bytes;
 
   pmm.kernel_end = pmm_page_to_addr_base(align_to_next_page(kernel_end));
@@ -145,20 +144,26 @@ void initialize_pmm() {
 
 void pmm_initialize_bitmap() {
   uint64_t pages_for_bitmap = (pmm.bitmap_size + PAGE_SIZE - 1) / PAGE_SIZE;
-  for (int i = 1; i <= pages_for_bitmap; ++i) {
-    // uint64_t addr = max_section_start_addr + pmm_page_to_addr_base(i);
-    // vmm_map_at_paddr(pmm.kernel_vend + addr, addr,
-    //                  PAGE_PRESENT | PAGE_WRITABLE);
+  haddr_t bitmap_paddr;
+  for (uint64_t i = 1; i <= pages_for_bitmap; ++i) {
+    uint64_t addr = early_alloc();
+    vmm_map_at_paddr(pmm.kernel_vend + PAGE_SIZE * i, addr,
+                     PAGE_PRESENT | PAGE_WRITABLE);
+    if (i == 1) {
+      bitmap_paddr = addr;
+    }
   }
 
+  pmm.mem_bitmap = (pmm.kernel_vend + PAGE_SIZE);
+
   // Mark all memory as used
-  haddr_t bitmap_paddr = pmm.max_section_start_addr + pmm_page_to_addr_base(1);
-  mem_bitmap = (uint8_t*)(pmm.kernel_vend + bitmap_paddr);
+  mem_bitmap = (uint8_t*)pmm.mem_bitmap;
   memset(mem_bitmap, 0xFF, pmm.bitmap_size);
 
-  last_page =
+  haddr_t last_page =
       align_to_prev_page(pmm.max_section_start_addr + pmm.max_section_length);
-  first_page_after_bitmap = align_to_next_page(bitmap_paddr + pmm.bitmap_size);
+  haddr_t first_page_after_bitmap =
+      align_to_next_page(bitmap_paddr + pmm.bitmap_size);
 
   if (first_page_after_bitmap >= last_page) {
     printf("No free pages after PMM initialization. Halt.");
@@ -166,13 +171,12 @@ void pmm_initialize_bitmap() {
   }
 
   // Make available only the largest region after kernel + bitmap
-  for (haddr_t i = align_to_next_page((haddr_t)mem_bitmap + pmm.bitmap_size);
-       i <= align_to_next_page((haddr_t)mem_bitmap + pmm.bitmap_size +
-                               pmm.max_section_length);
+  for (haddr_t i = align_to_next_page(pmm.max_section_start_addr);
+       i <=
+       align_to_next_page(pmm.max_section_start_addr + pmm.max_section_length);
        ++i) {
     clear_page(i);
   }
-  pmm.mem_bitmap = (haddr_t)mem_bitmap;
 }
 
 haddr_t pmm_alloc_frame() {

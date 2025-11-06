@@ -16,6 +16,7 @@
 #define PD_ENTRIES 511ULL
 #define CANONICAL_HIGH 0xFFFFULL << 48
 #define MAPPING_STRUCTURE_MASK 0xFFFFFFFFFFFFF000ULL
+#define LAST_VADDR 0xFFFF7AAAAAAAAAAA
 
 __attribute__((
     used,
@@ -150,8 +151,11 @@ void initialize_vmm() {
   uint64_t* test = (uint64_t*)0xFFFFFEDCBA987000;
   *test = 0xABCD;
 
-  vmm.first_available_vaddr = kernel_end + PAGE_SIZE;
-  vmm.last_available_vaddr = idx_to_vaddr(1022, 1023);
+  // TODO: figure out framebuffer and memory bitmap mapping here
+  pmm_initialize_bitmap();
+
+  vmm.first_available_vaddr = 0;
+  vmm.last_available_vaddr = LAST_VADDR;
   g_kernel.vmm = &vmm;
 }
 
@@ -182,24 +186,25 @@ haddr_t vmm_map_at_paddr(haddr_t virt, haddr_t phys, haddr_t flags) {
   haddr_t virt_base = virt & MAPPING_STRUCTURE_MASK;
 
   haddr_t* pml3 = get_pml4_entry(virt);
-  if (!((haddr_t)pml3 & (PAGE_PRESENT | PAGE_WRITABLE))) {
-    uint16_t pml4_idx = get_pml4_idx(virt);
-    if (pml4_idx == RECURSIVE_IDX) {
-      return 0;
-    }
-    virtual_directory[get_pml4_idx(virt)] =
+  uint16_t pml4_idx = get_pml4_idx(virt);
+  if (pml4_idx == RECURSIVE_IDX) {
+    return 0;
+  }
+  if (!(virtual_directory[pml4_idx] & (PAGE_PRESENT | PAGE_WRITABLE))) {
+    virtual_directory[pml4_idx] =
         pmm_alloc_frame() | PAGE_PRESENT | PAGE_WRITABLE;
   }
 
   haddr_t* pd = get_pml3_entry(virt);
-  if (!((haddr_t)pd & (PAGE_PRESENT | PAGE_WRITABLE))) {
-    pml3[get_pml3_idx(virt)] = pmm_alloc_frame() | PAGE_PRESENT | PAGE_WRITABLE;
+  uint16_t pml3_idx = get_pml3_idx(virt);
+  if (!(pml3[pml3_idx] & (PAGE_PRESENT | PAGE_WRITABLE))) {
+    pml3[pml3_idx] = pmm_alloc_frame() | PAGE_PRESENT | PAGE_WRITABLE;
   }
 
   haddr_t* pt = get_pd_entry(virt);
-  if (!((haddr_t)pt & (PAGE_PRESENT | PAGE_WRITABLE))) {
-    pd[get_pd_idx(virt)] = pmm_alloc_frame() | PAGE_PRESENT | PAGE_WRITABLE;
-    pt = get_pd_entry(virt);
+  uint16_t pd_idx = get_pd_idx(virt);
+  if (!(pd[pd_idx] & (PAGE_PRESENT | PAGE_WRITABLE))) {
+    pd[pd_idx] = pmm_alloc_frame() | PAGE_PRESENT | PAGE_WRITABLE;
   }
 
   uint16_t pt_idx = get_pt_idx(virt);

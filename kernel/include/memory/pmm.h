@@ -16,6 +16,7 @@ haddr_t pmm_state_get_mem_bitmap(pmm_state_t*);
 haddr_t pmm_state_get_kernel_start(pmm_state_t*);
 haddr_t pmm_state_get_kernel_vstart(pmm_state_t*);
 haddr_t pmm_state_get_kernel_end(pmm_state_t*);
+haddr_t pmm_state_get_kernel_vend(pmm_state_t*);
 haddr_t pmm_state_get_kernel_page_count(pmm_state_t*);
 void pmm_state_dump(pmm_state_t*);
 
