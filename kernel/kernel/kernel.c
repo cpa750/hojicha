@@ -8,10 +8,9 @@
 #include <drivers/vga.h>
 #include <kernel/kernel_state.h>
 #include <limine.h>
-// #include <memory/kmalloc.h>
+#include <memory/kmalloc.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
-// #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -76,14 +75,14 @@ void kernel_main() {
   // kmalloc_initialize();
   // print_ok("kmalloc");
 
-  // printf("\n");
+  printf("\n");
 
-  // printf("[INFO] Total available memory:\t%d MB (%d B)\n",
-  //        pmm_state_get_total_mem(g_kernel.pmm) >> 20,
-  //        pmm_state_get_total_mem(g_kernel.pmm));
-  // printf("[INFO] Total free memory:\t\t%d MB (%d B)\n",
-  //        pmm_state_get_free_mem(g_kernel.pmm) >> 20,
-  //        pmm_state_get_free_mem(g_kernel.pmm));
+  printf("[INFO] Total available memory:\t%d MB (%d B)\n",
+         pmm_state_get_total_mem(g_kernel.pmm) >> 20,
+         pmm_state_get_total_mem(g_kernel.pmm));
+  printf("[INFO] Total free memory:\t\t%d MB (%d B)\n",
+         pmm_state_get_free_mem(g_kernel.pmm) >> 20,
+         pmm_state_get_free_mem(g_kernel.pmm));
 
   printf("\n------------------------------------------------------------\n");
   printf("|                Hojicha kernel initialized.               |\n");

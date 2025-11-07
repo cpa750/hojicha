@@ -77,6 +77,7 @@ drivers/serial.o \
 fonts/inconsolata.o \
 kernel/kernel.o \
 kernel/kernel_state.o \
+memory/kmalloc.o \
 memory/pmm.o \
 memory/vmm.o \
 utils/io.o \

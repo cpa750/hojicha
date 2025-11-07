@@ -115,10 +115,6 @@ void initialize_vmm() {
 
   load_pd((haddr_t*)pml4_physical);
 
-  vmm_map(0xFFFFFEDCBA987000, 1, PAGE_PRESENT | PAGE_WRITABLE);
-  uint64_t* test = (uint64_t*)0xFFFFFEDCBA987000;
-  *test = 0xABCD;
-
   map_framebuffer();
   pmm_initialize_bitmap();
 
