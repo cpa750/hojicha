@@ -9,14 +9,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define PAGE_SIZE 4096
-#define KERNEL_VOFFSET 0xFFFFFFFF80000000ULL
-#define VIRT_PT_START 0
-#define RECURSIVE_IDX 510ULL
-#define PD_ENTRIES 511ULL
 #define CANONICAL_HIGH 0xFFFFULL << 48
-#define MAPPING_STRUCTURE_MASK 0xFFFFFFFFFFFFF000ULL
+#define KERNEL_VOFFSET 0xFFFFFFFF80000000ULL
 #define LAST_VADDR 0xFFFF7AAAAAAAAAAA
+#define LOW_REGION_END 0x100000
+#define PAGE_SIZE 4096
+#define MAPPING_STRUCTURE_MASK 0xFFFFFFFFFFFFF000ULL
+#define PD_ENTRIES 511ULL
+#define RECURSIVE_IDX 510ULL
+#define VIRT_PT_START 0
 
 __attribute__((
     used,
@@ -80,7 +81,7 @@ void initialize_vmm() {
   memset(low_identity_pde, 0, 4096);
   memset(kernel_pde, 0, 4096);
 
-  for (haddr_t addr = 0; addr < 0x100000; addr += 4096) {
+  for (haddr_t addr = 0; addr < LOW_REGION_END; addr += 4096) {
     low_identity_pde[pmm_addr_to_page(addr)] =
         addr | PAGE_PRESENT | PAGE_WRITABLE;
   }
@@ -118,7 +119,8 @@ void initialize_vmm() {
   map_framebuffer();
   pmm_initialize_bitmap();
 
-  vmm.first_available_vaddr = 0;
+  vmm.first_available_vaddr =
+      pmm_page_to_addr_base(pmm_addr_to_page(LOW_REGION_END + PAGE_SIZE));
   vmm.last_available_vaddr = LAST_VADDR;
   g_kernel.vmm = &vmm;
 }
