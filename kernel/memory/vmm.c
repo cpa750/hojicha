@@ -26,6 +26,7 @@ __attribute__((
 struct vmm_state {
   haddr_t first_available_vaddr;
   haddr_t last_available_vaddr;
+  haddr_t kernel_offset;
 };
 typedef struct vmm_state vmm_state_t;
 haddr_t vmm_state_get_first_available_vaddr(vmm_state_t* vmm_state) {
@@ -55,6 +56,8 @@ uint16_t get_pml3_idx(haddr_t virt);
 uint16_t get_pd_idx(haddr_t virt);
 uint16_t get_pt_idx(haddr_t virt);
 
+void map_framebuffer();
+
 void _invlpg(haddr_t virt);
 
 haddr_t* page_directory;
@@ -62,19 +65,15 @@ haddr_t* virtual_directory;
 
 static haddr_t pml4[512] __attribute__((aligned(0x1000)));
 static haddr_t pml3[512] __attribute__((aligned(0x1000)));
-static haddr_t pml3_framebuffer[512] __attribute__((aligned(0x1000)));
 static haddr_t pd[512] __attribute__((aligned(0x1000)));
-static haddr_t pd_framebuffer[512] __attribute__((aligned(0x1000)));
 static haddr_t low_identity_pde[512] __attribute__((aligned(0x1000)));
-static haddr_t framebuffer_pde_low[512] __attribute__((aligned(0x1000)));
-static haddr_t framebuffer_pde_high[512] __attribute__((aligned(0x1000)));
 static haddr_t kernel_pde[512] __attribute__((aligned(0x1000)));
+static vmm_state_t vmm = {0};
 
 void initialize_vmm() {
   struct limine_hhdm_response* hhdm = hhdm_request.response;
-  uint64_t offset = hhdm->offset;
+  vmm.kernel_offset = hhdm->offset;
 
-  static vmm_state_t vmm = {0};
   memset(pml4, 0, 4096);
   memset(pml3, 0, 4096);
   memset(pd, 0, 4096);
@@ -97,7 +96,6 @@ void initialize_vmm() {
     kernel_pde[kernel_page++] = addr | PAGE_PRESENT | PAGE_WRITABLE;
   }
 
-  // pml4[0] = ((haddr_t)low_identity_pde - KERNEL_VOFFSET) | 0x03;
   haddr_t kernel_pstart = pmm_state_get_kernel_start(g_kernel.pmm);
   haddr_t kernel_vstart = pmm_state_get_kernel_vstart(g_kernel.pmm);
   pml4[RECURSIVE_IDX] =
@@ -115,43 +113,13 @@ void initialize_vmm() {
 
   haddr_t pml4_physical = kernel_pstart + ((haddr_t)pml4 - kernel_vstart);
 
-  // TODO map the framebuffer here
-  haddr_t framebuffer_pstart =
-      (haddr_t)vga_state_get_framebuffer_addr(g_kernel.vga) - offset;
-  haddr_t framebuffer_pend =
-      (haddr_t)vga_state_get_framebuffer_end(g_kernel.vga) - offset;
-  uint64_t framebuffer_page = 0;
-  for (haddr_t addr = framebuffer_pstart; addr <= framebuffer_pend + 4096;
-       addr += 4096) {
-    if (framebuffer_page < 512) {
-      framebuffer_pde_low[framebuffer_page++] =
-          addr | PAGE_PRESENT | PAGE_WRITABLE;
-    } else {
-      framebuffer_pde_high[framebuffer_page - 512] =
-          addr | PAGE_PRESENT | PAGE_WRITABLE;
-      ++framebuffer_page;
-    }
-  }
-  haddr_t pml4_framebuffer_entry =
-      kernel_pstart + ((haddr_t)pml3_framebuffer - kernel_vstart);
-  haddr_t pml3_framebuffer_entry =
-      kernel_pstart + ((haddr_t)pd_framebuffer - kernel_vstart);
-  haddr_t pd_framebuffer_entry_low =
-      kernel_pstart + ((haddr_t)framebuffer_pde_low - kernel_vstart);
-  haddr_t pd_framebuffer_entry_high =
-      kernel_pstart + ((haddr_t)framebuffer_pde_high - kernel_vstart);
-  pml4[256] = pml4_framebuffer_entry | 0x03;
-  pml3_framebuffer[3] = pml3_framebuffer_entry | 0x03;
-  pd_framebuffer[488] = pd_framebuffer_entry_low | 0x03;
-  pd_framebuffer[489] = pd_framebuffer_entry_high | 0x03;
-
   load_pd((haddr_t*)pml4_physical);
 
   vmm_map(0xFFFFFEDCBA987000, 1, PAGE_PRESENT | PAGE_WRITABLE);
   uint64_t* test = (uint64_t*)0xFFFFFEDCBA987000;
   *test = 0xABCD;
 
-  // TODO: figure out framebuffer and memory bitmap mapping here
+  map_framebuffer();
   pmm_initialize_bitmap();
 
   vmm.first_available_vaddr = 0;
@@ -303,6 +271,21 @@ haddr_t idx_to_vaddr(haddr_t directory_idx, haddr_t entry_idx) {
 uint16_t virt_to_directory_idx(haddr_t virt) { return virt >> 22; }
 
 uint16_t virt_to_entry_idx(haddr_t virt) { return (virt >> 12) & 0b1111111111; }
+
+void map_framebuffer() {
+  haddr_t framebuffer_pstart =
+      (haddr_t)vga_state_get_framebuffer_addr(g_kernel.vga) - vmm.kernel_offset;
+  haddr_t framebuffer_pend =
+      (haddr_t)vga_state_get_framebuffer_end(g_kernel.vga) - vmm.kernel_offset;
+  uint64_t framebuffer_offset = 0;
+  for (haddr_t addr = framebuffer_pstart; addr <= framebuffer_pend + 4096;
+       addr += 4096) {
+    vmm_map_at_paddr((haddr_t)vga_state_get_framebuffer_addr(g_kernel.vga) +
+                         framebuffer_offset,
+                     addr, PAGE_PRESENT | PAGE_WRITABLE);
+    framebuffer_offset += 4096;
+  }
+}
 
 void _invlpg(haddr_t virt) {
   asm volatile("invlpg (%0)" ::"r"(virt) : "memory");
