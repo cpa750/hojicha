@@ -1,6 +1,6 @@
 #include <drivers/serial.h>
-#include <memory/kmalloc.h>
 #include <limits.h>
+#include <memory/kmalloc.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -12,7 +12,7 @@
 static bool print(const char* data, size_t length) {
   const unsigned char* raw_bytes = (const unsigned char*)data;
   for (size_t i = 0; i < length; i++) {
-#if defined (__printf_serial)
+#if defined(__printf_serial)
     serial_write_char(raw_bytes[i]);
 #endif
     if (putchar(raw_bytes[i]) == EOF) {
@@ -46,6 +46,11 @@ int printf(const char* restrict format, ...) {
       }
       format += bytes_to_write;
       bytes_written += bytes_to_write;
+
+      // Needed to prevent to prevent format reading in bogus values
+      if (*format == '\0') {
+        break;
+      }
     }
     const char* format_delimeter = format++;
     switch (*format) {
