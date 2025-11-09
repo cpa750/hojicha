@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 void print_ok(const char* component);
 
@@ -39,7 +40,7 @@ void kernel_main() {
 
   asm volatile(
       "movq %0, %%rsp\n"
-      "movq $0, %%rbp\n"
+      "movq %%rsp, %%rbp\n"
       :
       : "r"(stack_start_vaddr));
 
@@ -72,8 +73,8 @@ void kernel_main() {
   print_ok("PMM");
   initialize_vmm();
   print_ok("VMM");
-  // kmalloc_initialize();
-  // print_ok("kmalloc");
+  kmalloc_initialize();
+  print_ok("kmalloc");
 
   printf("\n");
 

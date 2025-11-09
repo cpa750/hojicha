@@ -14,6 +14,10 @@ EXEC_PREFIX?=$(PREFIX)
 INCLUDEDIR?=$(PREFIX)/include
 LIBDIR?=$(EXEC_PREFIX)/lib
 
+ifeq ($(DEBUG_QEMU),1)
+	CFLAGS :=$(CFLAGS) -g
+endif
+
 CFLAGS:=$(CFLAGS) \
 					-std=gnu11 \
 					-ffreestanding \
@@ -38,11 +42,6 @@ CPPFLAGS:=$(CPPFLAGS) -D__is_libc -Iinclude
 LIBK_CFLAGS:=$(CFLAGS) -D__printf_serial
 LIBK_CPPFLAGS:=$(CPPFLAGS) -D__is_libk -D__printf_serial
 
-ifeq ($(DEBUG_QEMU),1)
-	CFLAGS :=$(CFLAGS) -g
-endif
-
-
 ARCHDIR=arch/$(HOSTARCH)
 
 include $(ARCHDIR)/make.config
@@ -58,7 +57,9 @@ stdio/printf.o \
 stdio/putchar.o \
 stdio/puts.o \
 stdlib/abort.o \
+stdlib/free.o \
 stdlib/itoa.o \
+stdlib/malloc.o \
 string/memcmp.o \
 string/memcpy.o \
 string/memmove.o \

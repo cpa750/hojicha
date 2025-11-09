@@ -11,8 +11,8 @@
 
 #define PAGE_SIZE 4096
 #define MAX_GROW_SIZE 160
-#define SIZEOF_HEADER 13
-#define SIZEOF_FOOTER 4
+#define SIZEOF_HEADER sizeof(block_header_t)
+#define SIZEOF_FOOTER sizeof(block_footer_t)
 
 typedef struct block_footer block_footer_t;
 
@@ -87,7 +87,6 @@ void* kmalloc(size_t size) {
     occupy_block(new_block, size);
     return new_block;
   }
-
 
   block_header_t* first_fit = find_first_fit_block(free_regions, size);
   if (first_fit == NULL) {
@@ -259,7 +258,8 @@ void merge_blocks(block_header_t* first, block_header_t* second) {
   memset(second, 0, SIZEOF_HEADER);
 }
 
-void __attribute__((noinline)) occupy_block(block_header_t* block, size_t size) {
+void __attribute__((noinline)) occupy_block(block_header_t* block,
+                                            size_t size) {
   block->is_free = false;
   haddr_t size_needed_for_split = size + SIZEOF_HEADER + SIZEOF_FOOTER;
   if (block->size_bytes < size_needed_for_split) {
@@ -286,8 +286,8 @@ void set_footer_at(block_header_t* block, haddr_t addr) {
 }
 
 block_header_t* split_region(block_header_t* block, size_t size) {
-  block_header_t* leftover =
-      (block_header_t*)((haddr_t)block + SIZEOF_HEADER + SIZEOF_FOOTER + (haddr_t)size);
+  block_header_t* leftover = (block_header_t*)((haddr_t)block + SIZEOF_HEADER +
+                                               SIZEOF_FOOTER + (haddr_t)size);
   leftover->footer = block->footer;
   leftover->footer->header = leftover;
 
