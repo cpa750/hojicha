@@ -9,6 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(__kmalloc_test)
+#include <memory/kmalloc_test.h>
+#endif
+
 #define PAGE_SIZE 4096
 #define MAX_GROW_SIZE 160
 #define SIZEOF_HEADER sizeof(block_header_t)
@@ -75,10 +79,14 @@ void kmalloc_initialize() {
   if (kernel_heap_grow_size < MAX_GROW_SIZE) {
     kernel_heap_grow_size <<= 1;
   }
+
+#if defined(__kmalloc_test)
+  kmalloc_test();
+#endif
 }
 
 void* kmalloc(size_t size) {
-  if (size > 0xFFFFFFFF) {
+  if (size > 0xFFFFFFFFFFFFFFFF) {
     return 0;
   }
 

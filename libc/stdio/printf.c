@@ -81,7 +81,7 @@ int printf(const char* restrict format, ...) {
       }
       case 'd': {
         format++;
-        const uint32_t d = (const uint32_t)va_arg(parameters, const uint32_t);
+        const uint64_t d = (const uint64_t)va_arg(parameters, const uint64_t);
         // char* buf = (char*) malloc(sizeof(char)*40);
         char buf[40];
         itoa(d, buf, 10);

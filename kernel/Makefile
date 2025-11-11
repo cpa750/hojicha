@@ -23,6 +23,10 @@ ifeq ($(DEBUG_QEMU),1)
 	CFLAGS :=$(CFLAGS) -g -D__debug_virtual
 endif
 
+ifeq ($(KMALLOC_TEST),1)
+	CFLAGS :=$(CFLAGS) -D__kmalloc_test
+endif
+
 CFLAGS:=$(CFLAGS) \
 					-std=gnu11 \
 					-ffreestanding \
@@ -78,6 +82,7 @@ fonts/inconsolata.o \
 kernel/kernel.o \
 kernel/kernel_state.o \
 memory/kmalloc.o \
+memory/kmalloc_test.o \
 memory/pmm.o \
 memory/vmm.o \
 utils/io.o \

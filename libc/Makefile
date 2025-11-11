@@ -57,6 +57,7 @@ stdio/printf.o \
 stdio/putchar.o \
 stdio/puts.o \
 stdlib/abort.o \
+stdlib/assert.o \
 stdlib/free.o \
 stdlib/itoa.o \
 stdlib/malloc.o \

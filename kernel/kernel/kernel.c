@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <cpu/gdt.h>
 #include <cpu/idt.h>
 #include <drivers/keyboard.h>
