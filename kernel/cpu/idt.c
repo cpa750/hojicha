@@ -2,6 +2,7 @@
 #include <cpu/isr.h>
 #include <drivers/pic.h>
 #include <drivers/pit.h>
+#include <haddr.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -9,27 +10,26 @@
 
 extern void load_idt();
 
-void create_idt_entry(IDTEntry* entries, uint8_t index, void* base,
+void create_idt_entry(idt_entry_t* entries, uint8_t index, void* base,
                       uint8_t flags, uint16_t segment) {
   entries[index].flags = flags;
   entries[index].segment = segment;
-  entries[index].reserved = 0x0;
+  entries[index].reserved_low = 0x0;
+  entries[index].reserved_high = 0x0;
 
-  // Even though the entries are u16, we need to cast to u32 here.
-  // This is because casting to u16 would effectively wipe the higher
-  // half-word from the address, leading to an invalid IDT entry.
-  entries[index].base_low = (uint32_t)base & 0xFFFF;
-  entries[index].base_high = ((uint32_t)base >> 16) & 0xFFFF;
+  entries[index].base_low = (haddr_t)base & 0xFFFF;
+  entries[index].base_mid = ((haddr_t)base >> 16) & 0xFFFF;
+  entries[index].base_high = ((haddr_t)base >> 32) & 0xFFFFFFFF;
 }
 
 void create_isr_entries();
 void create_irq_entries();
 
-__attribute__((aligned(0x10))) IDTEntry entries[IDT_ENTRIES];
-IDTPointer idt_pointer;
+__attribute__((aligned(0x10))) idt_entry_t entries[IDT_ENTRIES];
+idt_pointer_t idt_pointer;
 void initialize_idt() {
-  idt_pointer.limit = (sizeof(IDTEntry) * IDT_ENTRIES) - 1;
-  idt_pointer.base = (uint32_t)&entries;
+  idt_pointer.limit = (sizeof(idt_entry_t) * IDT_ENTRIES) - 1;
+  idt_pointer.base = (haddr_t)&entries;
 
   create_isr_entries();
   create_irq_entries();

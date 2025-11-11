@@ -1,3 +1,4 @@
+$(info CC is $(CC))
 DEFAULT_HOST!=../default_host.sh
 HOST?=DEFAULT_HOST
 HOSTARCH!=../target_triplet_to_arch.sh $(HOST)
@@ -13,14 +14,33 @@ EXEC_PREFIX?=$(PREFIX)
 INCLUDEDIR?=$(PREFIX)/include
 LIBDIR?=$(EXEC_PREFIX)/lib
 
-CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra
-CPPFLAGS:=$(CPPFLAGS) -D__is_libc -Iinclude
-LIBK_CFLAGS:=$(CFLAGS) -D__printf_serial
-LIBK_CPPFLAGS:=$(CPPFLAGS) -D__is_libk -D__printf_serial
-
 ifeq ($(DEBUG_QEMU),1)
 	CFLAGS :=$(CFLAGS) -g
 endif
+
+CFLAGS:=$(CFLAGS) \
+					-std=gnu11 \
+					-ffreestanding \
+					-fno-stack-protector \
+					-fno-stack-check \
+					-fno-pie \
+					-fno-pic \
+					-m64 \
+					-march=x86-64 \
+					-mno-80387 \
+					-mno-mmx \
+					-mno-sse \
+					-mno-sse2 \
+					-fno-omit-frame-pointer \
+					-mno-red-zone \
+					-mcmodel=large \
+					-Dh64 \
+					--sysroot=$(SYSROOT) \
+					-Wall \
+					-Wextra
+CPPFLAGS:=$(CPPFLAGS) -D__is_libc -Iinclude
+LIBK_CFLAGS:=$(CFLAGS) -D__printf_serial
+LIBK_CPPFLAGS:=$(CPPFLAGS) -D__is_libk -D__printf_serial
 
 ARCHDIR=arch/$(HOSTARCH)
 
@@ -37,6 +57,7 @@ stdio/printf.o \
 stdio/putchar.o \
 stdio/puts.o \
 stdlib/abort.o \
+stdlib/assert.o \
 stdlib/free.o \
 stdlib/itoa.o \
 stdlib/malloc.o \

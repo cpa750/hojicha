@@ -1,8 +1,9 @@
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 
-char* itoa(int num, char* dst, int base) {
+char* itoa(int64_t num, char* dst, int base) {
   if (num == 0) {
     dst[0] = '0';
     dst[1] = '\0';

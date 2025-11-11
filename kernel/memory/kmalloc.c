@@ -1,3 +1,4 @@
+#include <haddr.h>
 #include <kernel/kernel_state.h>
 #include <memory/kmalloc.h>
 #include <memory/pmm.h>
@@ -8,17 +9,21 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(__kmalloc_test)
+#include <memory/kmalloc_test.h>
+#endif
+
 #define PAGE_SIZE 4096
 #define MAX_GROW_SIZE 160
-#define SIZEOF_HEADER 13
-#define SIZEOF_FOOTER 4
+#define SIZEOF_HEADER sizeof(block_header_t)
+#define SIZEOF_FOOTER sizeof(block_footer_t)
 
 typedef struct block_footer block_footer_t;
 
 typedef struct block_header block_header_t;
 struct block_header {
   bool is_free;
-  uint32_t size_bytes;
+  haddr_t size_bytes;
   block_header_t* next;
   block_footer_t* footer;
 } __attribute__((packed));
@@ -41,12 +46,12 @@ void merge_blocks(block_header_t* first, block_header_t* second);
 void occupy_block(block_header_t* block, size_t size);
 void remove_from_free_list(block_header_t* block);
 block_header_t* split_region(block_header_t* block, size_t size);
-void set_footer_at(block_header_t* block, uint32_t addr);
+void set_footer_at(block_header_t* block, haddr_t addr);
 
 block_header_t* free_regions;
-uint32_t kernel_heap_grow_size;
-uint32_t first_available_vaddr;
-uint32_t last_footer;
+haddr_t kernel_heap_grow_size;
+haddr_t first_available_vaddr;
+haddr_t last_footer;
 
 void kmalloc_initialize() {
   kernel_heap_grow_size = 5;  // Allocate 5 pages to start
@@ -66,18 +71,22 @@ void kmalloc_initialize() {
       pmm_page_to_addr_base(kernel_heap_grow_size) - (SIZEOF_FOOTER * 8);
   free_regions->next = NULL;
   block_footer_t* free_region_footer =
-      (block_footer_t*)(((uint32_t)free_regions) + free_regions->size_bytes);
+      (block_footer_t*)(((haddr_t)free_regions) + free_regions->size_bytes);
   free_region_footer->header = free_regions;
   free_regions->footer = free_region_footer;
-  last_footer = (uint32_t)free_region_footer;
+  last_footer = (haddr_t)free_region_footer;
 
   if (kernel_heap_grow_size < MAX_GROW_SIZE) {
     kernel_heap_grow_size <<= 1;
   }
+
+#if defined(__kmalloc_test)
+  kmalloc_test();
+#endif
 }
 
 void* kmalloc(size_t size) {
-  if (size > 0xFFFFFFFF) {
+  if (size > 0xFFFFFFFFFFFFFFFF) {
     return 0;
   }
 
@@ -86,7 +95,6 @@ void* kmalloc(size_t size) {
     occupy_block(new_block, size);
     return new_block;
   }
-
 
   block_header_t* first_fit = find_first_fit_block(free_regions, size);
   if (first_fit == NULL) {
@@ -98,15 +106,15 @@ void* kmalloc(size_t size) {
 
   occupy_block(first_fit, size);
 
-  return (void*)((uint32_t)first_fit + SIZEOF_HEADER);
+  return (void*)((haddr_t)first_fit + SIZEOF_HEADER);
 }
 
 void kfree(void* ptr) {
   block_header_t* current_block =
-      (block_header_t*)((uint32_t)ptr - SIZEOF_HEADER);
+      (block_header_t*)((haddr_t)ptr - SIZEOF_HEADER);
   current_block->is_free = true;
   // Special case to handle when the first available block is freed
-  if ((uint32_t)current_block == first_available_vaddr) {
+  if ((haddr_t)current_block == first_available_vaddr) {
     block_header_t* first_free = get_next_free(current_block);
     if (first_free != NULL) {
       if (are_contiguous(current_block, first_free)) {
@@ -164,7 +172,7 @@ bool are_contiguous(block_header_t* first, block_header_t* second) {
     return false;
   }
 
-  if ((uint32_t)first->footer == (uint32_t)second - SIZEOF_FOOTER) {
+  if ((haddr_t)first->footer == (haddr_t)second - SIZEOF_FOOTER) {
     return true;
   }
   return false;
@@ -182,10 +190,10 @@ block_header_t* find_first_fit_block(block_header_t* block, size_t size) {
 }
 
 block_header_t* get_next(block_header_t* block) {
-  if (((uint32_t)block->footer + SIZEOF_FOOTER) >= last_footer) {
+  if (((haddr_t)block->footer + SIZEOF_FOOTER) >= last_footer) {
     return NULL;
   }
-  return (block_header_t*)((uint32_t)block->footer + SIZEOF_FOOTER);
+  return (block_header_t*)((haddr_t)block->footer + SIZEOF_FOOTER);
 }
 
 block_header_t* get_next_free(block_header_t* block) {
@@ -200,12 +208,12 @@ block_header_t* get_next_free(block_header_t* block) {
 }
 
 block_header_t* get_previous(block_header_t* block) {
-  if ((uint32_t)block - SIZEOF_HEADER - SIZEOF_FOOTER < first_available_vaddr) {
+  if ((haddr_t)block - SIZEOF_HEADER - SIZEOF_FOOTER < first_available_vaddr) {
     return NULL;
   }
 
   block_footer_t* previous_footer =
-      (block_footer_t*)((uint32_t)block - SIZEOF_FOOTER);
+      (block_footer_t*)((haddr_t)block - SIZEOF_FOOTER);
   return previous_footer->header;
 }
 
@@ -223,25 +231,25 @@ block_header_t* get_previous_free(block_header_t* block) {
 
 block_header_t* grow_heap() { return grow_heap_by(kernel_heap_grow_size++); }
 block_header_t* grow_heap_by(size_t size) {
-  uint32_t addr_to_map =
-      ((uint32_t)last_footer + sizeof(last_footer) + 4095) & ~((uint64_t)4095);
-  uint32_t new_pages = vmm_map(addr_to_map, size, PAGE_PRESENT | PAGE_WRITABLE);
+  haddr_t addr_to_map =
+      ((haddr_t)last_footer + sizeof(last_footer) + 4095) & ~((uint64_t)4095);
+  haddr_t new_pages = vmm_map(addr_to_map, size, PAGE_PRESENT | PAGE_WRITABLE);
   if (new_pages == 0) {
     return NULL;
   }
 
   block_header_t* new_block = (block_header_t*)(last_footer + SIZEOF_FOOTER);
-  uint32_t difference = new_pages - ((uint32_t)last_footer + SIZEOF_FOOTER);
+  haddr_t difference = new_pages - ((haddr_t)last_footer + SIZEOF_FOOTER);
 
   new_block->is_free = true;
   new_block->size_bytes =
       pmm_page_to_addr_base(size) + difference - SIZEOF_FOOTER;
   new_block->next = NULL;
   block_footer_t* new_block_footer =
-      (block_footer_t*)(((uint32_t)new_block) + new_block->size_bytes);
+      (block_footer_t*)(((haddr_t)new_block) + new_block->size_bytes);
   new_block_footer->header = new_block;
   new_block->footer = new_block_footer;
-  last_footer = (uint32_t)new_block_footer;
+  last_footer = (haddr_t)new_block_footer;
   block_header_t* prev_free = get_previous_free(new_block);
   if (prev_free != NULL) {
     prev_free->next = new_block;
@@ -258,9 +266,10 @@ void merge_blocks(block_header_t* first, block_header_t* second) {
   memset(second, 0, SIZEOF_HEADER);
 }
 
-void __attribute__((noinline)) occupy_block(block_header_t* block, size_t size) {
+void __attribute__((noinline)) occupy_block(block_header_t* block,
+                                            size_t size) {
   block->is_free = false;
-  uint32_t size_needed_for_split = size + SIZEOF_HEADER + SIZEOF_FOOTER;
+  haddr_t size_needed_for_split = size + SIZEOF_HEADER + SIZEOF_FOOTER;
   if (block->size_bytes < size_needed_for_split) {
     remove_from_free_list(block);
   } else {
@@ -278,19 +287,19 @@ void remove_from_free_list(block_header_t* block) {
   }
 }
 
-void set_footer_at(block_header_t* block, uint32_t addr) {
+void set_footer_at(block_header_t* block, haddr_t addr) {
   block_footer_t* footer = (block_footer_t*)addr;
   footer->header = block;
   block->footer = footer;
 }
 
 block_header_t* split_region(block_header_t* block, size_t size) {
-  block_header_t* leftover =
-      (block_header_t*)((uint32_t)block + SIZEOF_HEADER + SIZEOF_FOOTER + (uint32_t)size);
+  block_header_t* leftover = (block_header_t*)((haddr_t)block + SIZEOF_HEADER +
+                                               SIZEOF_FOOTER + (haddr_t)size);
   leftover->footer = block->footer;
   leftover->footer->header = leftover;
 
-  set_footer_at(block, (uint32_t)(leftover)-SIZEOF_FOOTER);
+  set_footer_at(block, (haddr_t)(leftover)-SIZEOF_FOOTER);
   leftover->size_bytes =
       block->size_bytes - size - SIZEOF_HEADER - SIZEOF_FOOTER;
   leftover->next = block->next;

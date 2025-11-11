@@ -5,7 +5,7 @@ set -e
 echo "Starting QEMU with QEMU_ARGS: $QEMU_ARGS"
 if [[ "$*" == *"--debug-qemu"* ]]
 then
-    qemu-system-$(./target_triplet_to_arch.sh $HOST) -cdrom hojicha.iso -m 1G $QEMU_ARGS -s -S
+    qemu-system-$(./target_triplet_to_arch.sh $HOST) -cdrom hojicha.iso -m 1G $QEMU_ARGS -s -S -no-shutdown -no-reboot -d int
 else
     qemu-system-$(./target_triplet_to_arch.sh $HOST) -cdrom hojicha.iso -m 1G $QEMU_ARGS
 fi

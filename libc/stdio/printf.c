@@ -1,6 +1,6 @@
 #include <drivers/serial.h>
-#include <memory/kmalloc.h>
 #include <limits.h>
+#include <memory/kmalloc.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -12,7 +12,7 @@
 static bool print(const char* data, size_t length) {
   const unsigned char* raw_bytes = (const unsigned char*)data;
   for (size_t i = 0; i < length; i++) {
-#if defined (__printf_serial)
+#if defined(__printf_serial)
     serial_write_char(raw_bytes[i]);
 #endif
     if (putchar(raw_bytes[i]) == EOF) {
@@ -46,6 +46,11 @@ int printf(const char* restrict format, ...) {
       }
       format += bytes_to_write;
       bytes_written += bytes_to_write;
+
+      // Needed to prevent to prevent format reading in bogus values
+      if (*format == '\0') {
+        break;
+      }
     }
     const char* format_delimeter = format++;
     switch (*format) {
@@ -76,8 +81,9 @@ int printf(const char* restrict format, ...) {
       }
       case 'd': {
         format++;
-        const uint32_t d = (const uint32_t)va_arg(parameters, const uint32_t);
-        char* buf = (char*) malloc(sizeof(char)*40);
+        const uint64_t d = (const uint64_t)va_arg(parameters, const uint64_t);
+        // char* buf = (char*) malloc(sizeof(char)*40);
+        char buf[40];
         itoa(d, buf, 10);
         size_t len = strlen(buf + 2);
         if (writeable_bytes < len) {
@@ -87,14 +93,15 @@ int printf(const char* restrict format, ...) {
           return -1;
         }
         bytes_written += len;
-        free(buf);
+        // free(buf);
         break;
       }
       case 'x': {
         // TODO: Fix garbled output when parameter is >= 0xF0000000
         format++;
         const uint32_t x = (const uint32_t)va_arg(parameters, const uint32_t);
-        char* buf = (char*) malloc(sizeof(char)*40);
+        // char* buf = (char*) malloc(sizeof(char)*40);
+        char buf[40];
         itoa(x, buf, 16);
         size_t len = strlen(buf);
         if (writeable_bytes < len) {
@@ -104,13 +111,14 @@ int printf(const char* restrict format, ...) {
           return -1;
         }
         bytes_written += len;
-        free(buf);
+        // free(buf);
         break;
       }
       case 'b': {
         format++;
         const uint32_t x = (const uint32_t)va_arg(parameters, const uint32_t);
-        char* buf = (char*) malloc(sizeof(char)*40);
+        // char* buf = (char*) malloc(sizeof(char)*40);
+        char buf[40];
         itoa(x, buf, 2);
         size_t len = strlen(buf);
         if (writeable_bytes < len) {
@@ -120,7 +128,7 @@ int printf(const char* restrict format, ...) {
           return -1;
         }
         bytes_written += len;
-        free(buf);
+        // free(buf);
         break;
       }
       default: {

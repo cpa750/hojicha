@@ -17,10 +17,46 @@ CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra
 CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -Iinclude
 LDFLAGS:=$(LDFLAGS)
 LIBS:=$(LIBS) -nostdlib -lk -lgcc
+#LIBS:=$(LIBS) -L$(SYSROOT)/usr/lib -nostdlib -lk -lgcc
 
 ifeq ($(DEBUG_QEMU),1)
 	CFLAGS :=$(CFLAGS) -g -D__debug_virtual
 endif
+
+ifeq ($(KMALLOC_TEST),1)
+	CFLAGS :=$(CFLAGS) -D__kmalloc_test
+endif
+
+CFLAGS:=$(CFLAGS) \
+					-std=gnu11 \
+					-ffreestanding \
+					-fno-stack-protector \
+					-fno-stack-check \
+					-fPIE \
+					-m64 \
+					-march=x86-64 \
+					-mno-80387 \
+					-mno-mmx \
+					-mno-sse \
+					-mno-sse2 \
+					-fno-omit-frame-pointer \
+					-mno-red-zone \
+					-mcmodel=large \
+					-Dh64 \
+					--sysroot=$(SYSROOT)
+
+CPPFLAGS:=$(CPPFLAGS) \
+					-DLIMINE_API_REVISION=3 \
+					-MMD \
+					-MP
+
+LDFLAGS:=$(LDFLAGS) \
+					-Wl,-melf_x86_64 \
+					-Wl,-nostdlib \
+					-Wl,-static \
+					-Wl,-zmax-page-size=0x1000 \
+					-Wl,--gc-sections \
+					-Wl,--sysroot=$(SYSROOT) \
 
 ARCHDIR=arch/$(HOSTARCH)
 
@@ -34,16 +70,19 @@ LIBS:=$(LIBS) $(KERNEL_ARCH_LIBS)
 KERNEL_OBJS=\
 $(KERNEL_ARCH_OBJS) \
 cpu/gdt.o \
-cpu/isr.o \
-cpu/irq.o \
 cpu/idt.o \
+cpu/irq.o \
+cpu/isr.o \
 drivers/keyboard.o \
 drivers/pic.o \
 drivers/pit.o \
+drivers/tty.o \
 drivers/serial.o \
-kernel/kernel_state.o \
+fonts/inconsolata.o \
 kernel/kernel.o \
+kernel/kernel_state.o \
 memory/kmalloc.o \
+memory/kmalloc_test.o \
 memory/pmm.o \
 memory/vmm.o \
 utils/io.o \
@@ -70,8 +109,7 @@ $(ARCHDIR)/crtn.o \
 all: hojicha.kernel
 
 hojicha.kernel: $(OBJS) $(ARCHDIR)/linker.ld
-	$(CC) -T $(ARCHDIR)/linker.ld -o $@ $(CFLAGS) $(LINK_LIST)
-	grub2-file --is-x86-multiboot hojicha.kernel
+	$(CC) $(CFLAGS) -T $(ARCHDIR)/linker.ld -o $@ $(LINK_LIST)
 
 $(ARCHDIR)/crtbegin.o $(ARCHDIR)/crtend.o:
 	OBJ=`$(CC) $(CFLAGS) $(LDFLAGS) -print-file-name=$(@F)` && cp "$$OBJ" $@
@@ -83,7 +121,7 @@ $(ARCHDIR)/crtbegin.o $(ARCHDIR)/crtend.o:
 	$(CC) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS)
 
 .asm.o:
-	nasm -Wall -f elf32 $< -o $@
+	nasm -Wall -f elf64 -g $< -o $@
 
 clean:
 	rm -f hojicha.kernel
