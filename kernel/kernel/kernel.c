@@ -38,12 +38,6 @@ haddr_t stack_start_vaddr = (haddr_t)&__stack_start;
 void kernel_main() {
   asm volatile("cli");
 
-  asm volatile(
-      "movq %0, %%rsp\n"
-      "movq %%rsp, %%rbp\n"
-      :
-      : "r"(stack_start_vaddr));
-
   if (LIMINE_BASE_REVISION_SUPPORTED == false) {
     abort();
   }
