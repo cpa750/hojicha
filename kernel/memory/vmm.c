@@ -45,8 +45,6 @@ void vmm_state_dump(vmm_state_t* v) {
 extern void load_pd(haddr_t* pd_addr);
 
 void check_kernel_size(haddr_t kernel_page_count);
-haddr_t* get_page_table(haddr_t idx);
-haddr_t idx_to_vaddr(haddr_t directory_idx, haddr_t entry_idx);
 
 haddr_t* get_pml4_entry(haddr_t virt);
 haddr_t* get_pml3_entry(haddr_t virt);
@@ -259,14 +257,6 @@ uint16_t get_pml4_idx(haddr_t virt) { return (virt >> 39) & PD_ENTRIES; }
 uint16_t get_pml3_idx(haddr_t virt) { return (virt >> 30) & PD_ENTRIES; }
 uint16_t get_pd_idx(haddr_t virt) { return (virt >> 21) & PD_ENTRIES; }
 uint16_t get_pt_idx(haddr_t virt) { return (virt >> 12) & PD_ENTRIES; }
-
-haddr_t* get_page_table(haddr_t idx) {
-  return (haddr_t*)VIRT_PT_START + (idx << 12);
-}
-
-haddr_t idx_to_vaddr(haddr_t directory_idx, haddr_t entry_idx) {
-  return (directory_idx << 22) | (entry_idx << 12);
-}
 
 uint16_t virt_to_directory_idx(haddr_t virt) { return virt >> 22; }
 

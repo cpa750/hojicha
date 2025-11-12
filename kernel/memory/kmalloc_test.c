@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <haddr.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -85,5 +86,5 @@ void kmalloc_test() {
   assert((haddr_t)t == (haddr_t)l);
   assert((haddr_t)u == (haddr_t)o);
 
-  assert(0);
+  printf("kmalloc test pass.\n");
 }

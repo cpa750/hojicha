@@ -1,7 +1,6 @@
 #!/bin/sh
-if [[ "$*" == *"--h64"* ]]; then
-    HOST=x86_64-elf
-fi
+
+HOST=x86_64-elf
 
 set -e
 . ./headers.sh
