@@ -69,7 +69,6 @@ LDFLAGS:=$(LDFLAGS) $(KERNEL_ARCH_LDFLAGS)
 LIBS:=$(LIBS) $(KERNEL_ARCH_LIBS)
 
 KERNEL_SRC=\
-$(KERNEL_ARCH_SRC) \
 cpu/gdt.c \
 cpu/idt.c \
 cpu/irq.c \
@@ -88,28 +87,29 @@ memory/pmm.c \
 memory/vmm.c \
 utils/io.c \
 
-ARCH_OBJS=\
+CRT_BEGIN=\
 $(ARCHDIR)/crti.o \
 $(ARCHDIR)/crtbegin.o \
+
+CRT_END=\
 $(ARCHDIR)/crtend.o \
 $(ARCHDIR)/crtn.o \
+
+ARCH_SRC_C=$(KERNEL_ARCH_SRC_C:.c=.o)
+ARCH_SRC_ASM=$(KERNEL_ARCH_SRC_ASM:.asm=.o)
+
+ARCH_SRC=$(ARCH_SRC_ASM) $(ARCH_SRC_C)
+
+OBJDIRS := $(sort $(dir $(addprefix $(BUILDDIR)/,$(KERNEL_SRC:.c=.o))))
+OBJS:=$(addprefix $(BUILDDIR)/,$(CRT_BEGIN)) \
+			$(addprefix $(BUILDDIR)/,$(KERNEL_SRC:.c=.o)) \
+			$(addprefix $(BUILDDIR)/,$(ARCH_SRC)) \
+			$(addprefix $(BUILDDIR)/,$(CRT_END))
 
 LINK_LIST=\
 $(LDFLAGS) \
-$(ARCHDIR)/crti.o \
-$(ARCHDIR)/crtbegin.o \
-$(KERNEL_OBJS) \
-$(LIBS) \
-$(ARCHDIR)/crtend.o \
-$(ARCHDIR)/crtn.o \
-
-ARCH_OBJS:=$(ARCH_OBJS)\
-					$(addprefix $(BUILDDIR)/,$(KERNEL_ARCH_SRC:.c=.o)) \
-					$(addprefix $(BUILDDIR)/,$(KERNEL_ARCH_SRC:.asm=.o))
-
-OBJDIRS := $(sort $(dir $(addprefix $(BUILDDIR)/,$(KERNEL_SRC:.c=.o))))
-OBJS := $(addprefix $(BUILDDIR)/,$(KERNEL_SRC:.c=.o)) \
-				$(addprefix $(BUILDDIR)/,$(ARCH_OBJS))
+$(OBJS) \
+$(LIBS)
 
 .PHONY: all clean install install-headers install-kernel
 .SUFFIXES: .o .c .s .asm
@@ -117,13 +117,10 @@ OBJS := $(addprefix $(BUILDDIR)/,$(KERNEL_SRC:.c=.o)) \
 all: $(BUILDDIR)/hojicha.kernel
 
 $(BUILDDIR)/hojicha.kernel: $(OBJS) $(ARCHDIR)/linker.ld | $(BUILDDIR)
-	$(CC) $(CFLAGS) -T $(ARCHDIR)/linker.ld -o $@ \
-		$(filter %.o,$^) $(LIBS)
-
-$(BUILDDIR):
-	mkdir -p $(BUILDDIR)
+	$(CC) $(CFLAGS) -T $(ARCHDIR)/linker.ld -o $@ $(LINK_LIST)
 
 $(OBJDIRS):
+	echo Objs: $(OBJS) && \
 	mkdir -p $@
 
 $(BUILDDIR)/$(ARCHDIR)/crtbegin.o $(BUILDDIR)/$(ARCHDIR)/crtend.o:
