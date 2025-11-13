@@ -1,5 +1,6 @@
 #include <cpu/gdt.h>
 #include <cpu/tss.h>
+#include <haddr.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -42,8 +43,7 @@ void initialize_gdt() {
   // User data segment
   create_gdt_entry(gdt_entries, 4, 0xFFFFFFFF, 0x0, 0xF2, 0x20);
   // Task state segment
-  create_gdt_entry(gdt_entries, 5, sizeof(tss_t) - 1, (uint32_t)&tss, 0x89,
-                   0x0);
+  create_gdt_entry(gdt_entries, 5, sizeof(tss_t) - 1, (haddr_t)&tss, 0x89, 0x0);
 
   gdt_pointer =
       (gdt_pointer_t){.limit = (sizeof(gdt_entry_t) * GDT_ENTRIES) - 1,
