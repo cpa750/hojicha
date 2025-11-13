@@ -7,6 +7,7 @@ CPPFLAGS?=
 LDFLAGS?=
 LIBS?=
 
+BUILDDIR=build
 DESTDIR?=
 PREFIX?=/usr/local
 EXEC_PREFIX?=$(PREFIX)
@@ -67,30 +68,29 @@ CPPFLAGS:=$(CPPFLAGS) $(KERNEL_ARCH_CPPFLAGS)
 LDFLAGS:=$(LDFLAGS) $(KERNEL_ARCH_LDFLAGS)
 LIBS:=$(LIBS) $(KERNEL_ARCH_LIBS)
 
-KERNEL_OBJS=\
-$(KERNEL_ARCH_OBJS) \
-cpu/gdt.o \
-cpu/idt.o \
-cpu/irq.o \
-cpu/isr.o \
-drivers/keyboard.o \
-drivers/pic.o \
-drivers/pit.o \
-drivers/tty.o \
-drivers/serial.o \
-fonts/inconsolata.o \
-kernel/kernel.o \
-kernel/kernel_state.o \
-memory/kmalloc.o \
-memory/kmalloc_test.o \
-memory/pmm.o \
-memory/vmm.o \
-utils/io.o \
+KERNEL_SRC=\
+$(KERNEL_ARCH_SRC) \
+cpu/gdt.c \
+cpu/idt.c \
+cpu/irq.c \
+cpu/isr.c \
+drivers/keyboard.c \
+drivers/pic.c \
+drivers/pit.c \
+drivers/tty.c \
+drivers/serial.c \
+fonts/inconsolata.c \
+kernel/kernel.c \
+kernel/kernel_state.c \
+memory/kmalloc.c \
+memory/kmalloc_test.c \
+memory/pmm.c \
+memory/vmm.c \
+utils/io.c \
 
-OBJS=\
+ARCH_OBJS=\
 $(ARCHDIR)/crti.o \
 $(ARCHDIR)/crtbegin.o \
-$(KERNEL_OBJS) \
 $(ARCHDIR)/crtend.o \
 $(ARCHDIR)/crtn.o \
 
@@ -103,30 +103,50 @@ $(LIBS) \
 $(ARCHDIR)/crtend.o \
 $(ARCHDIR)/crtn.o \
 
+ARCH_OBJS:=$(ARCH_OBJS)\
+					$(addprefix $(BUILDDIR)/,$(KERNEL_ARCH_SRC:.c=.o)) \
+					$(addprefix $(BUILDDIR)/,$(KERNEL_ARCH_SRC:.asm=.o))
+
+OBJDIRS := $(sort $(dir $(addprefix $(BUILDDIR)/,$(KERNEL_SRC:.c=.o))))
+OBJS := $(addprefix $(BUILDDIR)/,$(KERNEL_SRC:.c=.o)) \
+				$(addprefix $(BUILDDIR)/,$(ARCH_OBJS))
+
 .PHONY: all clean install install-headers install-kernel
 .SUFFIXES: .o .c .s .asm
 
-all: hojicha.kernel
+all: $(BUILDDIR)/hojicha.kernel
 
-hojicha.kernel: $(OBJS) $(ARCHDIR)/linker.ld
-	$(CC) $(CFLAGS) -T $(ARCHDIR)/linker.ld -o $@ $(LINK_LIST)
+$(BUILDDIR)/hojicha.kernel: $(OBJS) $(ARCHDIR)/linker.ld | $(BUILDDIR)
+	$(CC) $(CFLAGS) -T $(ARCHDIR)/linker.ld -o $@ \
+		$(filter %.o,$^) $(LIBS)
 
-$(ARCHDIR)/crtbegin.o $(ARCHDIR)/crtend.o:
+$(BUILDDIR):
+	mkdir -p $(BUILDDIR)
+
+$(OBJDIRS):
+	mkdir -p $@
+
+$(BUILDDIR)/$(ARCHDIR)/crtbegin.o $(BUILDDIR)/$(ARCHDIR)/crtend.o:
+	@mkdir -p $(dir $@)
 	OBJ=`$(CC) $(CFLAGS) $(LDFLAGS) -print-file-name=$(@F)` && cp "$$OBJ" $@
 
-.c.o:
+$(BUILDDIR)/%.o: %.c | $(OBJDIRS)
+	@mkdir -p $(dir $@)
 	$(CC) -MD -c $< -o $@ -std=gnu11 $(CFLAGS) $(CPPFLAGS)
 
-.s.o:
+$(BUILDDIR)/%.o: %.s | $(OBJDIRS)
+	@mkdir -p $(dir $@)
 	$(CC) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS)
 
-.asm.o:
+$(BUILDDIR)/%.o: %.asm | $(OBJDIRS)
+	@mkdir -p $(dir $@)
 	nasm -Wall -f elf64 -g $< -o $@
 
 clean:
 	rm -f hojicha.kernel
 	rm -f $(OBJS) *.o */*.o */*/*.o
 	rm -f $(OBJS:.o=.d) *.d */*.d */*/*.d
+	rm -rf $(BUILDDIR)
 
 install: install-headers install-kernel
 
@@ -134,8 +154,8 @@ install-headers:
 	mkdir -p $(DESTDIR)$(INCLUDEDIR)
 	cp -R --preserve=timestamps include/. $(DESTDIR)$(INCLUDEDIR)/.
 
-install-kernel: hojicha.kernel
+install-kernel: $(BUILDDIR)/hojicha.kernel
 	mkdir -p $(DESTDIR)$(BOOTDIR)
-	cp hojicha.kernel $(DESTDIR)$(BOOTDIR)
+	cp $(BUILDDIR)/hojicha.kernel $(DESTDIR)$(BOOTDIR)
 
 -include $(OBJS:.o=.d)
