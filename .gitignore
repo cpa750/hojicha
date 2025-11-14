@@ -5,6 +5,8 @@
 *.o
 
 *.iso
+
+bin
 iso_root
 sysroot
 limine
