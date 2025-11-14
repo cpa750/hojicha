@@ -16,7 +16,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 void print_ok(const char* component);
 
@@ -35,7 +34,6 @@ __attribute__((
 extern haddr_t __stack_start;
 haddr_t stack_start_vaddr = (haddr_t)&__stack_start;
 
-// void kernel_main(multiboot_info_t* multiboot_info, uint32_t magic) {
 void kernel_main() {
   asm volatile("cli");
 
@@ -43,13 +41,13 @@ void kernel_main() {
     abort();
   }
 
-#if defined(__debug_virtual)
-  // printf("Hojicha running with virtual debugging enabled.\n");
-#endif
-
   initialize_g_kernel();
   vga_initialize();
   terminal_initialize();
+
+#if defined(__debug_virtual)
+  printf("Hojicha running with virtual debugging enabled.\n");
+#endif
 
   printf("[INFO] Starting Hojicha kernel initialization...\n");
   initialize_serial();

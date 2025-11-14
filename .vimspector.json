@@ -8,7 +8,7 @@
         "request": "launch",
         "MIMode": "gdb",
         "miDebuggerServerAddress": "127.0.0.1:1234",
-        "program": "${workspaceRoot}/kernel/hojicha.kernel",
+        "program": "${workspaceRoot}/kernel/bin/hojicha.kernel",
         "cwd": "${workspaceRoot}",
         "externalConsole": false,
         "setupCommands": [
