@@ -6,7 +6,7 @@
 
 *.iso
 
-build
+bin
 iso_root
 sysroot
 limine

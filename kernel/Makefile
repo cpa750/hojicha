@@ -1,3 +1,5 @@
+$(info CC is $(CC))
+
 DEFAULT_HOST!=../default_host.sh
 HOST?=DEFAULT_HOST
 HOSTARCH!=../target_triplet_to_arch.sh $(HOST)
@@ -7,7 +9,7 @@ CPPFLAGS?=
 LDFLAGS?=
 LIBS?=
 
-BUILDDIR=build
+BUILDDIR=bin
 DESTDIR?=
 PREFIX?=/usr/local
 EXEC_PREFIX?=$(PREFIX)
@@ -18,7 +20,6 @@ CFLAGS:=$(CFLAGS) -ffreestanding -Wall -Wextra
 CPPFLAGS:=$(CPPFLAGS) -D__is_kernel -Iinclude
 LDFLAGS:=$(LDFLAGS)
 LIBS:=$(LIBS) -nostdlib -lk -lgcc
-#LIBS:=$(LIBS) -L$(SYSROOT)/usr/lib -nostdlib -lk -lgcc
 
 ifeq ($(DEBUG_QEMU),1)
 	CFLAGS :=$(CFLAGS) -g -D__debug_virtual
@@ -120,7 +121,6 @@ $(BUILDDIR)/hojicha.kernel: $(OBJS) $(ARCHDIR)/linker.ld | $(BUILDDIR)
 	$(CC) $(CFLAGS) -T $(ARCHDIR)/linker.ld -o $@ $(LINK_LIST)
 
 $(OBJDIRS):
-	echo Objs: $(OBJS) && \
 	mkdir -p $@
 
 $(BUILDDIR)/$(ARCHDIR)/crtbegin.o $(BUILDDIR)/$(ARCHDIR)/crtend.o:
@@ -140,9 +140,6 @@ $(BUILDDIR)/%.o: %.asm | $(OBJDIRS)
 	nasm -Wall -f elf64 -g $< -o $@
 
 clean:
-	rm -f hojicha.kernel
-	rm -f $(OBJS) *.o */*.o */*/*.o
-	rm -f $(OBJS:.o=.d) *.d */*.d */*/*.d
 	rm -rf $(BUILDDIR)
 
 install: install-headers install-kernel
