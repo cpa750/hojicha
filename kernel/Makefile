@@ -9,7 +9,13 @@ CPPFLAGS?=
 LDFLAGS?=
 LIBS?=
 
-BUILDDIR=bin
+BUILD_TYPE=release
+ifeq ($(DEBUG_QEMU),1)
+	BUILD_TYPE=debug
+endif
+
+BUILDDIR_BASE=bin
+BUILDDIR=$(BUILDDIR_BASE)/$(HOSTARCH)/$(BUILD_TYPE)/
 DESTDIR?=
 PREFIX?=/usr/local
 EXEC_PREFIX?=$(PREFIX)
@@ -140,7 +146,7 @@ $(BUILDDIR)/%.o: %.asm | $(OBJDIRS)
 	nasm -Wall -f elf64 -g $< -o $@
 
 clean:
-	rm -rf $(BUILDDIR)
+	rm -rf $(BUILDDIR_BASE)
 
 install: install-headers install-kernel
 

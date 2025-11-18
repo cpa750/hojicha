@@ -9,7 +9,13 @@ CPPFLAGS?=
 LDFLAGS?=
 LIBS?=
 
-BUILDDIR=bin
+BUILD_TYPE=release
+ifeq ($(DEBUG_QEMU),1)
+	BUILD_TYPE=debug
+endif
+
+BUILDDIR_BASE=bin
+BUILDDIR=$(BUILDDIR_BASE)/$(HOSTARCH)/$(BUILD_TYPE)/
 DESTDIR?=
 PREFIX?=/usr/local
 EXEC_PREFIX?=$(PREFIX)
@@ -109,7 +115,7 @@ $(BUILDDIR)/%.libk.o: %.s | $(OBJDIRS)
 	$(CC) -MD -c $< -o $@ $(LIBK_CFLAGS) $(LIBK_CPPFLAGS)
 
 clean:
-	rm -rf $(BUILDDIR)
+	rm -rf $(BUILDDIR_BASE)
 
 install: install-headers install-libs
 
