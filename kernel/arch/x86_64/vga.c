@@ -60,8 +60,7 @@ void vga_initialize(void) {
 }
 
 void vga_set_pixel(vga_position_t* pos, rgb32_t color) {
-  g_kernel.vga
-      ->framebuffer_addr[pos->y * (g_kernel.vga->pitch >> 2) + pos->x - 1] =
+  g_kernel.vga->framebuffer_addr[pos->y * (g_kernel.vga->pitch >> 2) + pos->x] =
       color;
 }
 
@@ -78,13 +77,66 @@ void vga_draw_bitmap_16h8w(vga_position_t* start_pos, uint8_t* bitmap16,
 
   for (uint8_t bitmap_row = 0; bitmap_row < 16; ++bitmap_row) {
     for (uint8_t bitmap_column = 0; bitmap_column < 8; ++bitmap_column) {
-      vga_position_t pos = {start_pos->x + (8 - bitmap_column),
+      vga_position_t pos = {start_pos->x + (7 - bitmap_column),
                             start_pos->y + bitmap_row};
       if (bitmap16[bitmap_row] & 1 << bitmap_column) {
         vga_set_pixel(&pos, color);
       } else {
         vga_set_pixel(&pos, 0);
       }
+    }
+  }
+}
+
+void vga_draw_rect_solid(vga_position_t* top_left, vga_position_t* bottom_right,
+                         rgb32_t color) {
+  if (bottom_right->x >= g_kernel.vga->width ||
+      bottom_right->y >= g_kernel.vga->height ||
+      top_left->x > bottom_right->x || top_left->y > bottom_right->y) {
+    return;
+  }
+
+  for (uint32_t y = top_left->y; y < bottom_right->y; ++y) {
+    for (uint32_t x = top_left->x; x < bottom_right->x; ++x) {
+      g_kernel.vga->framebuffer_addr[y * (g_kernel.vga->pitch >> 2) + x] =
+          color;
+    }
+  }
+}
+
+void vga_copy_region_to_buffer(vga_position_t* top_left,
+                               vga_position_t* bottom_right,
+                               vga_data_t* buffer) {
+  if (bottom_right->x >= g_kernel.vga->width ||
+      bottom_right->y >= g_kernel.vga->height ||
+      top_left->x > bottom_right->x || top_left->y > bottom_right->y) {
+    return;
+  }
+
+  uint32_t buffer_idx = 0;
+  for (uint32_t y = top_left->y; y < bottom_right->y; ++y) {
+    for (uint32_t x = top_left->x; x < bottom_right->x; ++x) {
+      uint32_t framebuffer_idx = y * (g_kernel.vga->pitch >> 2) + x;
+      uint32_t temp = g_kernel.vga->framebuffer_addr[framebuffer_idx];
+      buffer[buffer_idx++] = temp;
+    }
+  }
+}
+
+void vga_copy_buffer_to_region(vga_position_t* top_left,
+                               vga_position_t* bottom_right,
+                               vga_data_t* buffer) {
+  if (bottom_right->x >= g_kernel.vga->width ||
+      bottom_right->y >= g_kernel.vga->height ||
+      top_left->x > bottom_right->x || top_left->y > bottom_right->y) {
+    return;
+  }
+
+  uint32_t buffer_idx = 0;
+  for (uint32_t y = top_left->y; y < bottom_right->y; ++y) {
+    for (uint32_t x = top_left->x; x < bottom_right->x; ++x) {
+      uint32_t temp = buffer[buffer_idx++];
+      g_kernel.vga->framebuffer_addr[y * (g_kernel.vga->pitch >> 2) + x] = temp;
     }
   }
 }

@@ -40,10 +40,20 @@ struct vga_position {
 };
 typedef struct vga_position vga_position_t;
 
+typedef uint32_t vga_data_t;
+
 void vga_initialize(void);
 void vga_draw_bitmap_16h8w(vga_position_t* start_pos, uint8_t* bitmap16,
                            rgb32_t color);
+void vga_draw_rect_solid(vga_position_t* top_left, vga_position_t* bottom_right,
+                         rgb32_t color);
 void vga_set_pixel(vga_position_t* pos, rgb32_t color);
+void vga_copy_region_to_buffer(vga_position_t* top_left,
+                               vga_position_t* bottom_right,
+                               vga_data_t* buffer);
+void vga_copy_buffer_to_region(vga_position_t* top_left,
+                               vga_position_t* bottom_right,
+                               vga_data_t* buffer);
 
 static inline uint8_t vga_entry_color(enum vga_color fg, enum vga_color bg) {
   return fg | bg << 4;
