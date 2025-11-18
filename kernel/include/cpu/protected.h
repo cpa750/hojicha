@@ -7,4 +7,3 @@
 bool is_protected_mode();
 
 #endif  // PROTECTED_H
-

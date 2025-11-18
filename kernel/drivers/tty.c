@@ -76,9 +76,7 @@ void terminal_initialize(void) {
 void terminal_set_fg(uint32_t fg) { g_kernel.tty->fg = fg; }
 
 void terminal_put_entry_at(unsigned char c, uint32_t fg, size_t x, size_t y) {
-  if (c == '\n') {
-    return;
-  }
+  if (c == '\n') { return; }
 
   uint64_t fb_start_x = x * INCONSOLATA_WIDTH;
   uint64_t fb_start_y = y * INCONSOLATA_HEIGHT;
@@ -105,11 +103,9 @@ void terminal_erase() {
     terminal_column = g_kernel.tty->width;
     --terminal_row;
   }
-  terminal_put_entry_at(' ', g_kernel.tty->fg, terminal_column - 1,
-                        terminal_row);
-  if (terminal_column == 0 && terminal_row == 0) {
-    return;
-  }
+  terminal_put_entry_at(
+      ' ', g_kernel.tty->fg, terminal_column - 1, terminal_row);
+  if (terminal_column == 0 && terminal_row == 0) { return; }
   terminal_column--;
 
   terminal_caret_reset(g_kernel.tty);
@@ -117,19 +113,18 @@ void terminal_erase() {
   terminal_caret_set_pos(terminal_row, terminal_column, true);
 }
 
-void terminal_caret_set_pos(uint16_t row, uint16_t col,
+void terminal_caret_set_pos(uint16_t row,
+                            uint16_t col,
                             bool put_old_character_back) {
-  if (!g_kernel.tty->caret->enabled) {
-    return;
-  }
+  if (!g_kernel.tty->caret->enabled) { return; }
   vga_position_t top_left = {g_kernel.tty->caret->column * INCONSOLATA_WIDTH,
                              g_kernel.tty->caret->row * INCONSOLATA_HEIGHT};
   vga_position_t bottom_right = {
       g_kernel.tty->caret->column * INCONSOLATA_WIDTH + INCONSOLATA_WIDTH - 1,
       g_kernel.tty->caret->row * INCONSOLATA_HEIGHT + INCONSOLATA_HEIGHT - 1};
   if (put_old_character_back) {
-    vga_copy_buffer_to_region(&top_left, &bottom_right,
-                              g_kernel.tty->caret->bits_under);
+    vga_copy_buffer_to_region(
+        &top_left, &bottom_right, g_kernel.tty->caret->bits_under);
   }
 
   g_kernel.tty->caret->column = col;
@@ -140,11 +135,11 @@ void terminal_caret_set_pos(uint16_t row, uint16_t col,
   vga_position_t new_bottom_right = {
       col * INCONSOLATA_WIDTH + INCONSOLATA_WIDTH - 1,
       row * INCONSOLATA_HEIGHT + INCONSOLATA_HEIGHT - 1};
-  vga_copy_region_to_buffer(&new_top_left, &new_bottom_right,
-                            g_kernel.tty->caret->bits_under);
+  vga_copy_region_to_buffer(
+      &new_top_left, &new_bottom_right, g_kernel.tty->caret->bits_under);
 
-  vga_draw_rect_solid(&new_top_left, &new_bottom_right,
-                      g_kernel.tty->caret->colour);
+  vga_draw_rect_solid(
+      &new_top_left, &new_bottom_right, g_kernel.tty->caret->colour);
 
   return;
 }
@@ -172,9 +167,7 @@ void terminal_putchar(char c) {
   }
 
   if (c == '\t') {
-    for (uint8_t i = terminal_column % 4; i < 4; ++i) {
-      terminal_putchar(' ');
-    }
+    for (uint8_t i = terminal_column % 4; i < 4; ++i) { terminal_putchar(' '); }
     return;
   }
 
@@ -196,9 +189,7 @@ void terminal_putchar(char c) {
 
 void terminal_write(const char* data, size_t len) {
   size_t idx = 0;
-  while (len--) {
-    terminal_putchar(data[idx++]);
-  }
+  while (len--) { terminal_putchar(data[idx++]); }
 }
 
 vga_position_t tty_pos_to_vga_pos(uint16_t row, uint16_t col) {
@@ -219,11 +210,8 @@ void terminal_caret_enable(tty_state_t* t) {
   t->caret->enabled = true;
 }
 void terminal_caret_reset(tty_state_t* t) {
-  if (t->caret->enabled) {
-    terminal_caret_enable(t);
-  }
+  if (t->caret->enabled) { terminal_caret_enable(t); }
 }
 void terminal_caret_set_colour(tty_state_t* t, uint32_t colour) {
   t->caret->colour = colour;
 }
-

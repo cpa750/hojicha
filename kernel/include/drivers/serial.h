@@ -8,4 +8,3 @@ void serial_write_char(const char c);
 void serial_write_string(const char* c);
 
 #endif  // SERIAL_H
-

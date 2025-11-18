@@ -23,4 +23,3 @@ typedef struct idt_pointer idt_pointer_t;
 void initialize_idt();
 
 #endif  // IDT_H
-

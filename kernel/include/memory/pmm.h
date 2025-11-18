@@ -28,4 +28,3 @@ haddr_t pmm_addr_to_page(haddr_t addr);
 haddr_t pmm_page_to_addr_base(haddr_t page);
 
 #endif  // PMM_H
-

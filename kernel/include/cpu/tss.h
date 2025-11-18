@@ -23,4 +23,3 @@ struct tss {
 typedef struct tss tss_t;
 
 #endif  // TSS_H
-

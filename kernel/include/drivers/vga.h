@@ -43,9 +43,11 @@ typedef struct vga_position vga_position_t;
 typedef uint32_t vga_data_t;
 
 void vga_initialize(void);
-void vga_draw_bitmap_16h8w(vga_position_t* start_pos, uint8_t* bitmap16,
+void vga_draw_bitmap_16h8w(vga_position_t* start_pos,
+                           uint8_t* bitmap16,
                            rgb32_t color);
-void vga_draw_rect_solid(vga_position_t* top_left, vga_position_t* bottom_right,
+void vga_draw_rect_solid(vga_position_t* top_left,
+                         vga_position_t* bottom_right,
                          rgb32_t color);
 void vga_set_pixel(vga_position_t* pos, rgb32_t color);
 void vga_copy_region_to_buffer(vga_position_t* top_left,
@@ -63,4 +65,3 @@ static inline uint16_t vga_entry(unsigned char uc, uint8_t color) {
 }
 
 #endif
-

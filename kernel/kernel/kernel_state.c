@@ -12,4 +12,3 @@ void g_kernel_dump() {
   vmm_state_dump(g_kernel.vmm);
   vga_state_dump(g_kernel.vga);
 }
-

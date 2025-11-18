@@ -3,8 +3,8 @@
 
 #include <haddr.h>
 
-#define PAGE_PRESENT 0x1
-#define PAGE_WRITABLE 0x2
+#define PAGE_PRESENT        0x1
+#define PAGE_WRITABLE       0x2
 #define PAGE_USER_ACCESIBLE 0x4
 
 struct vmm_state;
@@ -20,4 +20,3 @@ haddr_t vmm_map(haddr_t virt, haddr_t size, haddr_t flags);
 haddr_t vmm_unmap(haddr_t virt);
 
 #endif  // VMM_H
-

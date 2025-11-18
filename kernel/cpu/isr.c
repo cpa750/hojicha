@@ -30,4 +30,3 @@ void handle_fault(interrupt_frame_t* frame) {
   }
   abort();
 }
-

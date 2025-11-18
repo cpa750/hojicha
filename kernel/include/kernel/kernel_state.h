@@ -26,4 +26,3 @@ void initialize_g_kernel();
 void g_kernel_dump();
 
 #endif  // KERNEL_STATE_H
-

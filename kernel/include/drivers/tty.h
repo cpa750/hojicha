@@ -19,8 +19,8 @@ void terminal_caret_disable(tty_state_t* t);
 void terminal_caret_enable(tty_state_t* t);
 void terminal_caret_reset(tty_state_t* t);
 void terminal_caret_set_colour(tty_state_t* t, uint32_t colour);
-void terminal_caret_set_pos(uint16_t row, uint16_t col,
+void terminal_caret_set_pos(uint16_t row,
+                            uint16_t col,
                             bool put_old_character_back);
 
 #endif
-

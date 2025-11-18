@@ -9,4 +9,3 @@ void disable_irq(uint16_t irq);
 void send_end_of_interrupt(uint8_t irq);
 
 #endif  // PIC_H
-

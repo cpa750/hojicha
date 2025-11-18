@@ -12,4 +12,3 @@ void initialize_keyboard();
 void handle_keyboard();
 
 #endif  // KEYBOARD_H
-

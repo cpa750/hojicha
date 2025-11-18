@@ -41,9 +41,7 @@ void terminal_initialize(void) {
 void terminal_set_color(uint8_t color) { terminal_color = color; }
 
 void terminal_put_entry_at(unsigned char c, uint8_t color, size_t x, size_t y) {
-  if (c == '\n') {
-    return;
-  }
+  if (c == '\n') { return; }
 
   const size_t idx = y * VGA_WIDTH + x;
   terminal_buffer[idx] = vga_entry(c, color);
@@ -81,9 +79,7 @@ void terminal_erase() {
     const size_t idx = terminal_row * VGA_WIDTH + terminal_column;
     terminal_buffer[idx - 1] = vga_entry(' ', terminal_color);
   }
-  if (terminal_column == 0 && terminal_row == 0) {
-    return;
-  }
+  if (terminal_column == 0 && terminal_row == 0) { return; }
   terminal_column--;
 }
 
@@ -114,9 +110,7 @@ void terminal_putchar(char c) {
   }
 
   if (c == '\t') {
-    for (uint8_t i = terminal_column % 4; i < 4; ++i) {
-      terminal_putchar(' ');
-    }
+    for (uint8_t i = terminal_column % 4; i < 4; ++i) { terminal_putchar(' '); }
     return;
   }
 
@@ -134,8 +128,5 @@ void terminal_putchar(char c) {
 
 void terminal_write(const char* data, size_t len) {
   size_t idx = 0;
-  while (len--) {
-    terminal_putchar(data[idx++]);
-  }
+  while (len--) { terminal_putchar(data[idx++]); }
 }
-

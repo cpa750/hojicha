@@ -12,4 +12,3 @@ int memcmp(const void* a, const void* b, size_t size) {
   }
   return 0;
 }
-

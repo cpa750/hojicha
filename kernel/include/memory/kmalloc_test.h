@@ -4,4 +4,3 @@
 void kmalloc_test();
 
 #endif  // KMALLOC_TEST_H
-

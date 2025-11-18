@@ -10,12 +10,57 @@
 
 KeyboardStatus keyboard_status;
 
-char keyboard_characters[] = {
-    '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '^',
-    // TODO: handle backspace
-    0x08, '\t', 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '@', '[',
-    '\n', 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', ':', ']', 'z', 'x',
-    'c', 'v', 'b', 'n', 'm', ',', '.', '/', ' '};
+char keyboard_characters[] = {'1',
+                              '2',
+                              '3',
+                              '4',
+                              '5',
+                              '6',
+                              '7',
+                              '8',
+                              '9',
+                              '0',
+                              '-',
+                              '^',
+                              // TODO: handle backspace
+                              0x08,
+                              '\t',
+                              'q',
+                              'w',
+                              'e',
+                              'r',
+                              't',
+                              'y',
+                              'u',
+                              'i',
+                              'o',
+                              'p',
+                              '@',
+                              '[',
+                              '\n',
+                              'a',
+                              's',
+                              'd',
+                              'f',
+                              'g',
+                              'h',
+                              'j',
+                              'k',
+                              'l',
+                              ';',
+                              ':',
+                              ']',
+                              'z',
+                              'x',
+                              'c',
+                              'v',
+                              'b',
+                              'n',
+                              'm',
+                              ',',
+                              '.',
+                              '/',
+                              ' '};
 
 char shifted_keyboard_characters[] = {
     '!',  '\"', '#', '$', '%', '&', '\'', '(', ')', 0,   '=', '~', 0x08,
@@ -57,9 +102,7 @@ char lookup_scancode_with_shift(uint8_t scancode) {
 }
 
 char lookup_scancode(uint8_t scancode, KeyboardStatus* status) {
-  if (status->shift_held) {
-    return lookup_scancode_with_shift(scancode);
-  }
+  if (status->shift_held) { return lookup_scancode_with_shift(scancode); }
   return lookup_scancode_no_shift(scancode);
 }
 
@@ -82,4 +125,3 @@ void handle_keyboard() {
   }
   send_end_of_interrupt(0x1);
 }
-

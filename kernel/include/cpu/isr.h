@@ -30,4 +30,3 @@ struct interrupt_frame {
 typedef struct interrupt_frame interrupt_frame_t;
 
 #endif  // ISR_H
-

@@ -13,4 +13,3 @@ int putchar(int char_as_int) {
 #endif
   return char_as_int;
 }
-

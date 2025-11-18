@@ -18,7 +18,8 @@ __attribute__((
 
 __attribute__((used, section(".limine_requests"))) static volatile struct
     limine_executable_address_request executable_addr_request = {
-        .id = LIMINE_EXECUTABLE_ADDRESS_REQUEST, .revision = 0};
+        .id = LIMINE_EXECUTABLE_ADDRESS_REQUEST,
+        .revision = 0};
 
 // 0 -> Free
 // 1 -> Reserved
@@ -147,11 +148,9 @@ void pmm_initialize_bitmap() {
   haddr_t bitmap_paddr;
   for (uint64_t i = 1; i <= pages_for_bitmap; ++i) {
     uint64_t addr = early_alloc();
-    vmm_map_at_paddr(pmm.kernel_vend + PAGE_SIZE * i, addr,
-                     PAGE_PRESENT | PAGE_WRITABLE);
-    if (i == 1) {
-      bitmap_paddr = addr;
-    }
+    vmm_map_at_paddr(
+        pmm.kernel_vend + PAGE_SIZE * i, addr, PAGE_PRESENT | PAGE_WRITABLE);
+    if (i == 1) { bitmap_paddr = addr; }
   }
 
   pmm.mem_bitmap = (pmm.kernel_vend + PAGE_SIZE);
@@ -180,9 +179,7 @@ void pmm_initialize_bitmap() {
 }
 
 haddr_t pmm_alloc_frame() {
-  if (!pmm.memmap_is_initialized) {
-    return early_alloc();
-  }
+  if (!pmm.memmap_is_initialized) { return early_alloc(); }
 
   haddr_t bitmap_idx;
   for (bitmap_idx = 0; bitmap_idx <= pmm.bitmap_size; ++bitmap_idx) {
@@ -224,10 +221,7 @@ void clear_page(haddr_t idx) {
 
 uint8_t get_lowest_zero_bit(uint8_t num) {
   for (int i = 0; i < 8; ++i) {
-    if (~(num >> i) & 0b1) {
-      return i;
-    }
+    if (~(num >> i) & 0b1) { return i; }
   }
   return 7;
 }
-

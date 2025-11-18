@@ -40,9 +40,7 @@ char* itoa(int64_t num, char* dst, int base) {
 
   dst[i++] = '0';
 
-  if (is_negative && base == 10) {
-    dst[i++] = '-';
-  }
+  if (is_negative && base == 10) { dst[i++] = '-'; }
 
   dst[i] = '\0';
 

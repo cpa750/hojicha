@@ -67,7 +67,8 @@ void vga_set_pixel(vga_position_t* pos, rgb32_t color) {
 /*
  * Draws a bitmap to the screen. The bitmap must have 16 elements.
  */
-void vga_draw_bitmap_16h8w(vga_position_t* start_pos, uint8_t* bitmap16,
+void vga_draw_bitmap_16h8w(vga_position_t* start_pos,
+                           uint8_t* bitmap16,
                            rgb32_t color) {
   // TODO Performance improvements
   if (start_pos->x >= g_kernel.vga->width - 7 || start_pos->x < 0 ||
@@ -88,7 +89,8 @@ void vga_draw_bitmap_16h8w(vga_position_t* start_pos, uint8_t* bitmap16,
   }
 }
 
-void vga_draw_rect_solid(vga_position_t* top_left, vga_position_t* bottom_right,
+void vga_draw_rect_solid(vga_position_t* top_left,
+                         vga_position_t* bottom_right,
                          rgb32_t color) {
   if (bottom_right->x >= g_kernel.vga->width ||
       bottom_right->y >= g_kernel.vga->height ||
@@ -140,4 +142,3 @@ void vga_copy_buffer_to_region(vga_position_t* top_left,
     }
   }
 }
-

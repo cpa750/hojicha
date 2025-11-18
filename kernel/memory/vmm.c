@@ -9,15 +9,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define CANONICAL_HIGH 0xFFFFULL << 48
-#define KERNEL_VOFFSET 0xFFFFFFFF80000000ULL
-#define LAST_VADDR 0xFFFF7AAAAAAAAAAA
-#define LOW_REGION_END 0x100000
-#define PAGE_SIZE 4096
+#define CANONICAL_HIGH         0xFFFFULL << 48
+#define KERNEL_VOFFSET         0xFFFFFFFF80000000ULL
+#define LAST_VADDR             0xFFFF7AAAAAAAAAAA
+#define LOW_REGION_END         0x100000
+#define PAGE_SIZE              4096
 #define MAPPING_STRUCTURE_MASK 0xFFFFFFFFFFFFF000ULL
-#define PD_ENTRIES 511ULL
-#define RECURSIVE_IDX 510ULL
-#define VIRT_PT_START 0
+#define PD_ENTRIES             511ULL
+#define RECURSIVE_IDX          510ULL
+#define VIRT_PT_START          0
 
 __attribute__((
     used,
@@ -128,9 +128,7 @@ haddr_t vmm_map(haddr_t virt, haddr_t size, haddr_t flags) {
   while (size-- > 0) {
     haddr_t res = vmm_map_single(virt, flags);
     //  OOM
-    if (res == 0) {
-      return res;
-    }
+    if (res == 0) { return res; }
     virt += PAGE_SIZE;
   }
   haddr_t virt_base = base & MAPPING_STRUCTURE_MASK;
@@ -140,9 +138,7 @@ haddr_t vmm_map(haddr_t virt, haddr_t size, haddr_t flags) {
 haddr_t vmm_map_single(haddr_t virt, haddr_t flags) {
   haddr_t new_page = pmm_alloc_frame();
   // OOM
-  if (new_page == 0) {
-    return 0;
-  }
+  if (new_page == 0) { return 0; }
   return vmm_map_at_paddr(virt, new_page, flags);
 }
 
@@ -151,9 +147,7 @@ haddr_t vmm_map_at_paddr(haddr_t virt, haddr_t phys, haddr_t flags) {
 
   haddr_t* pml3 = get_pml4_entry(virt);
   uint16_t pml4_idx = get_pml4_idx(virt);
-  if (pml4_idx == RECURSIVE_IDX) {
-    return 0;
-  }
+  if (pml4_idx == RECURSIVE_IDX) { return 0; }
   if (!(virtual_directory[pml4_idx] & (PAGE_PRESENT | PAGE_WRITABLE))) {
     virtual_directory[pml4_idx] =
         pmm_alloc_frame() | PAGE_PRESENT | PAGE_WRITABLE;
@@ -183,22 +177,16 @@ haddr_t vmm_unmap(haddr_t virt) {
 
   uint16_t pml4_idx = get_pml4_idx(virt);
   if (!(pml4[pml4_idx] & (PAGE_PRESENT | PAGE_WRITABLE))) {
-    if (pml4_idx == RECURSIVE_IDX) {
-      return 0;
-    }
+    if (pml4_idx == RECURSIVE_IDX) { return 0; }
   }
   haddr_t* pml3 = get_pml4_entry(virt);
 
   uint16_t pml3_idx = get_pml3_idx(virt);
-  if (!(pml3[pml3_idx] & (PAGE_PRESENT | PAGE_WRITABLE))) {
-    return 0;
-  }
+  if (!(pml3[pml3_idx] & (PAGE_PRESENT | PAGE_WRITABLE))) { return 0; }
   haddr_t* pd = get_pml3_entry(virt);
 
   uint16_t pd_idx = get_pd_idx(virt);
-  if (!(pd[pd_idx] & (PAGE_PRESENT | PAGE_WRITABLE))) {
-    return 0;
-  }
+  if (!(pd[pd_idx] & (PAGE_PRESENT | PAGE_WRITABLE))) { return 0; }
   haddr_t* pt = get_pd_entry(virt);
 
   uint16_t pt_idx = get_pt_idx(virt);
@@ -211,9 +199,8 @@ haddr_t vmm_unmap(haddr_t virt) {
 void check_kernel_size(haddr_t kernel_page_count) {
   if (kernel_page_count > 1023 - 256) {
     // TODO: we need support for more than one PDE for the kernel
-    printf(
-        "Kernels requiring more than one page directory entry are not yet "
-        "supported. Halt.\n");
+    printf("Kernels requiring more than one page directory entry are not yet "
+           "supported. Halt.\n");
     abort();
   }
 }
@@ -272,7 +259,8 @@ void map_framebuffer() {
        addr += 4096) {
     vmm_map_at_paddr((haddr_t)vga_state_get_framebuffer_addr(g_kernel.vga) +
                          framebuffer_offset,
-                     addr, PAGE_PRESENT | PAGE_WRITABLE);
+                     addr,
+                     PAGE_PRESENT | PAGE_WRITABLE);
     framebuffer_offset += 4096;
   }
 }
@@ -280,4 +268,3 @@ void map_framebuffer() {
 void _invlpg(haddr_t virt) {
   asm volatile("invlpg (%0)" ::"r"(virt) : "memory");
 }
-

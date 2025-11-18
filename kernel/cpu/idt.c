@@ -10,8 +10,11 @@
 
 extern void load_idt();
 
-void create_idt_entry(idt_entry_t* entries, uint8_t index, void* base,
-                      uint8_t flags, uint16_t segment) {
+void create_idt_entry(idt_entry_t* entries,
+                      uint8_t index,
+                      void* base,
+                      uint8_t flags,
+                      uint16_t segment) {
   entries[index].flags = flags;
   entries[index].segment = segment;
   entries[index].reserved_low = 0x0;
@@ -49,4 +52,3 @@ void create_irq_entries() {
   create_idt_entry(entries, 32, irq_stub_table[0], 0x8E, 0x08);  // PIT
   create_idt_entry(entries, 33, irq_stub_table[1], 0x8E, 0x08);  // Keyboard
 }
-

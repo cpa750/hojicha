@@ -9,5 +9,4 @@ typedef uint32_t haddr_t;
 typedef uint64_t haddr_t;
 #endif
 
-#endif // HADDR_H
-
+#endif  // HADDR_H

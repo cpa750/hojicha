@@ -8,4 +8,3 @@ void* kmalloc(size_t size);
 void kfree(void* ptr);
 
 #endif  // KMALLOC_H
-

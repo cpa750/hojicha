@@ -15,8 +15,6 @@ __attribute__((__noreturn__)) void abort(void) {
   // TODO SIGINT signal
   printf("Abort.\n");
 #endif
-  while (1) {
-  }
+  while (1) {}
   __builtin_unreachable();
 }
-

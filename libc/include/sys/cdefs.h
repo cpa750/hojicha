@@ -4,4 +4,3 @@
 #define __hojicha_libc 1
 
 #endif
-

@@ -20,7 +20,8 @@
 void print_ok(const char* component);
 
 __attribute__((
-    used, section(".limine_requests"))) static volatile LIMINE_BASE_REVISION(3);
+    used,
+    section(".limine_requests"))) static volatile LIMINE_BASE_REVISION(3);
 
 __attribute__((used,
                section(".limine_requests_"
@@ -37,9 +38,7 @@ haddr_t stack_start_vaddr = (haddr_t)&__stack_start;
 void kernel_main() {
   asm volatile("cli");
 
-  if (LIMINE_BASE_REVISION_SUPPORTED == false) {
-    abort();
-  }
+  if (LIMINE_BASE_REVISION_SUPPORTED == false) { abort(); }
 
   initialize_g_kernel();
   vga_initialize();
@@ -94,4 +93,3 @@ void print_ok(const char* component) {
   terminal_set_fg(0xFFFFFF);
   printf("] %s\n", component);
 }
-

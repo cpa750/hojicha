@@ -26,4 +26,3 @@ void handle_pit() {
   }
   send_end_of_interrupt(0x0);
 }
-

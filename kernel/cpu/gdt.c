@@ -8,8 +8,12 @@
 
 extern void load_gdt();
 
-void create_gdt_entry(gdt_entry_t* entry, uint8_t index, uint32_t limit,
-                      uint32_t base, uint8_t access, uint8_t flags) {
+void create_gdt_entry(gdt_entry_t* entry,
+                      uint8_t index,
+                      uint32_t limit,
+                      uint32_t base,
+                      uint8_t access,
+                      uint8_t flags) {
   if (limit > 0xFFFFFFFF) {
     printf("Fatal: GDT cannot encode limits greater than 0xFFFFFFFF. Abort.\n");
     abort();
@@ -51,4 +55,3 @@ void initialize_gdt() {
 
   load_gdt();
 }
-

@@ -13,4 +13,3 @@ void handle_irq(interrupt_frame_t* frame) {
       break;
   }
 }
-
