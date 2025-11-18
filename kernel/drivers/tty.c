@@ -181,7 +181,6 @@ void terminal_putchar(char c) {
       scroll();
       terminal_row--;
       terminal_caret_set_colour(g_kernel.tty, caret_old_colour);
-      terminal_caret_reset(g_kernel.tty);
     }
   }
   terminal_caret_set_pos(terminal_row, terminal_column, false);
