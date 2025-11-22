@@ -11,6 +11,7 @@ extern "C" {
 
 __attribute__((__noreturn__)) void abort(void);
 char* itoa(int64_t num, char* dst, int base);
+char* utoa(uint64_t num, char* dst, int base);
 void* malloc(size_t size);
 void free(void* ptr);
 

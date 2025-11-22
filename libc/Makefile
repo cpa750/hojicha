@@ -67,6 +67,7 @@ stdlib/abort.c \
 stdlib/assert.c \
 stdlib/free.c \
 stdlib/itoa.c \
+stdlib/utoa.c \
 stdlib/malloc.c \
 string/memcmp.c \
 string/memcpy.c \

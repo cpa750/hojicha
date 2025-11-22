@@ -77,10 +77,10 @@ int printf(const char* restrict format, ...) {
       case 'x': {
         // TODO: Fix garbled output when parameter is >= 0xF0000000
         format++;
-        const uint32_t x = (const uint32_t)va_arg(parameters, const uint32_t);
+        const uint64_t x = (const uint64_t)va_arg(parameters, const uint64_t);
         // char* buf = (char*) malloc(sizeof(char)*40);
         char buf[40];
-        itoa(x, buf, 16);
+        utoa(x, buf, 16);
         size_t len = strlen(buf);
         if (writeable_bytes < len) { return -1; }
         if (!print(buf, len)) { return -1; }

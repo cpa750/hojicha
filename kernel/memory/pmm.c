@@ -119,9 +119,9 @@ void initialize_pmm() {
   for (uint64_t i = 0; i < entry_count; ++i) {
     struct limine_memmap_entry* mmap_entry =
         (struct limine_memmap_entry*)(m_info->entries[i]);
+    pmm.total_mem += mmap_entry->length;
     if (mmap_entry->type == LIMINE_MEMMAP_USABLE ||
         mmap_entry->type == LIMINE_MEMMAP_ACPI_RECLAIMABLE) {
-      pmm.total_mem += mmap_entry->length;
       if (mmap_entry->length > pmm.max_section_length) {
         pmm.max_section_length = mmap_entry->length;
         pmm.max_section_start_addr = mmap_entry->base;
@@ -136,6 +136,11 @@ void initialize_pmm() {
       (pmm.kernel_end - pmm.kernel_start + pmm.bitmap_size)) {
     printf("Not enough memory to load memory bitmap. Halt.");
     abort();
+  }
+
+  if (pmm.max_section_start_addr + pmm.max_section_length > pmm.total_mem) {
+    pmm.max_section_length -=
+        (pmm.max_section_start_addr + pmm.max_section_length) - pmm.total_mem;
   }
 
   pmm.first_early_alloc_addr =
