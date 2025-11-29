@@ -67,6 +67,8 @@ void kernel_main() {
   print_ok("VMM");
   kmalloc_initialize();
   print_ok("kmalloc");
+  multitask_initialize();
+  print_ok("Multitasking");
 
   printf("\n");
 
