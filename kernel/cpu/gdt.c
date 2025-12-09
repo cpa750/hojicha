@@ -1,6 +1,7 @@
 #include <cpu/gdt.h>
 #include <cpu/tss.h>
 #include <haddr.h>
+#include <kernel/kernel_state.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -54,4 +55,5 @@ void initialize_gdt() {
                       .base = (uint64_t)&gdt_entries};
 
   load_gdt();
+  g_kernel.tss = &tss;
 }

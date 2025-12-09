@@ -17,6 +17,7 @@ typedef struct multitask_state multitask_state_t;
 void multitask_state_dump(multitask_state_t* mt);
 
 void multitask_initialize(void);
+void multitask_switch(process_block_t* process);
 
 #endif  // MULTITASK_H
 

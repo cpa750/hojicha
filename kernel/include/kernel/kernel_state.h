@@ -1,7 +1,9 @@
 #ifndef KERNEL_STATE_H
 #define KERNEL_STATE_H
 
-#include "multitask.h"
+#include <cpu/tss.h>
+#include <kernel/multitask.h>
+
 struct pmm_state;
 typedef struct pmm_state pmm_state_t;
 
@@ -14,15 +16,13 @@ typedef struct vga_state vga_state_t;
 struct tty_state;
 typedef struct tty_state tty_state_t;
 
-struct multitask_state;
-typedef struct multitask_state multitask_state_t;
-
 struct kernel_state {
+  tss_t* tss;
+  process_block_t* current_process;
   tty_state_t* tty;
   vga_state_t* vga;
   pmm_state_t* pmm;
   vmm_state_t* vmm;
-  multitask_state_t* mt;
 };
 typedef struct kernel_state kernel_state_t;
 
