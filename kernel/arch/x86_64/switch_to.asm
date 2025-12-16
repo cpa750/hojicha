@@ -63,4 +63,4 @@ switch_to:
     pop rbx
     pop rax
 
-    iretq
+    ret

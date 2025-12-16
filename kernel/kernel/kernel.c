@@ -17,6 +17,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define STACK_SIZE 16384
+
+void test(void) { printf("hello from the other side"); }
+
 void print_ok(const char* component);
 
 __attribute__((
@@ -84,6 +88,21 @@ void kernel_main() {
   printf("------------------------------------------------------------\n\n");
 
   asm volatile("sti");
+
+  process_block_t* kernel_process = g_kernel.current_process;
+  process_block_t* new_proc = (process_block_t*)malloc(sizeof(process_block_t));
+  kernel_process->next = new_proc;
+  new_proc->next = kernel_process;
+  new_proc->cr3 = kernel_process->cr3;
+  uint8_t* new_stack_end = (uint8_t*)malloc(STACK_SIZE);
+  haddr_t stack_base = (haddr_t)(new_stack_end + STACK_SIZE);
+  stack_base &= ~0xFULL;
+  stack_base -= 8 * 15;
+  stack_base -= 8;
+  *(haddr_t*)stack_base = (haddr_t)test;
+
+  new_proc->rsp = (void*)stack_base;
+  multitask_new(new_proc);
 
   while (1) asm volatile("hlt");
 }
