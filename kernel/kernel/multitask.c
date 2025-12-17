@@ -21,7 +21,7 @@ void multitask_initialize(void) {
   g_kernel.current_process = kernel_process;
 }
 
-void multitask_new(process_block_t* process) {
+void multitask_switch(process_block_t* process) {
   asm volatile("cli");
   switch_to(process);
   asm volatile("sti");

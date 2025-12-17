@@ -19,7 +19,11 @@
 
 #define STACK_SIZE 16384
 
-void test(void) { printf("hello from the other side"); }
+static process_block_t* kernel_proc;
+void test(void) {
+  printf("hello from the other side\n");
+  multitask_switch(kernel_proc);
+}
 
 void print_ok(const char* component);
 
@@ -89,22 +93,25 @@ void kernel_main() {
 
   asm volatile("sti");
 
-  process_block_t* kernel_process = g_kernel.current_process;
+  kernel_proc = g_kernel.current_process;
   process_block_t* new_proc = (process_block_t*)malloc(sizeof(process_block_t));
-  kernel_process->next = new_proc;
-  new_proc->next = kernel_process;
-  new_proc->cr3 = kernel_process->cr3;
+  kernel_proc->next = new_proc;
+  new_proc->next = kernel_proc;
+  new_proc->cr3 = kernel_proc->cr3;
   uint8_t* new_stack_end = (uint8_t*)malloc(STACK_SIZE);
   haddr_t stack_base = (haddr_t)(new_stack_end + STACK_SIZE);
   stack_base &= ~0xFULL;
-  stack_base -= 8 * 15;
   stack_base -= 8;
   *(haddr_t*)stack_base = (haddr_t)test;
+  stack_base -= 8 * 15;
 
   new_proc->rsp = (void*)stack_base;
-  multitask_new(new_proc);
 
-  while (1) asm volatile("hlt");
+  // while (1) asm volatile("hlt");
+  while (1) {
+    multitask_switch(new_proc);
+    printf("we're so back\n");
+  }
 }
 
 void print_ok(const char* component) {
