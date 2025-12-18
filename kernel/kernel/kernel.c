@@ -17,8 +17,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define STACK_SIZE 16384
-
 static process_block_t* kernel_proc;
 void test(void) {
   while (1) {
@@ -96,18 +94,7 @@ void kernel_main() {
   asm volatile("sti");
 
   kernel_proc = g_kernel.current_process;
-  process_block_t* new_proc = (process_block_t*)malloc(sizeof(process_block_t));
-  kernel_proc->next = new_proc;
-  new_proc->next = kernel_proc;
-  new_proc->cr3 = kernel_proc->cr3;
-  uint8_t* new_stack_end = (uint8_t*)malloc(STACK_SIZE);
-  haddr_t stack_base = (haddr_t)(new_stack_end + STACK_SIZE);
-  stack_base &= ~0xFULL;
-  stack_base -= 8;
-  *(haddr_t*)stack_base = (haddr_t)test;
-  stack_base -= 8 * 15;
-
-  new_proc->rsp = (void*)stack_base;
+  process_block_t* new_proc = multitask_new(test, kernel_proc->cr3);
 
   // while (1) asm volatile("hlt");
   while (1) {
