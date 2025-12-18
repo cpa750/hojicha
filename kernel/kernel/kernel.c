@@ -21,7 +21,7 @@ static process_block_t* kernel_proc;
 void test(void) {
   while (1) {
     printf("hello from the other side\n");
-    multitask_switch(kernel_proc);
+    multitask_schedule();
   }
 }
 
@@ -95,11 +95,12 @@ void kernel_main() {
 
   kernel_proc = g_kernel.current_process;
   process_block_t* new_proc = multitask_new(test, kernel_proc->cr3);
+  multitask_schedule_add_proc(new_proc);
 
   // while (1) asm volatile("hlt");
   while (1) {
-    multitask_switch(new_proc);
     printf("we're so back\n");
+    multitask_schedule();
   }
 }
 

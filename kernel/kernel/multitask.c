@@ -7,6 +7,12 @@
 
 #define STACK_SIZE 16384
 
+struct multitask_state {
+  process_block_t* last;
+};
+
+static multitask_state_t mt = {0};
+
 extern void switch_to(process_block_t* process);
 
 void multitask_initialize(void) {
@@ -19,7 +25,9 @@ void multitask_initialize(void) {
   kernel_process->cr3 = (void*)cr3;
   kernel_process->rsp = (void*)rsp;
   kernel_process->status = 0;
-  kernel_process->next = NULL;
+  kernel_process->next = kernel_process;
+  mt.last = kernel_process;
+  g_kernel.mt = &mt;
   g_kernel.current_process = kernel_process;
 }
 
@@ -43,6 +51,21 @@ process_block_t* multitask_new(proc_entry_t entry, void* cr3) {
   new_proc->rsp = (void*)stack_base;
   return new_proc;
 }
+
+void multitask_schedule_add_proc(process_block_t* process) {
+  if (g_kernel.mt->last == NULL) { return; }
+  if (g_kernel.current_process == NULL) {
+    g_kernel.current_process = process;
+    process->next = process;
+    return;
+  }
+
+  process->next = g_kernel.mt->last->next;
+  g_kernel.mt->last->next = process;
+  g_kernel.mt->last = process;
+}
+
+void multitask_schedule() { multitask_switch(g_kernel.current_process->next); }
 
 void multitask_switch(process_block_t* process) {
   asm volatile("cli");

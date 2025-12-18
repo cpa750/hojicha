@@ -4,14 +4,17 @@
 #include <cpu/tss.h>
 #include <kernel/multitask.h>
 
+struct multitask_state;
+typedef struct multitask_state multitask_state_t;
+
 struct pmm_state;
 typedef struct pmm_state pmm_state_t;
 
-struct vmm_state;
-typedef struct vmm_state vmm_state_t;
-
 struct vga_state;
 typedef struct vga_state vga_state_t;
+
+struct vmm_state;
+typedef struct vmm_state vmm_state_t;
 
 struct tty_state;
 typedef struct tty_state tty_state_t;
@@ -19,10 +22,11 @@ typedef struct tty_state tty_state_t;
 struct kernel_state {
   tss_t* tss;
   process_block_t* current_process;
-  tty_state_t* tty;
-  vga_state_t* vga;
+  multitask_state_t* mt;
   pmm_state_t* pmm;
+  tty_state_t* tty;
   vmm_state_t* vmm;
+  vga_state_t* vga;
 };
 typedef struct kernel_state kernel_state_t;
 
