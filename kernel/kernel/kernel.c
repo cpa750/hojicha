@@ -21,8 +21,10 @@
 
 static process_block_t* kernel_proc;
 void test(void) {
-  printf("hello from the other side\n");
-  multitask_switch(kernel_proc);
+  while (1) {
+    printf("hello from the other side\n");
+    multitask_switch(kernel_proc);
+  }
 }
 
 void print_ok(const char* component);
