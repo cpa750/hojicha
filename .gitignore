@@ -6,6 +6,9 @@
 
 *.iso
 
+*compile_commands.json
+*/.cache
+
 bin
 iso_root
 sysroot
