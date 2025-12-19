@@ -2,13 +2,13 @@
 #include <kernel/kernel_state.h>
 #include <kernel/multitask.h>
 #include <memory/vmm.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 #define STACK_SIZE 16384
 
 struct multitask_state {
   process_block_t* last;
+  uint64_t time_elapsed;
 };
 
 static multitask_state_t mt = {0};
@@ -31,10 +31,6 @@ void multitask_initialize(void) {
   g_kernel.current_process = kernel_process;
 }
 
-/*
- * Creates a new process with the given entry address.
- * The caller is expected to call multitask_free(task).
- */
 process_block_t* multitask_new(proc_entry_t entry, void* cr3) {
   // TODO figure out a way of ending processes
   process_block_t* new_proc = (process_block_t*)malloc(sizeof(process_block_t));
@@ -65,7 +61,15 @@ void multitask_schedule_add_proc(process_block_t* process) {
   g_kernel.mt->last = process;
 }
 
-void multitask_schedule() { multitask_switch(g_kernel.current_process->next); }
+void multitask_schedule() {
+  // TODO What happens to timekeeping if the switch fails?
+  g_kernel.mt->time_elapsed = pit_get_ns_elapsed_since_init(g_kernel.pit);
+  g_kernel.current_process->elapsed +=
+      g_kernel.mt->time_elapsed - g_kernel.current_process->switch_timestamp;
+  g_kernel.current_process->next->switch_timestamp = g_kernel.mt->time_elapsed;
+
+  multitask_switch(g_kernel.current_process->next);
+}
 
 void multitask_switch(process_block_t* process) {
   asm volatile("cli");

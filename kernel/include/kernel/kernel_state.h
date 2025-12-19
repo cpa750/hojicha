@@ -2,7 +2,9 @@
 #define KERNEL_STATE_H
 
 #include <cpu/tss.h>
+#include <drivers/pit.h>
 #include <kernel/multitask.h>
+#include <stdint.h>
 
 struct multitask_state;
 typedef struct multitask_state multitask_state_t;
@@ -23,6 +25,7 @@ struct kernel_state {
   tss_t* tss;
   process_block_t* current_process;
   multitask_state_t* mt;
+  pit_state_t* pit;
   pmm_state_t* pmm;
   tty_state_t* tty;
   vmm_state_t* vmm;
