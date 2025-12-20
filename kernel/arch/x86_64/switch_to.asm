@@ -1,16 +1,16 @@
 [BITS 64]
 
-%define G_KERNEL_TSS              0
-%define G_KERNEL_CURRENT_PROCESS  8
-%define PCB_CR3                   0
-%define PCB_RSP                   8
-%define PCB_RSP0                  8
-%define TSS_RSP0                  4
+%define G_KERNEL_TSS                 0
+%define G_KERNEL_CURRENT_PROCESS     8
+%define PCB_CR3                      0
+%define PCB_RSP                      8
+%define PCB_STATUS                   16
+%define PCB_RSP0                     8
+%define TSS_RSP0                     4
 
 extern g_kernel
 global switch_to
 
-; TODO actually do the switch
 switch_to:
     push rax
     push rbx
@@ -33,6 +33,7 @@ switch_to:
     mov rcx, cr3
     mov [rbx + PCB_CR3], rcx
     mov [rbx + PCB_RSP], rsp
+    mov byte [rbx + PCB_STATUS], 1
 
     mov [rel g_kernel + G_KERNEL_CURRENT_PROCESS], rdi
 

@@ -10,8 +10,8 @@ typedef struct process_block process_block_t;
 struct process_block {
   void* cr3;
   void* rsp;
-  process_block_t* next;
   uint8_t status;
+  process_block_t* next;
   uint64_t elapsed;
   uint64_t switch_timestamp;
 };
@@ -30,7 +30,8 @@ void multitask_initialize(void);
 process_block_t* multitask_new(proc_entry_t entry, void* cr3);
 
 /*
- * Adds a proc to the scheduler's circular queue.
+ * Adds a proc to the scheduler's queue.
+ * The process will be added in a READY_TO_RUN state.
  */
 void multitask_schedule_add_proc(process_block_t* process);
 
@@ -39,7 +40,7 @@ void multitask_schedule_add_proc(process_block_t* process);
  * Updates the current proc's elapsed counter, sets the next proc's switch
  * timestamp, and switches to the new proc.
  */
-void multitask_schedule();
+void multitask_schedule(void);
 void multitask_switch(process_block_t* process);
 
 #endif  // MULTITASK_H
