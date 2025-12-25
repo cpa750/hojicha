@@ -33,12 +33,12 @@ switch_to:
     mov rcx, cr3
     mov [rbx + PCB_CR3], rcx
     mov [rbx + PCB_RSP], rsp
-    mov byte [rbx + PCB_STATUS], 1
 
     mov [rel g_kernel + G_KERNEL_CURRENT_PROCESS], rdi
 
     mov rsp,  [rdi + PCB_RSP]
     mov rax,  [rdi + PCB_CR3]
+    mov byte [rdi + PCB_STATUS], 1
     cmp rax, rcx
     je .skip_cr3
     mov cr3, rax
