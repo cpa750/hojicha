@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <cpu/gdt.h>
 #include <cpu/idt.h>
 #include <drivers/keyboard.h>
@@ -16,6 +15,14 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+static process_block_t* kernel_proc;
+void test(void) {
+  while (1) {
+    printf("hello from the other side\n");
+    multitask_schedule();
+  }
+}
 
 void print_ok(const char* component);
 
@@ -67,6 +74,8 @@ void kernel_main() {
   print_ok("VMM");
   kmalloc_initialize();
   print_ok("kmalloc");
+  multitask_initialize();
+  print_ok("Multitasking");
 
   printf("\n");
 
@@ -83,7 +92,15 @@ void kernel_main() {
 
   asm volatile("sti");
 
-  while (1) asm volatile("hlt");
+  kernel_proc = g_kernel.current_process;
+  process_block_t* new_proc = multitask_new(test, kernel_proc->cr3);
+  multitask_schedule_add_proc(new_proc);
+
+  // while (1) asm volatile("hlt");
+  while (1) {
+    printf("we're so back\n");
+    multitask_schedule();
+  }
 }
 
 void print_ok(const char* component) {
