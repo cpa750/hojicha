@@ -22,9 +22,7 @@ static process_block_t* kernel_proc;
 void test(void) {
   while (1) {
     printf("hello from the other side\n");
-    multitask_scheduler_lock();
-    multitask_schedule();
-    multitask_scheduler_unlock();
+    multitask_block(PROC_STATUS_PAUSED);
   }
 }
 
@@ -101,8 +99,14 @@ void kernel_main() {
   multitask_schedule_add_proc(new_proc);
 
   // while (1) asm volatile("hlt");
+  multitask_scheduler_lock();
+  multitask_schedule();
+  multitask_scheduler_unlock();
+
   while (1) {
     printf("we're so back\n");
+    multitask_unblock(new_proc);
+
     multitask_scheduler_lock();
     multitask_schedule();
     multitask_scheduler_unlock();

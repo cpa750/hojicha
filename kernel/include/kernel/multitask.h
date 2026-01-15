@@ -4,6 +4,8 @@
 #include <haddr.h>
 #include <stdint.h>
 
+#define PROC_STATUS_PAUSED 0b00000100
+
 typedef void (*proc_entry_t)(void);
 
 typedef struct process_block process_block_t;
@@ -47,6 +49,17 @@ void multitask_schedule(void);
 
 void multitask_scheduler_lock(void);
 void multitask_scheduler_unlock(void);
+
+/*
+ * Blocks the current task with the given reason.
+ */
+void multitask_block(uint8_t reason);
+
+/*
+ * Unblocks the given task. Only pre-empts if the task is the only one running,
+ * otherwise the task is appended to the scheduling queue.
+ */
+void multitask_unblock(process_block_t* process);
 
 #endif  // MULTITASK_H
 

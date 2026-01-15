@@ -4,6 +4,7 @@
 %define G_KERNEL_CURRENT_PROCESS     8
 %define PCB_CR3                      0
 %define PCB_RSP                      8
+%define PCB_STATUS_RUNNING           1
 %define PCB_STATUS                   16
 %define PCB_RSP0                     8
 %define TSS_RSP0                     4
@@ -38,7 +39,7 @@ switch_to:
 
     mov rsp,  [rdi + PCB_RSP]
     mov rax,  [rdi + PCB_CR3]
-    mov byte [rdi + PCB_STATUS], 1
+    mov byte [rdi + PCB_STATUS], PCB_STATUS_RUNNING
     cmp rax, rcx
     je .skip_cr3
     mov cr3, rax

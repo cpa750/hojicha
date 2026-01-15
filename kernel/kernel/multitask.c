@@ -5,9 +5,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define PROC_STATUS_READY_TO_RUN 0b00000010
-#define PROC_STATUS_RUNNING      0b00000001
-#define STACK_SIZE               16384
+#define PROC_STATUS_UNINITIALIZED 0b11111111
+#define PROC_STATUS_RUNNING       0b00000001
+#define PROC_STATUS_READY_TO_RUN  0b00000010
+#define STACK_SIZE                16384
 
 struct multitask_state {
   process_block_t* first_ready_to_run;
@@ -57,12 +58,12 @@ process_block_t* multitask_new(proc_entry_t entry, void* cr3) {
   // in switch_to()
   stack_base -= 8 * 15;
   new_proc->rsp = (void*)stack_base;
+  new_proc->status = PROC_STATUS_UNINITIALIZED;
   return new_proc;
 }
 
 void multitask_schedule_add_proc(process_block_t* process) {
   process->next = NULL;
-  process->status = PROC_STATUS_READY_TO_RUN;
   if (g_kernel.mt->first_ready_to_run == NULL) {
     g_kernel.mt->first_ready_to_run = process;
     g_kernel.mt->last_ready_to_run = process;
@@ -94,13 +95,17 @@ void multitask_schedule(void) {
     g_kernel.mt->first_ready_to_run = g_kernel.mt->first_ready_to_run->next;
     g_kernel.mt->last_ready_to_run->next = NULL;
 
-    // g_kernel.current_process is updated inside switch_to()
+    if (next->status == PROC_STATUS_UNINITIALIZED) {
+      multitask_scheduler_unlock();
+    }
+
+    // g_kernel.current_process and its status is updated inside switch_to()
     multitask_switch(next);
   }
 }
 
 void multitask_scheduler_lock(void) {
-  // TODO: this will need more fleshing out for mulit-core support
+  // TODO: this will need more fleshing out for multi-core support
   asm volatile("cli");
   g_kernel.mt->lock_count++;
 }
@@ -123,5 +128,26 @@ void set_last_ready_to_run(multitask_state_t* mt,
     return;
   }
   set_last_ready_to_run(mt, first_ready_to_run->next);
+}
+
+void multitask_block(uint8_t reason) {
+  multitask_scheduler_lock();
+  g_kernel.current_process->status = reason;
+  multitask_schedule();
+  multitask_scheduler_unlock();
+}
+
+void multitask_unblock(process_block_t* process) {
+  multitask_scheduler_lock();
+
+  if (g_kernel.mt->first_ready_to_run != NULL) {
+    process->status = PROC_STATUS_READY_TO_RUN;
+    g_kernel.mt->last_ready_to_run->next = process;
+    g_kernel.mt->last_ready_to_run = process;
+  } else {
+    multitask_switch(process);
+  }
+
+  multitask_scheduler_unlock();
 }
 
