@@ -24,24 +24,29 @@ void multitask_state_dump(multitask_state_t* mt);
 void multitask_initialize(void);
 
 /*
- * Creates a new process with the given entry address.
- * The caller is expected to call multitask_free(task).
- */
-process_block_t* multitask_new(proc_entry_t entry, void* cr3);
-
-/*
  * Adds a proc to the scheduler's queue.
  * The process will be added in a READY_TO_RUN state.
  */
 void multitask_schedule_add_proc(process_block_t* process);
 
 /*
+ * Creates a new process with the given entry address.
+ * The caller is expected to call multitask_free(task).
+ */
+process_block_t* multitask_new(proc_entry_t entry, void* cr3);
+
+/*
  * Advances the scheduler.
  * Updates the current proc's elapsed counter, sets the next proc's switch
  * timestamp, and switches to the new proc.
+ * The callee is required to lock before, and unlock after with the
+ * multitask_scheduler_lock() and multitask_scheduler_unlock()
+ * functions.
  */
 void multitask_schedule(void);
-void multitask_switch(process_block_t* process);
+
+void multitask_scheduler_lock(void);
+void multitask_scheduler_unlock(void);
 
 #endif  // MULTITASK_H
 

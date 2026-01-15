@@ -7,7 +7,7 @@
 *.iso
 
 *compile_commands.json
-*/.cache
+*.cache
 
 bin
 iso_root

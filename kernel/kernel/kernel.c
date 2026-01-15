@@ -16,11 +16,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "kernel/multitask.h"
+
 static process_block_t* kernel_proc;
 void test(void) {
   while (1) {
     printf("hello from the other side\n");
+    multitask_scheduler_lock();
     multitask_schedule();
+    multitask_scheduler_unlock();
   }
 }
 
@@ -99,7 +103,9 @@ void kernel_main() {
   // while (1) asm volatile("hlt");
   while (1) {
     printf("we're so back\n");
+    multitask_scheduler_lock();
     multitask_schedule();
+    multitask_scheduler_unlock();
   }
 }
 

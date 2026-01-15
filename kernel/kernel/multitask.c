@@ -2,6 +2,7 @@
 #include <kernel/kernel_state.h>
 #include <kernel/multitask.h>
 #include <memory/vmm.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 #define PROC_STATUS_READY_TO_RUN 0b00000010
@@ -13,10 +14,12 @@ struct multitask_state {
   process_block_t* last_ready_to_run;
   process_block_t* ready_to_run_head;
   uint64_t time_elapsed;
+  uint64_t lock_count;
 };
 
 static multitask_state_t mt = {0};
 
+void multitask_switch(process_block_t* process);
 extern void switch_to(process_block_t* process);
 
 void set_last_ready_to_run(multitask_state_t* mt,
@@ -94,6 +97,17 @@ void multitask_schedule(void) {
     // g_kernel.current_process is updated inside switch_to()
     multitask_switch(next);
   }
+}
+
+void multitask_scheduler_lock(void) {
+  // TODO: this will need more fleshing out for mulit-core support
+  asm volatile("cli");
+  g_kernel.mt->lock_count++;
+}
+
+void multitask_scheduler_unlock(void) {
+  g_kernel.mt->lock_count--;
+  if (g_kernel.mt->lock_count == 0) { asm volatile("sti"); }
 }
 
 void multitask_switch(process_block_t* process) {
