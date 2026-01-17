@@ -26,6 +26,13 @@ void test(void) {
   }
 }
 
+void test_sleep(void) {
+  while (1) {
+    multitask_sleep(5);
+    printf("Awake!");
+  }
+}
+
 void print_ok(const char* component);
 
 __attribute__((
@@ -95,8 +102,9 @@ void kernel_main() {
   asm volatile("sti");
 
   kernel_proc = g_kernel.current_process;
-  process_block_t* new_proc = multitask_new(test, kernel_proc->cr3);
-  multitask_schedule_add_proc(new_proc);
+  process_block_t* new_proc =
+      multitask_new(test_sleep, multitask_process_block_get_cr3(kernel_proc));
+  multitask_scheduler_add_proc(new_proc);
 
   // while (1) asm volatile("hlt");
   multitask_scheduler_lock();
@@ -104,8 +112,8 @@ void kernel_main() {
   multitask_scheduler_unlock();
 
   while (1) {
-    printf("we're so back\n");
-    multitask_unblock(new_proc);
+    // printf("we're so back\n");
+    // multitask_unblock(new_proc);
 
     multitask_scheduler_lock();
     multitask_schedule();
