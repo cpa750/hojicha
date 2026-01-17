@@ -5,7 +5,7 @@
 
 #include "stddef.h"
 
-#define NS_DIVISOR       1000000000000ULL
+#define NS_DIVISOR       1000000000ULL
 #define TICKS_PER_SECOND 1000ULL
 
 struct pit_state {
@@ -42,7 +42,7 @@ void pit_handle() {
     ticks++;
   }
   send_end_of_interrupt(0x0);
-  call_callbacks(NULL);
+  call_callbacks(g_kernel.pit->callbacks_start);
 }
 
 uint64_t pit_get_ns_elapsed_since_init(pit_state_t* pit) {
@@ -64,7 +64,8 @@ void pit_register_callback(pit_callback_t* callback) {
 void call_callbacks(pit_callback_t* callbacks) {
   if (callbacks == NULL) { return; }
   if (callbacks->callback_func != NULL) {
-    callbacks->callback_func(g_kernel.pit->ticks_since_init);
+    callbacks->callback_func(g_kernel.pit->ticks_since_init *
+                             (NS_DIVISOR / g_kernel.pit->ticks_per_second));
   }
   if (callbacks->next != NULL) { call_callbacks(callbacks->next); }
 }

@@ -200,6 +200,7 @@ void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
   if (g_kernel.mt->sleeping == NULL) {
     process->next = NULL;
     g_kernel.mt->sleeping = process;
+    multitask_schedule();
     multitask_scheduler_unlock();
     return;
   }
@@ -213,7 +214,10 @@ void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
 }
 
 void wake_procs_before_timestamp(uint64_t timestamp) {
-  if (g_kernel.mt->sleeping->sleep_until > timestamp) { return; }
+  if (g_kernel.mt->sleeping == NULL ||
+      g_kernel.mt->sleeping->sleep_until > timestamp) {
+    return;
+  }
 
   process_block_t* last_to_wake = NULL;
   for (process_block_t* curr = g_kernel.mt->sleeping; curr != NULL;
@@ -224,6 +228,13 @@ void wake_procs_before_timestamp(uint64_t timestamp) {
     } else {
       break;
     }
+  }
+
+  if (g_kernel.mt->first_ready_to_run == NULL) {
+    g_kernel.mt->first_ready_to_run = g_kernel.mt->sleeping;
+  } else {
+    g_kernel.mt->last_ready_to_run->next = g_kernel.mt->sleeping;
+    g_kernel.mt->last_ready_to_run = g_kernel.mt->sleeping;
   }
 
   g_kernel.mt->sleeping = last_to_wake->next;

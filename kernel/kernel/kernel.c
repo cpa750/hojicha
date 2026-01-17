@@ -28,8 +28,8 @@ void test(void) {
 
 void test_sleep(void) {
   while (1) {
-    multitask_sleep(5);
-    printf("Awake!");
+    multitask_sleep(1);
+    printf("Awake!\n");
   }
 }
 
