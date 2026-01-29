@@ -3,6 +3,7 @@
 #include <kernel/kernel_state.h>
 #include <kernel/multitask.h>
 #include <memory/vmm.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -16,7 +17,9 @@ struct multitask_state {
   process_block_t* last_ready_to_run;
   process_block_t* ready_to_run_head;
   uint64_t time_elapsed;
-  uint64_t lock_count;
+  uint64_t irq_lock_count;
+  uint64_t switch_lock_count;
+  bool switch_lock_flag;
   process_block_t* sleeping;
 };
 
@@ -105,6 +108,11 @@ void multitask_scheduler_add_proc(process_block_t* process) {
 }
 
 void multitask_schedule(void) {
+  if (g_kernel.mt->switch_lock_count > 0) {
+    g_kernel.mt->switch_lock_flag = true;
+    return;
+  }
+
   // TODO What happens to timekeeping if the switch fails?
   g_kernel.mt->time_elapsed = pit_get_ns_elapsed_since_init(g_kernel.pit);
   g_kernel.current_process->elapsed +=
@@ -126,6 +134,7 @@ void multitask_schedule(void) {
     next->switch_timestamp = g_kernel.mt->time_elapsed;
     g_kernel.mt->first_ready_to_run = g_kernel.mt->first_ready_to_run->next;
 
+    // TODO: we need to implement a minimal proc entry function to do this
     if (next->status == PROC_STATUS_UNINITIALIZED) {
       multitask_scheduler_unlock();
     }
@@ -139,12 +148,18 @@ void multitask_schedule(void) {
 void multitask_scheduler_lock(void) {
   // TODO: this will need more fleshing out for multi-core support
   asm volatile("cli");
-  g_kernel.mt->lock_count++;
+  g_kernel.mt->irq_lock_count++;
+  g_kernel.mt->switch_lock_count++;
 }
 
 void multitask_scheduler_unlock(void) {
-  g_kernel.mt->lock_count--;
-  if (g_kernel.mt->lock_count == 0) { asm volatile("sti"); }
+  g_kernel.mt->switch_lock_count--;
+  if (g_kernel.mt->switch_lock_count == 0 && g_kernel.mt->switch_lock_flag) {
+    g_kernel.mt->switch_lock_flag = false;
+    multitask_schedule();
+  }
+  g_kernel.mt->irq_lock_count--;
+  if (g_kernel.mt->irq_lock_count == 0) { asm volatile("sti"); }
 }
 
 void multitask_switch(process_block_t* process) {

@@ -6,6 +6,9 @@
 
 #define PROC_STATUS_PAUSED 0b00000100
 
+/*
+ * The entry point of the process. Must take no parameters and return void.
+ */
 typedef void (*proc_entry_t)(void);
 
 /*
