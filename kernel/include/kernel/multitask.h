@@ -34,7 +34,7 @@ void multitask_scheduler_add_proc(process_block_t* process);
  * Creates a new process with the given entry address.
  * The caller is expected to call `multitask_free(task)`.
  */
-process_block_t* multitask_new(proc_entry_t entry, void* cr3);
+process_block_t* multitask_proc_new(proc_entry_t entry, void* cr3);
 
 /*
  * Advances the scheduler if there is an available next process.

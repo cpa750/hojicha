@@ -7,6 +7,7 @@
 #include <drivers/tty.h>
 #include <drivers/vga.h>
 #include <kernel/kernel_state.h>
+#include <kernel/multitask.h>
 #include <limine.h>
 #include <memory/kmalloc.h>
 #include <memory/pmm.h>
@@ -15,8 +16,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-#include "kernel/multitask.h"
 
 static process_block_t* kernel_proc;
 void test(void) {
@@ -102,8 +101,8 @@ void kernel_main() {
   asm volatile("sti");
 
   kernel_proc = g_kernel.current_process;
-  process_block_t* new_proc =
-      multitask_new(test_sleep, multitask_process_block_get_cr3(kernel_proc));
+  process_block_t* new_proc = multitask_proc_new(
+      test_sleep, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(new_proc);
 
   // while (1) asm volatile("hlt");

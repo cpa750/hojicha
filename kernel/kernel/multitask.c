@@ -25,9 +25,13 @@ struct multitask_state {
 
 typedef struct process_block process_block_t;
 struct process_block {
+  // Begin asm-mapped fields
   void* cr3;
   void* rsp;
   uint8_t status;
+  proc_entry_t entry;
+  // End asm-mapped fields
+
   process_block_t* next;
   uint64_t elapsed;
   uint64_t switch_timestamp;
@@ -52,6 +56,7 @@ void insert_process_after(process_block_t* process, process_block_t* after);
 
 void set_last_ready_to_run(multitask_state_t* mt,
                            process_block_t* first_ready_to_run);
+void proc_entry_wrapper(process_block_t* p);
 
 void multitask_initialize(void) {
   process_block_t* kernel_process =
@@ -74,19 +79,22 @@ void multitask_initialize(void) {
   pit_register_callback(&pit_callback);
 }
 
-process_block_t* multitask_new(proc_entry_t entry, void* cr3) {
+process_block_t* multitask_proc_new(proc_entry_t entry, void* cr3) {
   // TODO figure out a way of ending processes
   process_block_t* new_proc = (process_block_t*)malloc(sizeof(process_block_t));
   new_proc->cr3 = cr3;
+  new_proc->entry = entry;
   uint8_t* new_stack_end = (uint8_t*)malloc(STACK_SIZE);
   haddr_t stack_base = (haddr_t)(new_stack_end + STACK_SIZE);
   stack_base &= ~0xFULL;
   stack_base -= 8;
-  *(haddr_t*)stack_base = (haddr_t)entry;
+  *(haddr_t*)stack_base = (haddr_t)proc_entry_wrapper;
+  stack_base -= 8 * 6;
+  *(haddr_t*)stack_base = (haddr_t)new_proc;
 
   // Because we pop 15 registers from the newly allocated stack
   // in switch_to()
-  stack_base -= 8 * 15;
+  stack_base -= 8 * 9;
   new_proc->rsp = (void*)stack_base;
   new_proc->status = PROC_STATUS_UNINITIALIZED;
   return new_proc;
@@ -125,18 +133,21 @@ void multitask_schedule(void) {
       // We only want to place the old process in the ready-to-run queue if
       // it's being pre-empted. Otherwise, (for example, sleeping) it belongs
       // in a difference queue handled elsewhere.
+      if (g_kernel.mt->last_ready_to_run == NULL) {
+        g_kernel.mt->last_ready_to_run = g_kernel.mt->first_ready_to_run;
+      }
       g_kernel.mt->last_ready_to_run->next = g_kernel.current_process;
       g_kernel.mt->last_ready_to_run = g_kernel.mt->last_ready_to_run->next;
-      g_kernel.mt->last_ready_to_run->next = NULL;
+      if (g_kernel.mt->first_ready_to_run != g_kernel.mt->last_ready_to_run) {
+        g_kernel.mt->last_ready_to_run->next = NULL;
+      }
     }
 
     process_block_t* next = g_kernel.mt->first_ready_to_run;
     next->switch_timestamp = g_kernel.mt->time_elapsed;
     g_kernel.mt->first_ready_to_run = g_kernel.mt->first_ready_to_run->next;
-
-    // TODO: we need to implement a minimal proc entry function to do this
-    if (next->status == PROC_STATUS_UNINITIALIZED) {
-      multitask_scheduler_unlock();
+    if (next == g_kernel.mt->last_ready_to_run) {
+      g_kernel.mt->last_ready_to_run = NULL;
     }
 
     // TODO: what happens if we sleep the only available process?
@@ -153,12 +164,12 @@ void multitask_scheduler_lock(void) {
 }
 
 void multitask_scheduler_unlock(void) {
-  g_kernel.mt->switch_lock_count--;
+  if (g_kernel.mt->switch_lock_count > 0) { g_kernel.mt->switch_lock_count--; }
   if (g_kernel.mt->switch_lock_count == 0 && g_kernel.mt->switch_lock_flag) {
     g_kernel.mt->switch_lock_flag = false;
     multitask_schedule();
   }
-  g_kernel.mt->irq_lock_count--;
+  if (g_kernel.mt->irq_lock_count > 0) { g_kernel.mt->irq_lock_count--; }
   if (g_kernel.mt->irq_lock_count == 0) { asm volatile("sti"); }
 }
 
@@ -247,14 +258,13 @@ void wake_procs_before_timestamp(uint64_t timestamp) {
 
   if (g_kernel.mt->first_ready_to_run == NULL) {
     g_kernel.mt->first_ready_to_run = g_kernel.mt->sleeping;
+    g_kernel.mt->last_ready_to_run = last_to_wake;
   } else {
     g_kernel.mt->last_ready_to_run->next = g_kernel.mt->sleeping;
-    g_kernel.mt->last_ready_to_run = g_kernel.mt->sleeping;
+    g_kernel.mt->last_ready_to_run = last_to_wake;
   }
 
   g_kernel.mt->sleeping = last_to_wake->next;
-  g_kernel.mt->last_ready_to_run->next = last_to_wake;
-  g_kernel.mt->last_ready_to_run = last_to_wake;
   g_kernel.mt->last_ready_to_run->next = NULL;
 }
 
@@ -280,4 +290,14 @@ void insert_process_after(process_block_t* process, process_block_t* after) {
 
   process->next = after->next;
   after->next = process;
+}
+
+void proc_entry_wrapper(process_block_t* p) {
+  if (p == NULL) { return; }
+  if (p->status == PROC_STATUS_UNINITIALIZED) {
+    p->status = PROC_STATUS_RUNNING;
+    multitask_scheduler_unlock();
+  }
+  p->entry();
+  // TODO: Put process cleanup stuff here when needed
 }
