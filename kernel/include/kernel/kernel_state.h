@@ -22,8 +22,11 @@ struct tty_state;
 typedef struct tty_state tty_state_t;
 
 struct kernel_state {
+  // Begin ASM-mapped fields
   tss_t* tss;
   process_block_t* current_process;
+  // End asm-mapped fields
+
   multitask_state_t* mt;
   pit_state_t* pit;
   pmm_state_t* pmm;

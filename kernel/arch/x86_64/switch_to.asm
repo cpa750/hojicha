@@ -5,6 +5,9 @@
 %define PCB_CR3                      0
 %define PCB_RSP                      8
 %define PCB_STATUS                   16
+%define PCB_STATUS_RUNNING           1
+%define PCB_STATUS_UNINITIALIZED     255
+%define PCB_ENTRY                    24
 %define PCB_RSP0                     8
 %define TSS_RSP0                     4
 
@@ -37,8 +40,13 @@ switch_to:
     mov [rel g_kernel + G_KERNEL_CURRENT_PROCESS], rdi
 
     mov rsp,  [rdi + PCB_RSP]
+    mov rax,  [rdi + PCB_STATUS]
+    cmp rax,  PCB_STATUS_UNINITIALIZED
+    je .skip_status_update
+    mov byte [rdi + PCB_STATUS], PCB_STATUS_RUNNING
+
+.skip_status_update
     mov rax,  [rdi + PCB_CR3]
-    mov byte [rdi + PCB_STATUS], 1
     cmp rax, rcx
     je .skip_cr3
     mov cr3, rax
