@@ -21,6 +21,8 @@ struct multitask_state {
   uint64_t switch_lock_count;
   bool switch_lock_flag;
   process_block_t* sleeping;
+  uint64_t time_idle;
+  uint64_t idle_switch_timestamp;
 };
 
 typedef struct process_block process_block_t;
@@ -123,11 +125,17 @@ void multitask_schedule(void) {
 
   // TODO What happens to timekeeping if the switch fails?
   g_kernel.mt->time_elapsed = pit_get_ns_elapsed_since_init(g_kernel.pit);
-  g_kernel.current_process->elapsed +=
-      g_kernel.mt->time_elapsed - g_kernel.current_process->switch_timestamp;
+  if (g_kernel.current_process != NULL) {
+    g_kernel.current_process->elapsed +=
+        g_kernel.mt->time_elapsed - g_kernel.current_process->switch_timestamp;
+  } else {
+    g_kernel.mt->time_idle +=
+        g_kernel.mt->time_elapsed - g_kernel.mt->idle_switch_timestamp;
+  }
 
   if (g_kernel.mt->first_ready_to_run != NULL) {
-    if (g_kernel.current_process->status == PROC_STATUS_RUNNING) {
+    if (g_kernel.current_process != NULL &&
+        g_kernel.current_process->status == PROC_STATUS_RUNNING) {
       g_kernel.current_process->status = PROC_STATUS_READY_TO_RUN;
 
       // We only want to place the old process in the ready-to-run queue if
@@ -153,6 +161,24 @@ void multitask_schedule(void) {
     // TODO: what happens if we sleep the only available process?
     // g_kernel.current_process and its status is updated inside switch_to()
     multitask_switch(next);
+  } else if (g_kernel.current_process->status != PROC_STATUS_RUNNING) {
+    process_block_t* proc = g_kernel.current_process;
+    g_kernel.current_process = NULL;
+    g_kernel.mt->idle_switch_timestamp = g_kernel.mt->time_elapsed;
+
+    do {
+      asm volatile("sti");
+      asm volatile("hlt");
+      asm volatile("CLI");
+    } while (g_kernel.mt->first_ready_to_run == NULL);
+
+    g_kernel.current_process = proc;
+    proc->switch_timestamp = g_kernel.mt->time_elapsed;
+    g_kernel.mt->first_ready_to_run = g_kernel.mt->first_ready_to_run->next;
+    if (proc == g_kernel.mt->last_ready_to_run) {
+      g_kernel.mt->last_ready_to_run = NULL;
+    }
+    multitask_switch(proc);
   }
 }
 
