@@ -8,9 +8,13 @@ This project is a first effort at developing an operating system for the x86_64 
 Under (early) active development.
 
 ## Current goal:
-Improve build system
+A first go at a scheduler
 ### In progress:
-- Try out CMake
+- Implement timeslices
+### Planned:
+- Process termination and cleanup
+- Semaphores
+- IPC
 ## MVP Done:
 - Boot hello world
 - Basic TTY output
