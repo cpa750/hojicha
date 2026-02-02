@@ -23,6 +23,8 @@ struct multitask_state {
   process_block_t* sleeping;
   uint64_t time_idle;
   uint64_t idle_switch_timestamp;
+  uint64_t quantum_remaining;
+  uint64_t tick_interval_ms;
 };
 
 typedef struct process_block process_block_t;
@@ -47,6 +49,7 @@ extern void switch_to(process_block_t* process);
 
 void multitask_switch(process_block_t* process);
 void sleep_proc_until(process_block_t* process, uint64_t timestamp);
+void handle_timer(uint64_t timestamp);
 void wake_procs_before_timestamp(uint64_t timestamp);
 void mark_proc_range(process_block_t* start,
                      process_block_t* end,
@@ -269,6 +272,19 @@ void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
 
   multitask_schedule();
   multitask_scheduler_unlock();
+}
+
+void handle_timer(uint64_t timestamp) {
+  wake_procs_before_timestamp(timestamp);
+  if (g_kernel.mt->quantum_remaining != 0) {
+    if (g_kernel.mt->quantum_remaining <= g_kernel.mt->tick_interval_ms) {
+      multitask_scheduler_lock();
+      multitask_schedule();
+      multitask_scheduler_unlock();
+    } else {
+      g_kernel.mt->quantum_remaining -= g_kernel.mt->tick_interval_ms;
+    }
+  }
 }
 
 void wake_procs_before_timestamp(uint64_t timestamp) {
