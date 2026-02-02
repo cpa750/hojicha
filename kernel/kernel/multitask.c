@@ -48,6 +48,8 @@ static pit_callback_t pit_callback = {0};
 extern void switch_to(process_block_t* process);
 
 void multitask_switch(process_block_t* process);
+void multitask_scheduler_postpone(void);
+void multitask_scheduler_unpostpone(void);
 void sleep_proc_until(process_block_t* process, uint64_t timestamp);
 void handle_timer(uint64_t timestamp);
 void wake_procs_before_timestamp(uint64_t timestamp);
@@ -189,10 +191,21 @@ void multitask_scheduler_lock(void) {
   // TODO: this will need more fleshing out for multi-core support
   asm volatile("cli");
   g_kernel.mt->irq_lock_count++;
-  g_kernel.mt->switch_lock_count++;
 }
 
 void multitask_scheduler_unlock(void) {
+  if (g_kernel.mt->irq_lock_count > 0) { g_kernel.mt->irq_lock_count--; }
+  if (g_kernel.mt->irq_lock_count == 0) { asm volatile("sti"); }
+}
+
+void multitask_scheduler_postpone(void) {
+  // TODO: this will need more fleshing out for multi-core support
+  asm volatile("cli");
+  g_kernel.mt->irq_lock_count++;
+  g_kernel.mt->switch_lock_count++;
+}
+
+void multitask_scheduler_unpostpone(void) {
   if (g_kernel.mt->switch_lock_count > 0) { g_kernel.mt->switch_lock_count--; }
   if (g_kernel.mt->switch_lock_count == 0 && g_kernel.mt->switch_lock_flag) {
     g_kernel.mt->switch_lock_flag = false;
@@ -248,7 +261,7 @@ void multitask_sleep_ns(uint64_t ns) {
 void* multitask_process_block_get_cr3(process_block_t* p) { return p->cr3; }
 
 void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
-  multitask_scheduler_lock();
+  multitask_scheduler_postpone();
   process->sleep_until = timestamp;
   process->status = PROC_STATUS_PAUSED;
 
@@ -257,8 +270,10 @@ void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
   if (g_kernel.mt->sleeping == NULL) {
     process->next = NULL;
     g_kernel.mt->sleeping = process;
+    multitask_scheduler_lock();
     multitask_schedule();
     multitask_scheduler_unlock();
+    multitask_scheduler_unpostpone();
     return;
   }
 
@@ -270,11 +285,14 @@ void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
   }
   insert_process_after(process, last);
 
+  multitask_scheduler_lock();
   multitask_schedule();
   multitask_scheduler_unlock();
+  multitask_scheduler_unpostpone();
 }
 
 void handle_timer(uint64_t timestamp) {
+  multitask_scheduler_postpone();
   wake_procs_before_timestamp(timestamp);
   if (g_kernel.mt->quantum_remaining != 0) {
     if (g_kernel.mt->quantum_remaining <= g_kernel.mt->tick_interval_ms) {
@@ -285,6 +303,7 @@ void handle_timer(uint64_t timestamp) {
       g_kernel.mt->quantum_remaining -= g_kernel.mt->tick_interval_ms;
     }
   }
+  multitask_scheduler_unpostpone();
 }
 
 void wake_procs_before_timestamp(uint64_t timestamp) {
