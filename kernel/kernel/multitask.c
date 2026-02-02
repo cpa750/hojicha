@@ -169,11 +169,12 @@ void multitask_schedule(void) {
     do {
       asm volatile("sti");
       asm volatile("hlt");
-      asm volatile("CLI");
+      asm volatile("cli");
     } while (g_kernel.mt->first_ready_to_run == NULL);
 
     g_kernel.current_process = proc;
     proc->switch_timestamp = g_kernel.mt->time_elapsed;
+    proc = g_kernel.mt->first_ready_to_run;
     g_kernel.mt->first_ready_to_run = g_kernel.mt->first_ready_to_run->next;
     if (proc == g_kernel.mt->last_ready_to_run) {
       g_kernel.mt->last_ready_to_run = NULL;
@@ -259,6 +260,10 @@ void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
 
   process_block_t* last = find_last_sleep_timestamp_less_than_equal(
       g_kernel.mt->sleeping, timestamp);
+  if (last == NULL) {
+    process->next = g_kernel.mt->sleeping;
+    g_kernel.mt->sleeping = process;
+  }
   insert_process_after(process, last);
 
   multitask_schedule();
@@ -300,6 +305,7 @@ void wake_procs_before_timestamp(uint64_t timestamp) {
 process_block_t* find_last_sleep_timestamp_less_than_equal(
     process_block_t* process,
     uint64_t timestamp) {
+  if (process->sleep_until > timestamp) { return NULL; }
   process_block_t* ret = NULL;
   for (process_block_t* curr = process; curr != NULL; curr = curr->next) {
     if (curr->sleep_until <= timestamp) {
