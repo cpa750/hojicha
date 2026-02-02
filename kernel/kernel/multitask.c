@@ -69,8 +69,7 @@ void multitask_initialize(void) {
   asm volatile("\t movq %%rsp,%0" : "=r"(rsp));
   kernel_process->cr3 = (void*)cr3;
   kernel_process->rsp = (void*)rsp;
-  kernel_process->status = 0;
-  kernel_process->next = kernel_process;
+  kernel_process->next = NULL;
   kernel_process->status = PROC_STATUS_RUNNING;
   mt.first_ready_to_run = NULL;
   mt.last_ready_to_run = NULL;
@@ -249,6 +248,8 @@ void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
   multitask_scheduler_lock();
   process->sleep_until = timestamp;
   process->status = PROC_STATUS_PAUSED;
+
+  // TODO rewrite this to use `multitask_block()`
 
   if (g_kernel.mt->sleeping == NULL) {
     process->next = NULL;
