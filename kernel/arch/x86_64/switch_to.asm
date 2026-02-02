@@ -33,10 +33,14 @@ switch_to:
 
     mov rax, g_kernel
     mov rbx, [rax + G_KERNEL_CURRENT_PROCESS]
+    mov rcx, 0
+    cmp rcx, rbx
     mov rcx, cr3
+    je .skip_current_process_update
     mov [rbx + PCB_CR3], rcx
     mov [rbx + PCB_RSP], rsp
 
+.skip_current_process_update:
     mov [rel g_kernel + G_KERNEL_CURRENT_PROCESS], rdi
 
     mov rsp,  [rdi + PCB_RSP]
@@ -45,7 +49,7 @@ switch_to:
     je .skip_status_update
     mov byte [rdi + PCB_STATUS], PCB_STATUS_RUNNING
 
-.skip_status_update
+.skip_status_update:
     mov rax,  [rdi + PCB_CR3]
     cmp rax, rcx
     je .skip_cr3

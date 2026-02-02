@@ -27,8 +27,8 @@ void test(void) {
 
 void test_sleep(void) {
   while (1) {
-    multitask_sleep(1);
-    printf("Awake!\n");
+    multitask_sleep(5);
+    printf("Sleep task awake!\n");
   }
 }
 
@@ -113,6 +113,9 @@ void kernel_main() {
   while (1) {
     // printf("we're so back\n");
     // multitask_unblock(new_proc);
+    multitask_sleep(1);
+
+    printf("Kernel awake!\n");
 
     multitask_scheduler_lock();
     multitask_schedule();
