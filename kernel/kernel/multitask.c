@@ -11,6 +11,7 @@
 #define PROC_STATUS_RUNNING       0b00000001
 #define PROC_STATUS_READY_TO_RUN  0b00000010
 #define STACK_SIZE                16384
+#define QUANTUM_LENGTH            5000000  // 5 ms
 
 struct multitask_state {
   process_block_t* first_ready_to_run;
@@ -24,7 +25,7 @@ struct multitask_state {
   uint64_t time_idle;
   uint64_t idle_switch_timestamp;
   uint64_t quantum_remaining;
-  uint64_t tick_interval_ms;
+  uint64_t tick_interval_ns;
 };
 
 typedef struct process_block process_block_t;
@@ -78,9 +79,10 @@ void multitask_initialize(void) {
   kernel_process->status = PROC_STATUS_RUNNING;
   mt.first_ready_to_run = NULL;
   mt.last_ready_to_run = NULL;
+  mt.tick_interval_ns = pit_state_get_tick_interval_ns(g_kernel.pit);
   g_kernel.mt = &mt;
   g_kernel.current_process = kernel_process;
-  pit_callback.callback_func = wake_procs_before_timestamp;
+  pit_callback.callback_func = handle_timer;
   pit_callback.next = NULL;
   pit_register_callback(&pit_callback);
 }
@@ -122,12 +124,12 @@ void multitask_scheduler_add_proc(process_block_t* process) {
 }
 
 void multitask_schedule(void) {
+  // TODO: refactor this mess of a function
   if (g_kernel.mt->switch_lock_count > 0) {
     g_kernel.mt->switch_lock_flag = true;
     return;
   }
 
-  // TODO What happens to timekeeping if the switch fails?
   g_kernel.mt->time_elapsed = pit_get_ns_elapsed_since_init(g_kernel.pit);
   if (g_kernel.current_process != NULL) {
     g_kernel.current_process->elapsed +=
@@ -155,6 +157,7 @@ void multitask_schedule(void) {
       }
     }
 
+    g_kernel.mt->quantum_remaining = QUANTUM_LENGTH;
     process_block_t* next = g_kernel.mt->first_ready_to_run;
     next->switch_timestamp = g_kernel.mt->time_elapsed;
     g_kernel.mt->first_ready_to_run = g_kernel.mt->first_ready_to_run->next;
@@ -176,6 +179,7 @@ void multitask_schedule(void) {
       asm volatile("cli");
     } while (g_kernel.mt->first_ready_to_run == NULL);
 
+    g_kernel.mt->quantum_remaining = 0;
     g_kernel.current_process = proc;
     proc->switch_timestamp = g_kernel.mt->time_elapsed;
     proc = g_kernel.mt->first_ready_to_run;
@@ -292,15 +296,17 @@ void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
 }
 
 void handle_timer(uint64_t timestamp) {
+  // TODO: figure out why calls to printf() that are preempted break
+  // framebuffer line scrolling
   multitask_scheduler_postpone();
   wake_procs_before_timestamp(timestamp);
   if (g_kernel.mt->quantum_remaining != 0) {
-    if (g_kernel.mt->quantum_remaining <= g_kernel.mt->tick_interval_ms) {
+    if (g_kernel.mt->quantum_remaining <= g_kernel.mt->tick_interval_ns) {
       multitask_scheduler_lock();
       multitask_schedule();
       multitask_scheduler_unlock();
     } else {
-      g_kernel.mt->quantum_remaining -= g_kernel.mt->tick_interval_ms;
+      g_kernel.mt->quantum_remaining -= g_kernel.mt->tick_interval_ns;
     }
   }
   multitask_scheduler_unpostpone();

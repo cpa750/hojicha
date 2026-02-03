@@ -18,10 +18,25 @@
 #include <stdlib.h>
 
 static process_block_t* kernel_proc;
-void test(void) {
+
+static bool sleep_awake_1 = false;
+static bool sleep_awake_2 = false;
+
+void test1(void) {
   while (1) {
-    printf("hello from the other side\n");
-    multitask_block(PROC_STATUS_PAUSED);
+    if (sleep_awake_1) {
+      printf("1\n");
+      sleep_awake_1 = false;
+    }
+  }
+}
+
+void test2(void) {
+  while (1) {
+    if (sleep_awake_2) {
+      printf("2\n");
+      sleep_awake_2 = false;
+    }
   }
 }
 
@@ -29,6 +44,8 @@ void test_sleep(void) {
   while (1) {
     multitask_sleep(5);
     printf("Sleep task awake!\n");
+    sleep_awake_1 = true;
+    sleep_awake_2 = true;
   }
 }
 
@@ -101,9 +118,18 @@ void kernel_main() {
   asm volatile("sti");
 
   kernel_proc = g_kernel.current_process;
-  process_block_t* new_proc = multitask_proc_new(
+
+  process_block_t* sleep_proc = multitask_proc_new(
       test_sleep, multitask_process_block_get_cr3(kernel_proc));
-  multitask_scheduler_add_proc(new_proc);
+  multitask_scheduler_add_proc(sleep_proc);
+
+  process_block_t* test1_proc =
+      multitask_proc_new(test1, multitask_process_block_get_cr3(kernel_proc));
+  multitask_scheduler_add_proc(test1_proc);
+
+  process_block_t* test2_proc =
+      multitask_proc_new(test2, multitask_process_block_get_cr3(kernel_proc));
+  multitask_scheduler_add_proc(test2_proc);
 
   // while (1) asm volatile("hlt");
   multitask_scheduler_lock();
