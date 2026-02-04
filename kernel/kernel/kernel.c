@@ -40,6 +40,16 @@ void test2(void) {
   }
 }
 
+void test3(void) {
+  multitask_sleep(7);
+  printf("test3, about to die o7\n");
+}
+
+void test4(void) {
+  multitask_sleep(7);
+  printf("test4, about to die o7\n");
+}
+
 void test_sleep(void) {
   while (1) {
     multitask_sleep(5);
@@ -131,17 +141,31 @@ void kernel_main() {
       multitask_proc_new(test2, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test2_proc);
 
+  process_block_t* test3_proc =
+      multitask_proc_new(test3, multitask_process_block_get_cr3(kernel_proc));
+  multitask_scheduler_add_proc(test3_proc);
+
+  process_block_t* test4_proc =
+      multitask_proc_new(test4, multitask_process_block_get_cr3(kernel_proc));
+  multitask_scheduler_add_proc(test4_proc);
+
   // while (1) asm volatile("hlt");
   multitask_scheduler_lock();
   multitask_schedule();
   multitask_scheduler_unlock();
 
+  uint8_t count = 0;
   while (1) {
     // printf("we're so back\n");
     // multitask_unblock(new_proc);
     multitask_sleep(1);
 
     printf("Kernel awake!\n");
+
+    if (count++ == 15) {
+      printf("terminating task 2");
+      multitask_proc_terminate(test2_proc);
+    }
 
     multitask_scheduler_lock();
     multitask_schedule();

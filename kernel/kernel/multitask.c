@@ -10,14 +10,14 @@
 #define PROC_STATUS_UNINITIALIZED 0b11111111
 #define PROC_STATUS_RUNNING       0b00000001
 #define PROC_STATUS_READY_TO_RUN  0b00000010
+#define PROC_STATUS_READY_TO_DIE  0b00000100
 #define STACK_SIZE                16384
 #define QUANTUM_LENGTH            5000000  // 5 ms
 
 struct multitask_state {
   process_block_t* first_ready_to_run;
   process_block_t* last_ready_to_run;
-  process_block_t* first_ready_to_die;
-  process_block_t* last_ready_to_die;
+  process_block_t* ready_to_die;
   uint64_t time_elapsed;
   uint64_t irq_lock_count;
   uint64_t switch_lock_count;
@@ -67,6 +67,7 @@ void insert_process_after(process_block_t* process, process_block_t* after);
 void set_last_ready_to_run(multitask_state_t* mt,
                            process_block_t* first_ready_to_run);
 void proc_entry_wrapper(process_block_t* p);
+void multitask_proc_terminate(process_block_t* p);
 void terminator(void);
 
 void multitask_initialize(void) {
@@ -83,11 +84,7 @@ void multitask_initialize(void) {
 
   mt.first_ready_to_run = NULL;
   mt.last_ready_to_run = NULL;
-  mt.first_ready_to_die = NULL;
-
-  process_block_t* terminator_task =
-      multitask_proc_new(terminator, kernel_process->cr3);
-  multitask_scheduler_add_proc(terminator_task);
+  mt.ready_to_die = NULL;
 
   mt.tick_interval_ns = pit_state_get_tick_interval_ns(g_kernel.pit);
   g_kernel.mt = &mt;
@@ -95,6 +92,10 @@ void multitask_initialize(void) {
   pit_callback.callback_func = handle_timer;
   pit_callback.next = NULL;
   pit_register_callback(&pit_callback);
+
+  process_block_t* terminator_task =
+      multitask_proc_new(terminator, kernel_process->cr3);
+  multitask_scheduler_add_proc(terminator_task);
 }
 
 process_block_t* multitask_proc_new(proc_entry_t entry, void* cr3) {
@@ -233,6 +234,18 @@ void multitask_switch(process_block_t* process) {
   asm volatile("cli");
   switch_to(process);
   asm volatile("sti");
+}
+
+void multitask_proc_terminate(process_block_t* p) {
+  multitask_scheduler_postpone();
+
+  multitask_scheduler_lock();
+  p->next = g_kernel.mt->ready_to_die;
+  g_kernel.mt->ready_to_die = p;
+  multitask_scheduler_unlock();
+
+  multitask_block(PROC_STATUS_READY_TO_DIE);
+  multitask_scheduler_unpostpone();
 }
 
 void set_last_ready_to_run(multitask_state_t* mt,
@@ -383,15 +396,7 @@ void proc_entry_wrapper(process_block_t* p) {
     multitask_scheduler_unlock();
   }
   p->entry();
-
-  p->next = NULL;
-  if (g_kernel.mt->first_ready_to_die == NULL) {
-    g_kernel.mt->first_ready_to_die = p;
-    g_kernel.mt->last_ready_to_die = p;
-  } else {
-    g_kernel.mt->last_ready_to_die->next = p;
-    g_kernel.mt->last_ready_to_die = p;
-  }
+  multitask_proc_terminate(p);
 }
 
 /*
@@ -399,20 +404,20 @@ void proc_entry_wrapper(process_block_t* p) {
  */
 void terminator(void) {
   while (true) {
-    if (g_kernel.mt->first_ready_to_die == NULL) {
+    if (g_kernel.mt->ready_to_die == NULL) {
       multitask_scheduler_lock();
       multitask_schedule();
       multitask_scheduler_unlock();
+    } else {
+      multitask_scheduler_postpone();
+      for (process_block_t* p = g_kernel.mt->ready_to_die; p != NULL;
+           p = p->next) {
+        // TODO: Is this really all that's required for this at the moment?
+        free(p->stack_end);
+        free(p);
+      }
+      g_kernel.mt->ready_to_die = NULL;
+      multitask_scheduler_unpostpone();
     }
-    multitask_scheduler_postpone();
-    for (process_block_t* p = g_kernel.mt->first_ready_to_die; p != NULL;
-         p = p->next) {
-      // TODO: Is this really all that's required for this at the moment?
-      free(p->stack_end);
-      free(p);
-    }
-    g_kernel.mt->first_ready_to_die = NULL;
-    g_kernel.mt->last_ready_to_die = NULL;
-    multitask_scheduler_unpostpone();
   }
 }
