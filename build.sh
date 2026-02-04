@@ -16,7 +16,7 @@ if [[ "$*" == *"--kmalloc-test"* ]]; then
 fi
 
 for PROJECT in $PROJECTS; do
-  (cd $PROJECT && DESTDIR="$SYSROOT" bear -- $MAKE $DEBUG_QEMU $KMALLOC_TEST HOST=$HOST install)
+  (cd $PROJECT && DESTDIR="$SYSROOT" bear --append -- $MAKE $DEBUG_QEMU $KMALLOC_TEST HOST=$HOST install)
 done
 
 jq -s 'add' $(printf '%s/compile_commands.json ' $PROJECTS) > compile_commands.json

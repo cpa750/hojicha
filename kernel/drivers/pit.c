@@ -11,6 +11,7 @@
 struct pit_state {
   uint64_t ticks_since_init;
   uint64_t ticks_per_second;
+  uint64_t tick_interval_ns;
   pit_callback_t* callbacks_start;
   pit_callback_t* callbacks_end;
 };
@@ -20,8 +21,13 @@ static pit_state_t pit = {0};
 
 void call_callbacks(pit_callback_t* callbacks);
 
+uint64_t pit_state_get_tick_interval_ns(pit_state_t* pit) {
+  return pit->tick_interval_ns;
+}
+
 void initialize_pit() {
   pit.ticks_per_second = TICKS_PER_SECOND;
+  pit.tick_interval_ns = NS_DIVISOR / TICKS_PER_SECOND;
   ticks = 0;
   // Clock runs at roughtly 1.193180 MHz
   uint16_t divisor = 1193180 / TICKS_PER_SECOND;
