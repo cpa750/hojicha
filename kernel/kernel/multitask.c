@@ -16,7 +16,8 @@
 struct multitask_state {
   process_block_t* first_ready_to_run;
   process_block_t* last_ready_to_run;
-  process_block_t* ready_to_run_head;
+  process_block_t* first_ready_to_die;
+  process_block_t* last_ready_to_die;
   uint64_t time_elapsed;
   uint64_t irq_lock_count;
   uint64_t switch_lock_count;
@@ -37,6 +38,7 @@ struct process_block {
   proc_entry_t entry;
   // End asm-mapped fields
 
+  void* stack_end;
   process_block_t* next;
   uint64_t elapsed;
   uint64_t switch_timestamp;
@@ -65,6 +67,7 @@ void insert_process_after(process_block_t* process, process_block_t* after);
 void set_last_ready_to_run(multitask_state_t* mt,
                            process_block_t* first_ready_to_run);
 void proc_entry_wrapper(process_block_t* p);
+void terminator(void);
 
 void multitask_initialize(void) {
   process_block_t* kernel_process =
@@ -77,8 +80,15 @@ void multitask_initialize(void) {
   kernel_process->rsp = (void*)rsp;
   kernel_process->next = NULL;
   kernel_process->status = PROC_STATUS_RUNNING;
+
   mt.first_ready_to_run = NULL;
   mt.last_ready_to_run = NULL;
+  mt.first_ready_to_die = NULL;
+
+  process_block_t* terminator_task =
+      multitask_proc_new(terminator, kernel_process->cr3);
+  multitask_scheduler_add_proc(terminator_task);
+
   mt.tick_interval_ns = pit_state_get_tick_interval_ns(g_kernel.pit);
   g_kernel.mt = &mt;
   g_kernel.current_process = kernel_process;
@@ -88,12 +98,12 @@ void multitask_initialize(void) {
 }
 
 process_block_t* multitask_proc_new(proc_entry_t entry, void* cr3) {
-  // TODO figure out a way of ending processes
   process_block_t* new_proc = (process_block_t*)malloc(sizeof(process_block_t));
   new_proc->cr3 = cr3;
   new_proc->entry = entry;
-  uint8_t* new_stack_end = (uint8_t*)malloc(STACK_SIZE);
-  haddr_t stack_base = (haddr_t)(new_stack_end + STACK_SIZE);
+  uint8_t* stack_end = (uint8_t*)malloc(STACK_SIZE);
+  new_proc->stack_end = stack_end;
+  haddr_t stack_base = (haddr_t)(stack_end + STACK_SIZE);
   stack_base &= ~0xFULL;
   stack_base -= 8;
   *(haddr_t*)stack_base = (haddr_t)proc_entry_wrapper;
@@ -373,5 +383,36 @@ void proc_entry_wrapper(process_block_t* p) {
     multitask_scheduler_unlock();
   }
   p->entry();
-  // TODO: Put process cleanup stuff here when needed
+
+  p->next = NULL;
+  if (g_kernel.mt->first_ready_to_die == NULL) {
+    g_kernel.mt->first_ready_to_die = p;
+    g_kernel.mt->last_ready_to_die = p;
+  } else {
+    g_kernel.mt->last_ready_to_die->next = p;
+    g_kernel.mt->last_ready_to_die = p;
+  }
+}
+
+/*
+ * The task to terminate all tasks.
+ */
+void terminator(void) {
+  while (true) {
+    if (g_kernel.mt->first_ready_to_die == NULL) {
+      multitask_scheduler_lock();
+      multitask_schedule();
+      multitask_scheduler_unlock();
+    }
+    multitask_scheduler_postpone();
+    for (process_block_t* p = g_kernel.mt->first_ready_to_die; p != NULL;
+         p = p->next) {
+      // TODO: Is this really all that's required for this at the moment?
+      free(p->stack_end);
+      free(p);
+    }
+    g_kernel.mt->first_ready_to_die = NULL;
+    g_kernel.mt->last_ready_to_die = NULL;
+    multitask_scheduler_unpostpone();
+  }
 }
