@@ -160,9 +160,16 @@ void kernel_main() {
 
     printf("Kernel awake!\n");
 
-    if (count++ == 15) {
+    ++count;
+
+    if (count == 15) {
       printf("terminating task 2\n");
       multitask_proc_terminate(test2_proc);
+    }
+
+    if (count == 21) {
+      printf("terminating task 1\n");
+      multitask_proc_terminate(test1_proc);
     }
 
     multitask_scheduler_lock();

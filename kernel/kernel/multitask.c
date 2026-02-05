@@ -266,7 +266,17 @@ void remove_proc(process_block_t* p) {
   }
 
   if (p == head) {
-    head = p->next;
+    switch (p->status) {
+      case PROC_STATUS_READY_TO_RUN:
+      case PROC_STATUS_UNINITIALIZED:
+        g_kernel.mt->first_ready_to_run = p->next;
+        break;
+      case PROC_STATUS_PAUSED:
+        g_kernel.mt->sleeping = p->next;
+        break;
+      default:
+        return;
+    }
   } else {
     process_block_t* last = head;
     process_block_t* proc;
