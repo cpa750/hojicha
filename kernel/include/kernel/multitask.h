@@ -4,7 +4,8 @@
 #include <haddr.h>
 #include <stdint.h>
 
-#define PROC_STATUS_PAUSED 0b00000100
+#define PROC_STATUS_PAUSED    0b00000100
+#define PROC_STATUS_SEMAPHORE 0b00001000
 
 /*
  * The entry point of the process. Must take no parameters and return void.
@@ -16,6 +17,9 @@ typedef void (*proc_entry_t)(void);
  */
 typedef struct process_block process_block_t;
 struct process_block;
+
+process_block_t* multitask_pb_get_next(process_block_t* p);
+void multitask_pb_set_next(process_block_t* p, process_block_t* next);
 
 struct multitask_state;
 typedef struct multitask_state multitask_state_t;
@@ -52,6 +56,18 @@ void multitask_schedule(void);
 
 void multitask_scheduler_lock(void);
 void multitask_scheduler_unlock(void);
+
+/*
+ * Postpones task switches performed by the scheduler. Can be resumed with
+ * `multitask_scheduler_resume()`.
+ */
+void multitask_scheduler_postpone(void);
+
+/*
+ * Resumes task switches performed by the scheduler previously postponed
+ * with `multitask_scheduler_postpone()`.
+ */
+void multitask_scheduler_resume(void);
 
 /*
  * Blocks the current process with the given `reason`.

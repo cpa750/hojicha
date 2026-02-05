@@ -45,6 +45,11 @@ struct process_block {
   uint64_t sleep_until;
 };
 
+process_block_t* multitask_pb_get_next(process_block_t* p) { return p->next; }
+void multitask_pb_set_next(process_block_t* p, process_block_t* next) {
+  p->next = next;
+}
+
 static multitask_state_t mt = {0};
 static pit_callback_t pit_callback = {0};
 
