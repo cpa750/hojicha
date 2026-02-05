@@ -89,6 +89,7 @@ fonts/inconsolata.c \
 kernel/kernel.c \
 kernel/kernel_state.c \
 kernel/multitask.c \
+kernel/semaphore.c \
 memory/kmalloc.c \
 memory/kmalloc_test.c \
 memory/pmm.c \

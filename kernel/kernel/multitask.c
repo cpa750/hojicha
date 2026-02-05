@@ -45,14 +45,17 @@ struct process_block {
   uint64_t sleep_until;
 };
 
+process_block_t* multitask_pb_get_next(process_block_t* p) { return p->next; }
+void multitask_pb_set_next(process_block_t* p, process_block_t* next) {
+  p->next = next;
+}
+
 static multitask_state_t mt = {0};
 static pit_callback_t pit_callback = {0};
 
 extern void switch_to(process_block_t* process);
 
 void multitask_switch(process_block_t* process);
-void multitask_scheduler_postpone(void);
-void multitask_scheduler_unpostpone(void);
 
 void block_process(process_block_t* p, uint8_t reason);
 process_block_t* find_last_sleep_timestamp_less_than_equal(
@@ -227,7 +230,7 @@ void multitask_scheduler_postpone(void) {
   g_kernel.mt->switch_lock_count++;
 }
 
-void multitask_scheduler_unpostpone(void) {
+void multitask_scheduler_resume(void) {
   if (g_kernel.mt->switch_lock_count > 0) { g_kernel.mt->switch_lock_count--; }
   if (g_kernel.mt->switch_lock_count == 0 && g_kernel.mt->switch_lock_flag) {
     g_kernel.mt->switch_lock_flag = false;
@@ -272,7 +275,7 @@ void multitask_proc_terminate(process_block_t* p) {
   multitask_scheduler_unlock();
 
   block_process(p, PROC_STATUS_READY_TO_DIE);
-  multitask_scheduler_unpostpone();
+  multitask_scheduler_resume();
 }
 
 void* multitask_process_block_get_cr3(process_block_t* p) { return p->cr3; }
@@ -316,7 +319,7 @@ void handle_timer(uint64_t timestamp) {
       g_kernel.mt->quantum_remaining -= g_kernel.mt->tick_interval_ns;
     }
   }
-  multitask_scheduler_unpostpone();
+  multitask_scheduler_resume();
 }
 
 void insert_process_after(process_block_t* process, process_block_t* after) {
@@ -398,7 +401,7 @@ void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
     multitask_scheduler_lock();
     multitask_schedule();
     multitask_scheduler_unlock();
-    multitask_scheduler_unpostpone();
+    multitask_scheduler_resume();
     return;
   }
 
@@ -413,7 +416,7 @@ void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
   multitask_scheduler_lock();
   multitask_schedule();
   multitask_scheduler_unlock();
-  multitask_scheduler_unpostpone();
+  multitask_scheduler_resume();
 }
 
 /*
@@ -434,7 +437,7 @@ void terminator(void) {
         free(p);
       }
       g_kernel.mt->ready_to_die = NULL;
-      multitask_scheduler_unpostpone();
+      multitask_scheduler_resume();
     }
   }
 }
