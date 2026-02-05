@@ -8,6 +8,7 @@
 #include <drivers/vga.h>
 #include <kernel/kernel_state.h>
 #include <kernel/multitask.h>
+#include <kernel/semaphore.h>
 #include <limine.h>
 #include <memory/kmalloc.h>
 #include <memory/pmm.h>
@@ -19,6 +20,7 @@
 
 static process_block_t* kernel_proc;
 
+static semaphore_t* semaphore;
 static bool sleep_awake_1 = false;
 static bool sleep_awake_2 = false;
 
@@ -48,6 +50,45 @@ void test3(void) {
 void test4(void) {
   multitask_sleep(7);
   printf("test4, about to die o7\n");
+}
+
+void test5(void) {
+  printf("test5, locking semaphore...\n");
+  semaphore_lock(semaphore);
+  printf("locked semaphore and sleeping 17s\n");
+  multitask_sleep(7);
+  printf("test5, unlocking semaphore and dying o7\n");
+  semaphore_unlock(semaphore);
+}
+
+void test6(void) {
+  printf("task6, locking semaphore...\n");
+  semaphore_lock(semaphore);
+  printf("task6, locked semaphore, unlocking semaphore and dying o7\n");
+  semaphore_unlock(semaphore);
+}
+
+void test7(void) {
+  printf("task7, trying to lock semaphore...\n");
+  bool success = semaphore_try_lock(semaphore);
+  if (success) {
+    printf("uh oh\n");
+    semaphore_unlock(semaphore);
+  } else {
+    printf("task7, failed to acquire semaphore, dying o7\n");
+  }
+}
+
+void test8(void) {
+  multitask_sleep(20);
+  printf("task8, trying to lock semaphore...\n");
+  bool success = semaphore_try_lock(semaphore);
+  if (!success) {
+    printf("uh oh\n");
+  } else {
+    printf("task8, acquired semaphore, dying o7\n");
+    semaphore_unlock(semaphore);
+  }
 }
 
 void test_sleep(void) {
@@ -129,6 +170,8 @@ void kernel_main() {
 
   kernel_proc = g_kernel.current_process;
 
+  semaphore = semaphore_create(1);
+
   process_block_t* sleep_proc = multitask_proc_new(
       test_sleep, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(sleep_proc);
@@ -149,10 +192,23 @@ void kernel_main() {
       multitask_proc_new(test4, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test4_proc);
 
+  process_block_t* test5_proc =
+      multitask_proc_new(test5, multitask_process_block_get_cr3(kernel_proc));
+  multitask_scheduler_add_proc(test5_proc);
+
+  process_block_t* test6_proc =
+      multitask_proc_new(test6, multitask_process_block_get_cr3(kernel_proc));
+  multitask_scheduler_add_proc(test6_proc);
+
+  process_block_t* test7_proc =
+      multitask_proc_new(test7, multitask_process_block_get_cr3(kernel_proc));
+  multitask_scheduler_add_proc(test7_proc);
+
+  process_block_t* test8_proc =
+      multitask_proc_new(test8, multitask_process_block_get_cr3(kernel_proc));
+  multitask_scheduler_add_proc(test8_proc);
+
   // while (1) asm volatile("hlt");
-  multitask_scheduler_lock();
-  multitask_schedule();
-  multitask_scheduler_unlock();
 
   uint8_t count = 0;
   while (1) {
@@ -171,10 +227,6 @@ void kernel_main() {
       printf("terminating task 1\n");
       multitask_proc_terminate(test1_proc);
     }
-
-    multitask_scheduler_lock();
-    multitask_schedule();
-    multitask_scheduler_unlock();
   }
 }
 
