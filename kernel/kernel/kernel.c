@@ -156,14 +156,12 @@ void kernel_main() {
 
   uint8_t count = 0;
   while (1) {
-    // printf("we're so back\n");
-    // multitask_unblock(new_proc);
     multitask_sleep(1);
 
     printf("Kernel awake!\n");
 
     if (count++ == 15) {
-      printf("terminating task 2");
+      printf("terminating task 2\n");
       multitask_proc_terminate(test2_proc);
     }
 

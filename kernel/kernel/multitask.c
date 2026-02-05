@@ -50,25 +50,27 @@ static pit_callback_t pit_callback = {0};
 
 extern void switch_to(process_block_t* process);
 
+void multitask_proc_terminate(process_block_t* p);
 void multitask_switch(process_block_t* process);
 void multitask_scheduler_postpone(void);
 void multitask_scheduler_unpostpone(void);
-void sleep_proc_until(process_block_t* process, uint64_t timestamp);
-void handle_timer(uint64_t timestamp);
-void wake_procs_before_timestamp(uint64_t timestamp);
-void mark_proc_range(process_block_t* start,
-                     process_block_t* end,
-                     uint8_t status);
+
+void block_process(process_block_t* p, uint8_t reason);
 process_block_t* find_last_sleep_timestamp_less_than_equal(
     process_block_t* process,
     uint64_t timestamp);
+void handle_timer(uint64_t timestamp);
 void insert_process_after(process_block_t* process, process_block_t* after);
-
+void mark_proc_range(process_block_t* start,
+                     process_block_t* end,
+                     uint8_t status);
+void proc_entry_wrapper(process_block_t* p);
 void set_last_ready_to_run(multitask_state_t* mt,
                            process_block_t* first_ready_to_run);
-void proc_entry_wrapper(process_block_t* p);
-void multitask_proc_terminate(process_block_t* p);
+void remove_proc(process_block_t* p);
+void sleep_proc_until(process_block_t* process, uint64_t timestamp);
 void terminator(void);
+void wake_procs_before_timestamp(uint64_t timestamp);
 
 void multitask_initialize(void) {
   process_block_t* kernel_process =
@@ -240,12 +242,42 @@ void multitask_proc_terminate(process_block_t* p) {
   multitask_scheduler_postpone();
 
   multitask_scheduler_lock();
+  if (p != g_kernel.current_process) { remove_proc(p); }
   p->next = g_kernel.mt->ready_to_die;
   g_kernel.mt->ready_to_die = p;
   multitask_scheduler_unlock();
 
-  multitask_block(PROC_STATUS_READY_TO_DIE);
+  block_process(p, PROC_STATUS_READY_TO_DIE);
   multitask_scheduler_unpostpone();
+}
+
+void remove_proc(process_block_t* p) {
+  process_block_t* head;
+  switch (p->status) {
+    case PROC_STATUS_READY_TO_RUN:
+    case PROC_STATUS_UNINITIALIZED:
+      head = g_kernel.mt->first_ready_to_run;
+      break;
+    case PROC_STATUS_PAUSED:
+      head = g_kernel.mt->sleeping;
+      break;
+    default:
+      return;
+  }
+
+  if (p == head) {
+    head = p->next;
+  } else {
+    process_block_t* last = head;
+    process_block_t* proc;
+    for (proc = head; proc != p && proc != NULL; proc = proc->next) {
+      last = proc;
+    }
+    if (proc != NULL) {
+      last->next = proc->next;
+      proc->next = NULL;
+    }
+  }
 }
 
 void set_last_ready_to_run(multitask_state_t* mt,
@@ -258,10 +290,7 @@ void set_last_ready_to_run(multitask_state_t* mt,
 }
 
 void multitask_block(uint8_t reason) {
-  multitask_scheduler_lock();
-  g_kernel.current_process->status = reason;
-  multitask_schedule();
-  multitask_scheduler_unlock();
+  block_process(g_kernel.current_process, reason);
 }
 
 void multitask_unblock(process_block_t* process) {
@@ -286,6 +315,13 @@ void multitask_sleep_ns(uint64_t ns) {
 }
 
 void* multitask_process_block_get_cr3(process_block_t* p) { return p->cr3; }
+
+void block_process(process_block_t* p, uint8_t reason) {
+  multitask_scheduler_lock();
+  p->status = reason;
+  multitask_schedule();
+  multitask_scheduler_unlock();
+}
 
 void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
   multitask_scheduler_postpone();
