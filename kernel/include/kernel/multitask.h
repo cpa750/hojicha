@@ -25,12 +25,6 @@ void multitask_state_dump(multitask_state_t* mt);
 void multitask_initialize(void);
 
 /*
- * Adds a proc to the scheduler's queue.
- * The process will be added in a `READY_TO_RUN` state.
- */
-void multitask_scheduler_add_proc(process_block_t* process);
-
-/*
  * Creates a new process with the given entry address.
  * The memory allocated for the task is deallocated via a call
  * to `multitask_proc_terminate()`, or when the process finishes
@@ -38,6 +32,12 @@ void multitask_scheduler_add_proc(process_block_t* process);
  * on the process handle manually.
  */
 process_block_t* multitask_proc_new(proc_entry_t entry, void* cr3);
+
+/*
+ * Adds a proc to the scheduler's queue.
+ * The process will be added in a `READY_TO_RUN` state.
+ */
+void multitask_scheduler_add_proc(process_block_t* process);
 
 /*
  * Advances the scheduler if there is an available next process.
