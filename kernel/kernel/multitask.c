@@ -425,6 +425,7 @@ void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
 void terminator(void) {
   while (true) {
     if (g_kernel.mt->ready_to_die == NULL) {
+      // TODO: improve this so it immediately yields with `multitask_block()`
       multitask_scheduler_lock();
       multitask_schedule();
       multitask_scheduler_unlock();
