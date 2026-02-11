@@ -13,11 +13,9 @@ static uint16_t terminal_column;
 static uint32_t terminal_color;
 
 static uint32_t* framebuffer;
-static uint32_t* framebuffer_end;
 static uint64_t vga_height;
 static uint64_t vga_width;
 static uint64_t vga_pitch;
-static uint32_t* clear_start;
 
 // TODO chage this once we can malloc again
 static uint16_t terminal_buffer[5000];
@@ -63,13 +61,10 @@ void terminal_initialize(void) {
   tty.caret = &caret;
   g_kernel.tty = &tty;
 
-  uint32_t* framebuffer_end = vga_state_get_framebuffer_end(g_kernel.vga);
-
   framebuffer = vga_state_get_framebuffer_addr(g_kernel.vga);
   vga_height = vga_state_get_height(g_kernel.vga);
   vga_width = vga_state_get_width(g_kernel.vga);
   vga_pitch = vga_state_get_pitch(g_kernel.vga);
-  clear_start = framebuffer_end - ((vga_pitch * INCONSOLATA_HEIGHT) >> 2);
   terminal_caret_enable(&tty);
 }
 
@@ -85,15 +80,22 @@ void terminal_put_entry_at(unsigned char c, uint32_t fg, size_t x, size_t y) {
 }
 
 void scroll() {
-  // TODO does a generalized version of this belong in the VGA driver?
-  for (uint64_t i = 0; i < vga_width * (vga_height - INCONSOLATA_HEIGHT); ++i) {
-    if (framebuffer[i + (vga_width * INCONSOLATA_HEIGHT)] != 0) {
-      framebuffer[i] = framebuffer[i + (vga_width * INCONSOLATA_HEIGHT)];
-    } else {
-      framebuffer[i] = 0;
-    }
+  uint64_t row_stride = vga_pitch / sizeof(uint32_t);
+  uint64_t text_scanlines = g_kernel.tty->height * INCONSOLATA_HEIGHT;
+  uint64_t scroll_scanlines = INCONSOLATA_HEIGHT;
+
+  if (text_scanlines <= scroll_scanlines) { return; }
+
+  uint64_t text_rows = g_kernel.tty->height;
+  for (uint64_t row = 0; row < text_rows - 1; ++row) {
+    uint32_t* dst = framebuffer + (row * scroll_scanlines * row_stride);
+    uint32_t* src = framebuffer + ((row + 1) * scroll_scanlines * row_stride);
+    memcpy(dst, src, scroll_scanlines * vga_pitch);
   }
-  memset(clear_start, 0, vga_pitch * INCONSOLATA_HEIGHT);
+
+  uint32_t* clear_start =
+      framebuffer + ((text_scanlines - scroll_scanlines) * row_stride);
+  memset(clear_start, 0, scroll_scanlines * vga_pitch);
 }
 
 void terminal_erase() {

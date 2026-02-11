@@ -15,7 +15,7 @@ ifeq ($(DEBUG_QEMU),1)
 endif
 
 BUILDDIR_BASE=bin
-BUILDDIR=$(BUILDDIR_BASE)/$(HOSTARCH)/$(BUILD_TYPE)/
+BUILDDIR=$(BUILDDIR_BASE)/$(HOSTARCH)/$(BUILD_TYPE)
 DESTDIR?=
 PREFIX?=/usr/local
 EXEC_PREFIX?=$(PREFIX)
@@ -70,7 +70,6 @@ stdlib/itoa.c \
 stdlib/utoa.c \
 stdlib/malloc.c \
 string/memcmp.c \
-string/memcpy.c \
 string/memmove.c \
 string/memset.c \
 string/strcpy.c \
@@ -79,14 +78,15 @@ string/strlen.c
 # Build directory versions
 OBJDIRS := $(sort $(dir $(addprefix $(BUILDDIR)/,$(LIBC_SRC:.c=.o))))
 
-FREEOBJS   = $(addprefix $(BUILDDIR)/,$(LIBC_SRC:.c=.o))
+FREEOBJS   = $(addprefix $(BUILDDIR)/,$(LIBC_SRC:.c=.o)) \
+						 $(addprefix $(BUILDDIR)/,$(ARCH_FREE_SRC_ASM:.asm=.o))
 LIBK_OBJS  = $(FREEOBJS:.o=.libk.o)
 LIBC_OBJS  = $(FREEOBJS:.o=.libc.o)
 
 BINARIES = $(BUILDDIR)/libk.a
 
 .PHONY: all clean install install-headers install-libs
-.SUFFIXES: .o .libk.o .c .s
+.SUFFIXES: .o .libk.o .c .s .asm
 
 all: $(BINARIES)
 
@@ -107,6 +107,10 @@ $(BUILDDIR)/%.libc.o: %.s | $(OBJDIRS)
 	@mkdir -p $(dir $@)
 	$(CC) -MD -c $< -o $@ $(CFLAGS) $(CPPFLAGS)
 
+$(BUILDDIR)/%.libc.o: %.asm | $(OBJDIRS)
+	@mkdir -p $(dir $@)
+	nasm -Wall -f elf64 -g $< -o $@
+
 $(BUILDDIR)/%.libk.o: %.c | $(OBJDIRS)
 	@mkdir -p $(dir $@)
 	$(CC) -MD -c $< -o $@ $(LIBK_CFLAGS) $(LIBK_CPPFLAGS)
@@ -114,6 +118,10 @@ $(BUILDDIR)/%.libk.o: %.c | $(OBJDIRS)
 $(BUILDDIR)/%.libk.o: %.s | $(OBJDIRS)
 	@mkdir -p $(dir $@)
 	$(CC) -MD -c $< -o $@ $(LIBK_CFLAGS) $(LIBK_CPPFLAGS)
+
+$(BUILDDIR)/%.libk.o: %.asm | $(OBJDIRS)
+	@mkdir -p $(dir $@)
+	nasm -Wall -f elf64 -g $< -o $@
 
 clean:
 	rm -rf $(BUILDDIR_BASE)
