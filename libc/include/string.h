@@ -8,12 +8,12 @@
 extern "C" {
 #endif
 
-int memcmp(const void*, const void*, size_t);
-void* memcpy(void* __restrict, const void* __restrict, size_t);
-void* memmove(void*, const void*, size_t);
-void* memset(void*, int, size_t);
-void* strcpy(void* restrict, const void* retrict);
-size_t strlen(const char*);
+int memcmp(const void* a, const void* b, size_t len);
+void* memcpy(void* __restrict dst, const void* __restrict src, size_t len);
+void* memmove(void* dst, const void* src, size_t len);
+void* memset(void* buf, int val, size_t len);
+void* strcpy(void* restrict, const void* restrict s);
+size_t strlen(const char* str);
 
 #ifdef __cplusplus
 }

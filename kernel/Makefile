@@ -94,6 +94,7 @@ memory/kmalloc.c \
 memory/kmalloc_test.c \
 memory/pmm.c \
 memory/vmm.c \
+utils/hlog.c \
 utils/io.c \
 
 CRT_BEGIN=\

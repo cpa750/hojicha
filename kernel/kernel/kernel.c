@@ -18,6 +18,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "hlog.h"
+
 static process_block_t* kernel_proc;
 
 static semaphore_t* semaphore;
@@ -173,39 +175,39 @@ void kernel_main() {
   semaphore = semaphore_create(1);
 
   process_block_t* sleep_proc = multitask_proc_new(
-      test_sleep, multitask_process_block_get_cr3(kernel_proc));
+      "sleep_proc", test_sleep, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(sleep_proc);
 
-  process_block_t* test1_proc =
-      multitask_proc_new(test1, multitask_process_block_get_cr3(kernel_proc));
+  process_block_t* test1_proc = multitask_proc_new(
+      "test1", test1, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test1_proc);
 
-  process_block_t* test2_proc =
-      multitask_proc_new(test2, multitask_process_block_get_cr3(kernel_proc));
+  process_block_t* test2_proc = multitask_proc_new(
+      "test2", test2, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test2_proc);
 
-  process_block_t* test3_proc =
-      multitask_proc_new(test3, multitask_process_block_get_cr3(kernel_proc));
+  process_block_t* test3_proc = multitask_proc_new(
+      "test3", test3, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test3_proc);
 
-  process_block_t* test4_proc =
-      multitask_proc_new(test4, multitask_process_block_get_cr3(kernel_proc));
+  process_block_t* test4_proc = multitask_proc_new(
+      "test4", test4, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test4_proc);
 
-  process_block_t* test5_proc =
-      multitask_proc_new(test5, multitask_process_block_get_cr3(kernel_proc));
+  process_block_t* test5_proc = multitask_proc_new(
+      "test5", test5, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test5_proc);
 
-  process_block_t* test6_proc =
-      multitask_proc_new(test6, multitask_process_block_get_cr3(kernel_proc));
+  process_block_t* test6_proc = multitask_proc_new(
+      "test6", test6, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test6_proc);
 
-  process_block_t* test7_proc =
-      multitask_proc_new(test7, multitask_process_block_get_cr3(kernel_proc));
+  process_block_t* test7_proc = multitask_proc_new(
+      "test7", test7, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test7_proc);
 
-  process_block_t* test8_proc =
-      multitask_proc_new(test8, multitask_process_block_get_cr3(kernel_proc));
+  process_block_t* test8_proc = multitask_proc_new(
+      "test8", test8, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test8_proc);
 
   // while (1) asm volatile("hlt");
@@ -214,7 +216,8 @@ void kernel_main() {
   while (1) {
     multitask_sleep(1);
 
-    printf("Kernel awake!\n");
+    hlog_add(INFO, "Kernel awake");
+    hlog_commit();
 
     ++count;
 
