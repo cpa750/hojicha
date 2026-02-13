@@ -94,9 +94,12 @@ uint64_t hlog_commit_logger(hlogger_t* logger) {
                             multitask_pb_get_pid(log->proc));
     printf("%s\n", log->buf);
     free(log->buf);
-    free(log);
+    pending_log_t* old = log;
     log = log->next;
+    free(old);
   }
+  logger->pending_logs_head = NULL;
+  logger->pending_logs_tail = NULL;
   return bytes_written;
 }
 

@@ -27,6 +27,7 @@ int vsnprintf(char* buffer, const char* format, va_list parameters) {
       }
       if (writeable_bytes < bytes_to_write) { return -1; }
       print(buffer, format, bytes_to_write);
+      buffer += bytes_to_write;
 
       format += bytes_to_write;
       bytes_written += bytes_to_write;

@@ -160,6 +160,7 @@ void multitask_scheduler_add_proc(process_block_t* process) {
   if (g_kernel.mt->first_ready_to_run == NULL) {
     g_kernel.mt->first_ready_to_run = process;
     g_kernel.mt->last_ready_to_run = process;
+    multitask_scheduler_resume();
     return;
   }
 
