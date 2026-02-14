@@ -4,12 +4,19 @@
 #include <stdint.h>
 
 #ifndef DEFAULT_HLOG_LEVEL
-#define DEFAULT_HLOG_LEVEL INFO
+#define DEFAULT_HLOG_LEVEL HLOG_INFO
 #endif
 
 #define DEFAULT_HLOG_BUFSIZE 1024
 
-enum hlog_level { WARN, ERROR, FATAL, INFO, DEBUG, VERBOSE };
+enum hlog_level {
+  HLOG_FATAL,
+  HLOG_ERROR,
+  HLOG_WARN,
+  HLOG_INFO,
+  HLOG_DEBUG,
+  HLOG_VERBOSE
+};
 typedef enum hlog_level hlog_level_t;
 
 typedef struct pending_log pending_log_t;

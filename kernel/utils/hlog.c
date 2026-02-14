@@ -133,17 +133,17 @@ uint64_t hlog_write_logger(hlogger_t* logger,
 
 char* hlog_level_to_string(hlog_level_t level) {
   switch (level) {
-    case INFO:
+    case HLOG_INFO:
       return "INFO";
-    case WARN:
+    case HLOG_WARN:
       return "WARN";
-    case ERROR:
+    case HLOG_ERROR:
       return "ERROR";
-    case FATAL:
+    case HLOG_FATAL:
       return "FATAL";
-    case DEBUG:
+    case HLOG_DEBUG:
       return "DEBUG";
-    case VERBOSE:
+    case HLOG_VERBOSE:
       return "VERBOSE";
   }
 }
@@ -169,22 +169,22 @@ uint64_t print_level(hlog_level_t level) {
   uint32_t old_color = terminal_get_fg();
   uint32_t color = 0x0;
   switch (level) {
-    case INFO:
+    case HLOG_INFO:
       color = 0x00FF00;
       break;
-    case WARN:
+    case HLOG_WARN:
       color = 0xFFFB00;
       break;
-    case ERROR:
+    case HLOG_ERROR:
       color = 0xFF5B00;
       break;
-    case FATAL:
+    case HLOG_FATAL:
       color = 0xFF0000;
       break;
-    case DEBUG:
+    case HLOG_DEBUG:
       color = 0x00FFFF;
       break;
-    case VERBOSE:
+    case HLOG_VERBOSE:
       color = 0xF000FF;
       break;
     default:

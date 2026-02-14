@@ -27,8 +27,8 @@ uint64_t multitask_pb_get_pid(process_block_t* p);
 
 struct multitask_state;
 typedef struct multitask_state multitask_state_t;
-
 void multitask_state_dump(multitask_state_t* mt);
+uint64_t multitask_state_get_kernel_pid(multitask_state_t* mt);
 
 void multitask_initialize(void);
 

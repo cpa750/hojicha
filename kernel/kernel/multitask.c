@@ -33,7 +33,13 @@ struct multitask_state {
   uint64_t irq_lock_count;
   uint64_t switch_lock_count;
   bool switch_lock_flag;
+
+  uint64_t kernel_pid;
 };
+
+uint64_t multitask_state_get_kernel_pid(multitask_state_t* mt) {
+  return mt->kernel_pid;
+}
 
 typedef struct process_block process_block_t;
 struct process_block {
@@ -100,8 +106,9 @@ void multitask_initialize(void) {
   kernel_process->next = NULL;
   kernel_process->status = PROC_STATUS_RUNNING;
   kernel_process->name = "hojicha";
-  kernel_process->logger = hlog_new(DEBUG, DEFAULT_HLOG_BUFSIZE);
+  kernel_process->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
   kernel_process->pid = UINT64_MAX;
+  mt.kernel_pid = kernel_process->pid;
 
   mt.first_ready_to_run = NULL;
   mt.last_ready_to_run = NULL;
