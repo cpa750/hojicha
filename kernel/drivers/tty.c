@@ -68,6 +68,7 @@ void terminal_initialize(void) {
   terminal_caret_enable(&tty);
 }
 
+uint32_t terminal_get_fg(void) { return g_kernel.tty->fg; }
 void terminal_set_fg(uint32_t fg) { g_kernel.tty->fg = fg; }
 
 void terminal_put_entry_at(unsigned char c, uint32_t fg, size_t x, size_t y) {

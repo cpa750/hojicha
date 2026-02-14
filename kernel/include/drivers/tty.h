@@ -13,6 +13,7 @@ typedef struct caret caret_t;
 
 void terminal_initialize(void);
 void terminal_putchar(char c);
+uint32_t terminal_get_fg(void);
 void terminal_set_fg(uint32_t fg);
 void terminal_write(const char* data, size_t len);
 void terminal_caret_disable(tty_state_t* t);

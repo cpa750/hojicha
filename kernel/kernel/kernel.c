@@ -28,7 +28,7 @@ static bool sleep_awake_2 = false;
 void test1(void) {
   while (1) {
     if (sleep_awake_1) {
-      hlog_add(INFO, "1\n");
+      hlog_add(INFO, "1");
       sleep_awake_1 = false;
     }
   }
@@ -38,7 +38,7 @@ void test1(void) {
 void test2(void) {
   while (1) {
     if (sleep_awake_2) {
-      hlog_add(DEBUG, "2\n");
+      hlog_add(DEBUG, "2");
       sleep_awake_2 = false;
     }
   }
@@ -47,49 +47,49 @@ void test2(void) {
 
 void test3(void) {
   multitask_sleep(7);
-  hlog_write(INFO, "test3, about to die o7\n");
+  hlog_write(INFO, "test3, about to die o7");
 }
 
 void test4(void) {
   multitask_sleep(7);
-  hlog_write(INFO, "test4, about to die o7\n");
+  hlog_write(INFO, "test4, about to die o7");
 }
 
 void test5(void) {
-  hlog_write(INFO, "locking semaphore...\n");
+  hlog_write(INFO, "locking semaphore...");
   semaphore_lock(semaphore);
-  hlog_write(INFO, "locked semaphore and sleeping 17s\n");
+  hlog_write(INFO, "locked semaphore and sleeping 17s");
   multitask_sleep(7);
-  hlog_write(INFO, "unlocking semaphore and dying o7\n");
+  hlog_write(INFO, "unlocking semaphore and dying o7");
   semaphore_unlock(semaphore);
 }
 
 void test6(void) {
-  hlog_write(INFO, "locking semaphore...\n");
+  hlog_write(INFO, "locking semaphore...");
   semaphore_lock(semaphore);
-  hlog_write(INFO, "locked semaphore, unlocking semaphore and dying o7\n");
+  hlog_write(INFO, "locked semaphore, unlocking semaphore and dying o7");
   semaphore_unlock(semaphore);
 }
 
 void test7(void) {
-  printf("task7, trying to lock semaphore...\n");
+  hlog_write(INFO, "trying to lock semaphore...");
   bool success = semaphore_try_lock(semaphore);
   if (success) {
-    printf("uh oh\n");
+    hlog_write(ERROR, "uh oh");
     semaphore_unlock(semaphore);
   } else {
-    printf("task7, failed to acquire semaphore, dying o7\n");
+    hlog_write(ERROR, "failed to acquire semaphore, dying o7");
   }
 }
 
 void test8(void) {
   multitask_sleep(20);
-  hlog_write(INFO, "trying to lock semaphore...\n");
+  hlog_write(INFO, "trying to lock semaphore...");
   bool success = semaphore_try_lock(semaphore);
   if (!success) {
-    hlog_write(ERROR, "uh oh\n");
+    hlog_write(ERROR, "uh oh");
   } else {
-    hlog_write(INFO, "acquired semaphore, dying o7\n");
+    hlog_write(INFO, "acquired semaphore, dying o7");
     semaphore_unlock(semaphore);
   }
 }
@@ -97,7 +97,7 @@ void test8(void) {
 void test_sleep(void) {
   while (1) {
     multitask_sleep(5);
-    hlog_write(INFO, "awake!\n");
+    hlog_write(INFO, "awake!");
     sleep_awake_1 = true;
     sleep_awake_2 = true;
   }
@@ -159,11 +159,11 @@ void kernel_main() {
   printf("\n");
 
   hlog_add(INFO,
-           "Total available memory:\t%d MB (%d B)\n",
+           "Total available memory:\t%d MB (%d B)",
            pmm_state_get_total_mem(g_kernel.pmm) >> 20,
            pmm_state_get_total_mem(g_kernel.pmm));
   hlog_add(INFO,
-           "Total free memory:\t\t%d MB (%d B)\n",
+           "Total free memory:\t\t%d MB (%d B)",
            pmm_state_get_free_mem(g_kernel.pmm) >> 20,
            pmm_state_get_free_mem(g_kernel.pmm));
   hlog_commit();
@@ -220,19 +220,19 @@ void kernel_main() {
   while (1) {
     multitask_sleep(1);
 
-    hlog_add(INFO, "Kernel awake");
+    hlog_add(DEBUG, "Kernel awake");
     if (count % 5 == 0) { hlog_commit(); }
     hlog_commit();
 
     ++count;
 
     if (count == 15) {
-      hlog_write(WARN, "terminating task 2\n");
+      hlog_write(WARN, "terminating task 2");
       multitask_proc_terminate(test2_proc);
     }
 
     if (count == 21) {
-      hlog_write(WARN, "terminating task 1\n");
+      hlog_write(WARN, "terminating task 1");
       multitask_proc_terminate(test1_proc);
     }
   }

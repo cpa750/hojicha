@@ -2,8 +2,11 @@
 #include <kernel/kernel_state.h>
 #include <kernel/multitask.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "drivers/tty.h"
 
 typedef struct pending_log pending_log_t;
 struct pending_log {
@@ -22,6 +25,7 @@ uint64_t write_log_internal(hlog_level_t level,
                             process_block_t* proc,
                             const char* restrict format,
                             va_list args);
+uint64_t print_level(hlog_level_t level);
 
 hlogger_t* hlog_new(hlog_level_t level, uint64_t bufsize) {
   hlogger_t* logger = (hlogger_t*)malloc(sizeof(hlogger_t));
@@ -87,10 +91,11 @@ uint64_t hlog_commit_logger(hlogger_t* logger) {
   pending_log_t* log = logger->pending_logs_head;
   while (log != NULL) {
     // TODO wire in cool colour effects for log levels here
-    bytes_written += printf("[%s] [%s] (PID: %d): ",
-                            hlog_level_to_string(log->level),
+    bytes_written += print_level(log->level);
+    bytes_written += printf("[%s] (PID: %d): ",
                             multitask_pb_get_name(log->proc),
                             multitask_pb_get_pid(log->proc));
+    // TODO: update bytes written
     printf("%s\n", log->buf);
     free(log->buf);
     pending_log_t* old = log;
@@ -110,6 +115,7 @@ uint64_t hlog_write(hlog_level_t level, const char* restrict format, ...) {
   va_start(args, format);
   write_log_internal(level, g_kernel.current_process, format, args);
   va_end(args);
+  // TODO: return bytes written
 }
 
 uint64_t hlog_write_logger(hlogger_t* logger,
@@ -122,22 +128,7 @@ uint64_t hlog_write_logger(hlogger_t* logger,
   va_start(args, format);
   write_log_internal(level, g_kernel.current_process, format, args);
   va_end(args);
-}
-
-uint64_t write_log_internal(hlog_level_t level,
-                            process_block_t* proc,
-                            const char* restrict format,
-                            va_list args) {
-  uint64_t bytes_written = 0;
-  char pid_string_buf[64];
-  itoa(multitask_pb_get_pid(proc), pid_string_buf, 10);
-  // TODO wire in cool colour effects for log levels here
-  bytes_written += printf("[%s] [%s] (PID: %d): ",
-                          hlog_level_to_string(level),
-                          multitask_pb_get_name(proc),
-                          multitask_pb_get_pid(proc));
-  vprintf(format, args);
-  return bytes_written;
+  // TODO: return bytes written
 }
 
 char* hlog_level_to_string(hlog_level_t level) {
@@ -155,5 +146,56 @@ char* hlog_level_to_string(hlog_level_t level) {
     case VERBOSE:
       return "VERBOSE";
   }
+}
+
+uint64_t write_log_internal(hlog_level_t level,
+                            process_block_t* proc,
+                            const char* restrict format,
+                            va_list args) {
+  uint64_t bytes_written = 0;
+  char pid_string_buf[64];
+  itoa(multitask_pb_get_pid(proc), pid_string_buf, 10);
+  // TODO wire in cool colour effects for log levels here
+  bytes_written += print_level(level);
+  bytes_written += printf("[%s] (PID: %d): ",
+                          multitask_pb_get_name(proc),
+                          multitask_pb_get_pid(proc));
+  vprintf(format, args);
+  printf("\n");
+  return bytes_written;
+}
+
+uint64_t print_level(hlog_level_t level) {
+  uint32_t old_color = terminal_get_fg();
+  uint32_t color = 0x0;
+  switch (level) {
+    case INFO:
+      color = 0x00FF00;
+      break;
+    case WARN:
+      color = 0xFFFB00;
+      break;
+    case ERROR:
+      color = 0xFF5B00;
+      break;
+    case FATAL:
+      color = 0xFF0000;
+      break;
+    case DEBUG:
+      color = 0x00FFFF;
+      break;
+    case VERBOSE:
+      color = 0xF000FF;
+      break;
+    default:
+      color = old_color;
+  }
+  uint64_t total_bytes = 0;
+  total_bytes += printf("[");
+  terminal_set_fg(color);
+  total_bytes += printf("%s", hlog_level_to_string(level));
+  terminal_set_fg(old_color);
+  total_bytes += printf("] ");
+  return total_bytes;
 }
 

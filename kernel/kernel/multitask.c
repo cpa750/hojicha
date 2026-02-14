@@ -100,7 +100,7 @@ void multitask_initialize(void) {
   kernel_process->next = NULL;
   kernel_process->status = PROC_STATUS_RUNNING;
   kernel_process->name = "hojicha";
-  kernel_process->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
+  kernel_process->logger = hlog_new(DEBUG, DEFAULT_HLOG_BUFSIZE);
   kernel_process->pid = UINT64_MAX;
 
   mt.first_ready_to_run = NULL;
