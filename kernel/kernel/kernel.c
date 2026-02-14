@@ -6,6 +6,7 @@
 #include <drivers/serial.h>
 #include <drivers/tty.h>
 #include <drivers/vga.h>
+#include <hlog.h>
 #include <kernel/kernel_state.h>
 #include <kernel/multitask.h>
 #include <kernel/semaphore.h>
@@ -18,8 +19,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "hlog.h"
-
 static process_block_t* kernel_proc;
 
 static semaphore_t* semaphore;
@@ -29,44 +28,46 @@ static bool sleep_awake_2 = false;
 void test1(void) {
   while (1) {
     if (sleep_awake_1) {
-      printf("1\n");
+      hlog_add(INFO, "1\n");
       sleep_awake_1 = false;
     }
   }
+  hlog_commit();
 }
 
 void test2(void) {
   while (1) {
     if (sleep_awake_2) {
-      printf("2\n");
+      hlog_add(DEBUG, "2\n");
       sleep_awake_2 = false;
     }
   }
+  hlog_commit();
 }
 
 void test3(void) {
   multitask_sleep(7);
-  printf("test3, about to die o7\n");
+  hlog_write(INFO, "test3, about to die o7\n");
 }
 
 void test4(void) {
   multitask_sleep(7);
-  printf("test4, about to die o7\n");
+  hlog_write(INFO, "test4, about to die o7\n");
 }
 
 void test5(void) {
-  printf("test5, locking semaphore...\n");
+  hlog_write(INFO, "locking semaphore...\n");
   semaphore_lock(semaphore);
-  printf("locked semaphore and sleeping 17s\n");
+  hlog_write(INFO, "locked semaphore and sleeping 17s\n");
   multitask_sleep(7);
-  printf("test5, unlocking semaphore and dying o7\n");
+  hlog_write(INFO, "unlocking semaphore and dying o7\n");
   semaphore_unlock(semaphore);
 }
 
 void test6(void) {
-  printf("task6, locking semaphore...\n");
+  hlog_write(INFO, "locking semaphore...\n");
   semaphore_lock(semaphore);
-  printf("task6, locked semaphore, unlocking semaphore and dying o7\n");
+  hlog_write(INFO, "locked semaphore, unlocking semaphore and dying o7\n");
   semaphore_unlock(semaphore);
 }
 
@@ -83,12 +84,12 @@ void test7(void) {
 
 void test8(void) {
   multitask_sleep(20);
-  printf("task8, trying to lock semaphore...\n");
+  hlog_write(INFO, "trying to lock semaphore...\n");
   bool success = semaphore_try_lock(semaphore);
   if (!success) {
-    printf("uh oh\n");
+    hlog_write(ERROR, "uh oh\n");
   } else {
-    printf("task8, acquired semaphore, dying o7\n");
+    hlog_write(INFO, "acquired semaphore, dying o7\n");
     semaphore_unlock(semaphore);
   }
 }
@@ -96,7 +97,7 @@ void test8(void) {
 void test_sleep(void) {
   while (1) {
     multitask_sleep(5);
-    printf("Sleep task awake!\n");
+    hlog_write(INFO, "awake!\n");
     sleep_awake_1 = true;
     sleep_awake_2 = true;
   }
@@ -157,12 +158,15 @@ void kernel_main() {
 
   printf("\n");
 
-  printf("[INFO] Total available memory:\t%d MB (%d B)\n",
-         pmm_state_get_total_mem(g_kernel.pmm) >> 20,
-         pmm_state_get_total_mem(g_kernel.pmm));
-  printf("[INFO] Total free memory:\t\t%d MB (%d B)\n",
-         pmm_state_get_free_mem(g_kernel.pmm) >> 20,
-         pmm_state_get_free_mem(g_kernel.pmm));
+  hlog_add(INFO,
+           "Total available memory:\t%d MB (%d B)\n",
+           pmm_state_get_total_mem(g_kernel.pmm) >> 20,
+           pmm_state_get_total_mem(g_kernel.pmm));
+  hlog_add(INFO,
+           "Total free memory:\t\t%d MB (%d B)\n",
+           pmm_state_get_free_mem(g_kernel.pmm) >> 20,
+           pmm_state_get_free_mem(g_kernel.pmm));
+  hlog_commit();
 
   printf("\n------------------------------------------------------------\n");
   printf("|                Hojicha kernel initialized.               |\n");
@@ -217,17 +221,18 @@ void kernel_main() {
     multitask_sleep(1);
 
     hlog_add(INFO, "Kernel awake");
+    if (count % 5 == 0) { hlog_commit(); }
     hlog_commit();
 
     ++count;
 
     if (count == 15) {
-      printf("terminating task 2\n");
+      hlog_write(WARN, "terminating task 2\n");
       multitask_proc_terminate(test2_proc);
     }
 
     if (count == 21) {
-      printf("terminating task 1\n");
+      hlog_write(WARN, "terminating task 1\n");
       multitask_proc_terminate(test1_proc);
     }
   }

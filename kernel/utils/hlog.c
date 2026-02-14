@@ -4,7 +4,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 typedef struct pending_log pending_log_t;
 struct pending_log {
@@ -26,7 +25,7 @@ uint64_t write_log_internal(hlog_level_t level,
 
 hlogger_t* hlog_new(hlog_level_t level, uint64_t bufsize) {
   hlogger_t* logger = (hlogger_t*)malloc(sizeof(hlogger_t));
-  logger->level = level;
+  logger->max_level = level;
   logger->bufsize = bufsize;
   return logger;
 }
@@ -39,7 +38,7 @@ uint64_t hlog_free_logger(hlogger_t* logger) {
 
 void hlog_add(hlog_level_t level, const char* restrict format, ...) {
   hlogger_t* logger = multitask_pb_get_logger(g_kernel.current_process);
-  if (level < logger->level) { return; }
+  if (level > logger->max_level) { return; }
   va_list args;
   va_start(args, format);
   add_log_internal(logger, level, g_kernel.current_process, format, args);
@@ -50,7 +49,7 @@ void hlog_add_logger(hlogger_t* logger,
                      hlog_level_t level,
                      const char* restrict format,
                      ...) {
-  if (level < logger->level) { return; }
+  if (level > logger->max_level) { return; }
 
   va_list args;
   va_start(args, format);
@@ -105,7 +104,7 @@ uint64_t hlog_commit_logger(hlogger_t* logger) {
 
 uint64_t hlog_write(hlog_level_t level, const char* restrict format, ...) {
   hlogger_t* logger = multitask_pb_get_logger(g_kernel.current_process);
-  if (level < logger->level) { return 0; }
+  if (level > logger->max_level) { return 0; }
 
   va_list args;
   va_start(args, format);
@@ -117,7 +116,7 @@ uint64_t hlog_write_logger(hlogger_t* logger,
                            hlog_level_t level,
                            const char* restrict format,
                            ...) {
-  if (level < logger->level) { return 0; }
+  if (level > logger->max_level) { return 0; }
 
   va_list args;
   va_start(args, format);

@@ -9,12 +9,12 @@
 
 #define DEFAULT_HLOG_BUFSIZE 1024
 
-enum hlog_level { INFO, WARN, ERROR, FATAL, DEBUG, VERBOSE };
+enum hlog_level { WARN, ERROR, FATAL, INFO, DEBUG, VERBOSE };
 typedef enum hlog_level hlog_level_t;
 
 typedef struct pending_log pending_log_t;
 struct hlogger {
-  hlog_level_t level;
+  hlog_level_t max_level;
   uint64_t bufsize;
   pending_log_t* pending_logs_head;
   pending_log_t* pending_logs_tail;
