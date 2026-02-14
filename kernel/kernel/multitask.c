@@ -1,5 +1,6 @@
 #include <drivers/pit.h>
 #include <haddr.h>
+#include <hlog.h>
 #include <kernel/kernel_state.h>
 #include <kernel/multitask.h>
 #include <memory/vmm.h>
@@ -18,16 +19,27 @@ struct multitask_state {
   process_block_t* first_ready_to_run;
   process_block_t* last_ready_to_run;
   process_block_t* ready_to_die;
-  uint64_t time_elapsed;
-  uint64_t irq_lock_count;
-  uint64_t switch_lock_count;
-  bool switch_lock_flag;
   process_block_t* sleeping;
-  uint64_t time_idle;
+
+  uint64_t total_processes_added;
+  uint64_t process_count;
+
   uint64_t idle_switch_timestamp;
   uint64_t quantum_remaining;
   uint64_t tick_interval_ns;
+  uint64_t time_elapsed;
+  uint64_t time_idle;
+
+  uint64_t irq_lock_count;
+  uint64_t switch_lock_count;
+  bool switch_lock_flag;
+
+  uint64_t kernel_pid;
 };
+
+uint64_t multitask_state_get_kernel_pid(multitask_state_t* mt) {
+  return mt->kernel_pid;
+}
 
 typedef struct process_block process_block_t;
 struct process_block {
@@ -38,17 +50,25 @@ struct process_block {
   proc_entry_t entry;
   // End asm-mapped fields
 
-  void* stack_end;
+  hlogger_t* logger;
+  char* name;
+  uint64_t pid;
+
   process_block_t* next;
+  void* stack_end;
+
   uint64_t elapsed;
-  uint64_t switch_timestamp;
   uint64_t sleep_until;
+  uint64_t switch_timestamp;
 };
 
 process_block_t* multitask_pb_get_next(process_block_t* p) { return p->next; }
 void multitask_pb_set_next(process_block_t* p, process_block_t* next) {
   p->next = next;
 }
+hlogger_t* multitask_pb_get_logger(process_block_t* p) { return p->logger; }
+char* multitask_pb_get_name(process_block_t* p) { return p->name; }
+uint64_t multitask_pb_get_pid(process_block_t* p) { return p->pid; }
 
 static multitask_state_t mt = {0};
 static pit_callback_t pit_callback = {0};
@@ -85,10 +105,18 @@ void multitask_initialize(void) {
   kernel_process->rsp = (void*)rsp;
   kernel_process->next = NULL;
   kernel_process->status = PROC_STATUS_RUNNING;
+  kernel_process->name = "hojicha";
+  kernel_process->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
+  kernel_process->pid = UINT64_MAX;
+  mt.kernel_pid = kernel_process->pid;
 
   mt.first_ready_to_run = NULL;
   mt.last_ready_to_run = NULL;
   mt.ready_to_die = NULL;
+
+  // Initially set to 1 as we don't directly add kernel proc
+  mt.total_processes_added = 1;
+  mt.process_count = 1;
 
   mt.tick_interval_ns = pit_state_get_tick_interval_ns(g_kernel.pit);
   g_kernel.mt = &mt;
@@ -98,11 +126,13 @@ void multitask_initialize(void) {
   pit_register_callback(&pit_callback);
 
   process_block_t* terminator_task =
-      multitask_proc_new(terminator, kernel_process->cr3);
+      multitask_proc_new("kterminator", terminator, kernel_process->cr3);
   multitask_scheduler_add_proc(terminator_task);
 }
 
-process_block_t* multitask_proc_new(proc_entry_t entry, void* cr3) {
+process_block_t* multitask_proc_new(char* name, proc_entry_t entry, void* cr3) {
+  ++(g_kernel.mt->total_processes_added);
+  ++(g_kernel.mt->process_count);
   process_block_t* new_proc = (process_block_t*)malloc(sizeof(process_block_t));
   new_proc->cr3 = cr3;
   new_proc->entry = entry;
@@ -115,6 +145,14 @@ process_block_t* multitask_proc_new(proc_entry_t entry, void* cr3) {
   stack_base -= 8 * 6;
   *(haddr_t*)stack_base = (haddr_t)new_proc;
 
+  new_proc->pid = g_kernel.mt->total_processes_added;
+  if (name != NULL) {
+    new_proc->name = name;
+  } else {
+    itoa(new_proc->pid, new_proc->name, 10);
+  }
+  new_proc->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
+
   // Because we pop 15 registers from the newly allocated stack
   // in switch_to()
   stack_base -= 8 * 9;
@@ -124,10 +162,12 @@ process_block_t* multitask_proc_new(proc_entry_t entry, void* cr3) {
 }
 
 void multitask_scheduler_add_proc(process_block_t* process) {
+  multitask_scheduler_postpone();
   process->next = NULL;
   if (g_kernel.mt->first_ready_to_run == NULL) {
     g_kernel.mt->first_ready_to_run = process;
     g_kernel.mt->last_ready_to_run = process;
+    multitask_scheduler_resume();
     return;
   }
 
@@ -136,6 +176,7 @@ void multitask_scheduler_add_proc(process_block_t* process) {
   }
   g_kernel.mt->last_ready_to_run->next = process;
   g_kernel.mt->last_ready_to_run = process;
+  multitask_scheduler_resume();
 }
 
 void multitask_schedule(void) {
@@ -433,7 +474,9 @@ void terminator(void) {
       multitask_scheduler_postpone();
       for (process_block_t* p = g_kernel.mt->ready_to_die; p != NULL;
            p = p->next) {
-        // TODO: Is this really all that's required for this at the moment?
+        // TODO: we ideally need to hand the logs committing off to a
+        // dedicated task
+        hlog_free_logger(p->logger);
         free(p->stack_end);
         free(p);
       }

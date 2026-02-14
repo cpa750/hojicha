@@ -2,6 +2,7 @@
 #define MULTITASK_H
 
 #include <haddr.h>
+#include <hlog.h>
 #include <stdint.h>
 
 #define PROC_STATUS_PAUSED    0b00000100
@@ -20,11 +21,14 @@ struct process_block;
 
 process_block_t* multitask_pb_get_next(process_block_t* p);
 void multitask_pb_set_next(process_block_t* p, process_block_t* next);
+hlogger_t* multitask_pb_get_logger(process_block_t* p);
+char* multitask_pb_get_name(process_block_t* p);
+uint64_t multitask_pb_get_pid(process_block_t* p);
 
 struct multitask_state;
 typedef struct multitask_state multitask_state_t;
-
 void multitask_state_dump(multitask_state_t* mt);
+uint64_t multitask_state_get_kernel_pid(multitask_state_t* mt);
 
 void multitask_initialize(void);
 
@@ -35,7 +39,7 @@ void multitask_initialize(void);
  * and the scheduler cleans up. The caller must not call `free()`
  * on the process handle manually.
  */
-process_block_t* multitask_proc_new(proc_entry_t entry, void* cr3);
+process_block_t* multitask_proc_new(char* name, proc_entry_t entry, void* cr3);
 
 /*
  * Adds a proc to the scheduler's queue.

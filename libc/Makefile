@@ -63,6 +63,8 @@ LIBC_SRC = \
 stdio/printf.c \
 stdio/putchar.c \
 stdio/puts.c \
+stdio/vprintf.c \
+stdio/vsnprintf.c \
 stdlib/abort.c \
 stdlib/assert.c \
 stdlib/free.c \

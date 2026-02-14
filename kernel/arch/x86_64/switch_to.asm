@@ -44,7 +44,8 @@ switch_to:
     mov [rel g_kernel + G_KERNEL_CURRENT_PROCESS], rdi
 
     mov rsp,  [rdi + PCB_RSP]
-    mov rax,  [rdi + PCB_STATUS]
+    mov byte  rax,  [rdi + PCB_STATUS]
+    and rax, 0xFF
     cmp rax,  PCB_STATUS_UNINITIALIZED
     je .skip_status_update
     mov byte [rdi + PCB_STATUS], PCB_STATUS_RUNNING

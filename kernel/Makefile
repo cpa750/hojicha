@@ -35,6 +35,10 @@ ifeq ($(KMALLOC_TEST),1)
 	CFLAGS :=$(CFLAGS) -D__kmalloc_test
 endif
 
+ifneq ($(HLOG_LEVEL),)
+	CPPFLAGS :=$(CPPFLAGS) -DDEFAULT_HLOG_LEVEL=$(HLOG_LEVEL)
+endif
+
 CFLAGS:=$(CFLAGS) \
 					-std=gnu11 \
 					-ffreestanding \
@@ -94,6 +98,7 @@ memory/kmalloc.c \
 memory/kmalloc_test.c \
 memory/pmm.c \
 memory/vmm.c \
+utils/hlog.c \
 utils/io.c \
 
 CRT_BEGIN=\
