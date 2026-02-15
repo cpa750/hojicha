@@ -90,13 +90,12 @@ uint64_t hlog_commit_logger(hlogger_t* logger) {
   uint64_t bytes_written = 0;
   pending_log_t* log = logger->pending_logs_head;
   while (log != NULL) {
-    // TODO wire in cool colour effects for log levels here
     bytes_written += print_level(log->level);
     bytes_written += printf("[%s] (PID: %d): ",
                             multitask_pb_get_name(log->proc),
                             multitask_pb_get_pid(log->proc));
-    // TODO: update bytes written
-    printf("%s\n", log->buf);
+
+    bytes_written += printf("%s\n", log->buf);
     free(log->buf);
     pending_log_t* old = log;
     log = log->next;
@@ -113,9 +112,10 @@ uint64_t hlog_write(hlog_level_t level, const char* restrict format, ...) {
 
   va_list args;
   va_start(args, format);
-  write_log_internal(level, g_kernel.current_process, format, args);
+  uint64_t bytes_written =
+      write_log_internal(level, g_kernel.current_process, format, args);
   va_end(args);
-  // TODO: return bytes written
+  return bytes_written;
 }
 
 uint64_t hlog_write_logger(hlogger_t* logger,
@@ -126,9 +126,10 @@ uint64_t hlog_write_logger(hlogger_t* logger,
 
   va_list args;
   va_start(args, format);
-  write_log_internal(level, g_kernel.current_process, format, args);
+  uint64_t bytes_written =
+      write_log_internal(level, g_kernel.current_process, format, args);
   va_end(args);
-  // TODO: return bytes written
+  return bytes_written;
 }
 
 char* hlog_level_to_string(hlog_level_t level) {
@@ -155,13 +156,12 @@ uint64_t write_log_internal(hlog_level_t level,
   uint64_t bytes_written = 0;
   char pid_string_buf[64];
   itoa(multitask_pb_get_pid(proc), pid_string_buf, 10);
-  // TODO wire in cool colour effects for log levels here
   bytes_written += print_level(level);
   bytes_written += printf("[%s] (PID: %d): ",
                           multitask_pb_get_name(proc),
                           multitask_pb_get_pid(proc));
-  vprintf(format, args);
-  printf("\n");
+  bytes_written += vprintf(format, args);
+  bytes_written += printf("\n");
   return bytes_written;
 }
 
