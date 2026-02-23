@@ -68,7 +68,7 @@ void create_system_segment(gdt_entry_t* entry,
   value |= base_high << 56;
 
   *(uint64_t*)&entry[index] = value;
-  *(uint64_t*)&entry[index + 1] = ((base >> 32) & 0xFF);
+  *(uint64_t*)&entry[index + 1] = ((base >> 32) & 0xFFFFFFFF);
 }
 
 void initialize_gdt() {
@@ -90,7 +90,11 @@ void initialize_gdt() {
       (gdt_pointer_t){.limit = (sizeof(gdt_entry_t) * GDT_ENTRIES) - 1,
                       .base = (uint64_t)&gdt_entries};
 
+  uint64_t rsp = 0;
+  asm volatile("\t movq %%rsp,%0" : "=r"(rsp));
+  tss.rsp0 = rsp;
+
   load_gdt();
-  // load_tss();
+  load_tss();
   g_kernel.tss = &tss;
 }

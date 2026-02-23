@@ -7,4 +7,5 @@ section .text
 load_tss:
     mov ax, 0x28
     ltr ax
+    ret
 
