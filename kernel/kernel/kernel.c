@@ -227,7 +227,7 @@ void kernel_main() {
 
   // while (1) asm volatile("hlt");
 
-  uint8_t count = 0;
+  uint64_t count = 0;
   while (1) {
     multitask_sleep(1);
 
@@ -237,11 +237,14 @@ void kernel_main() {
 
     ++count;
 
+    // It's a known bug that multitask_proc_terminate() is called
+    // multiple times on these processes when count wraps around,
+    // causing a page fault in the terminator function. We should
+    // remove these eventually.
     if (count == 15) {
       hlog_write(HLOG_WARN, "terminating task 2");
       multitask_proc_terminate(test2_proc);
     }
-
     if (count == 21) {
       hlog_write(HLOG_WARN, "terminating task 1");
       multitask_proc_terminate(test1_proc);
