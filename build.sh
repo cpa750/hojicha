@@ -50,4 +50,10 @@ for PROJECT in $PROJECTS; do
   (cd $PROJECT && DESTDIR="$SYSROOT" bear --append -- $MAKE $DEBUG_QEMU $KMALLOC_TEST $HLOG_LEVEL HOST=$HOST install)
 done
 
+make -C userspace all
+mkdir -p "$SYSROOT/boot"
+find userspace/bin -maxdepth 1 -type f -name '*.elf' -exec cp -f {} "$SYSROOT/boot/" \;
+mkdir -p "$SYSROOT/boot/limine"
+cp -f limine.conf "$SYSROOT/boot/limine/limine.conf"
+
 jq -s 'add' $(printf '%s/compile_commands.json ' $PROJECTS) > compile_commands.json

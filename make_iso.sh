@@ -9,7 +9,27 @@ fi
 
 mkdir -p iso_root/boot/limine
 cp -v sysroot/boot/hojicha.kernel iso_root/boot/hojicha
-cp -v limine.conf limine/limine-bios.sys limine/limine-bios-cd.bin \
+USERSPACE_BIN_DIR=sysroot/boot
+USERSPACE_BINS=$(find "$USERSPACE_BIN_DIR" -maxdepth 1 -type f -name '*.elf' -printf '%f\n' | sort)
+
+for bin in $USERSPACE_BINS; do
+  cp -v "$USERSPACE_BIN_DIR/$bin" "iso_root/boot/$bin"
+done
+
+awk -v bins="$USERSPACE_BINS" '
+  { print }
+  /^[[:space:]]*path:/ && !done {
+    count = split(bins, names, "\n")
+    for (i = 1; i <= count; i++) {
+      if (names[i] != "") {
+        printf "    module_path: boot():/boot/%s\n", names[i]
+      }
+    }
+    done = 1
+  }
+' sysroot/boot/limine/limine.conf > iso_root/boot/limine/limine.conf
+
+cp -v limine/limine-bios.sys limine/limine-bios-cd.bin \
       limine/limine-uefi-cd.bin iso_root/boot/limine/
 
 mkdir -p iso_root/EFI/BOOT
@@ -23,4 +43,3 @@ xorriso -as mkisofs -R -r -J -b boot/limine/limine-bios-cd.bin \
         iso_root -o hojicha.iso
 
 ./limine/limine bios-install hojicha.iso
-
