@@ -8,6 +8,7 @@
 #include <drivers/vga.h>
 #include <hlog.h>
 #include <kernel/bootmodule.h>
+#include <kernel/elf.h>
 #include <kernel/kernel_state.h>
 #include <kernel/multitask.h>
 #include <kernel/semaphore.h>
@@ -245,6 +246,7 @@ void kernel_main() {
                userspace_mod->address,
                userspace_mod->size);
   }
+  elf_t* bigmaths = elf_read(userspace_mod->address, userspace_mod->size);
 
   // while (1) asm volatile("hlt");
 
