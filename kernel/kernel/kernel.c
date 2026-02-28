@@ -7,6 +7,7 @@
 #include <drivers/tty.h>
 #include <drivers/vga.h>
 #include <hlog.h>
+#include <kernel/bootmodule.h>
 #include <kernel/kernel_state.h>
 #include <kernel/multitask.h>
 #include <kernel/semaphore.h>
@@ -156,10 +157,19 @@ void kernel_main() {
   print_ok("Keyboard");
   initialize_pmm();
   print_ok("PMM");
+  if (!bootmodule_capture_early()) {
+    printf("Error: Bootmodule initial capture failed");
+    abort();
+  }
   initialize_vmm();
   print_ok("VMM");
   kmalloc_initialize();
   print_ok("kmalloc");
+  if (!bootmodule_finalize_cache()) {
+    printf("Error: Bootmodule cache finalization failed");
+    abort();
+  }
+  print_ok("Bootmodules");
   multitask_initialize();
   print_ok("Multitasking");
 
@@ -224,6 +234,17 @@ void kernel_main() {
   process_block_t* test9_proc = multitask_proc_new(
       "test9", test9, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test9_proc);
+
+  bootmodule_t* userspace_mod = bootmodule_get("bigmaths.elf");
+  if (userspace_mod == NULL) {
+    hlog_write(HLOG_ERROR, "Unable to find cached module bigmaths.elf");
+  } else {
+    hlog_write(HLOG_INFO,
+               "Loaded cached module %s at %x (%d bytes)",
+               userspace_mod->name,
+               userspace_mod->address,
+               userspace_mod->size);
+  }
 
   // while (1) asm volatile("hlt");
 

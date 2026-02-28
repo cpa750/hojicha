@@ -23,6 +23,7 @@ awk -v bins="$USERSPACE_BINS" '
     for (i = 1; i <= count; i++) {
       if (names[i] != "") {
         printf "    module_path: boot():/boot/%s\n", names[i]
+        printf "    module_string: %s\n", names[i]
       }
     }
     done = 1

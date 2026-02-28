@@ -9,6 +9,7 @@
 
 struct vmm_state;
 typedef struct vmm_state vmm_state_t;
+haddr_t vmm_state_get_kernel_offset(vmm_state_t* vmm_state);
 haddr_t vmm_state_get_first_available_vaddr(vmm_state_t* vmm_state);
 haddr_t vmm_state_get_last_available_vaddr(vmm_state_t* vmm_state);
 void vmm_state_dump(vmm_state_t* v);

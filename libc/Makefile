@@ -74,6 +74,7 @@ stdlib/malloc.c \
 string/memcmp.c \
 string/memmove.c \
 string/memset.c \
+string/strcmp.c \
 string/strcpy.c \
 string/strlen.c
 

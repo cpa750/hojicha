@@ -30,6 +30,9 @@ struct vmm_state {
   haddr_t kernel_offset;
 };
 typedef struct vmm_state vmm_state_t;
+haddr_t vmm_state_get_kernel_offset(vmm_state_t* vmm_state) {
+  return vmm_state->kernel_offset;
+}
 haddr_t vmm_state_get_first_available_vaddr(vmm_state_t* vmm_state) {
   return vmm_state->first_available_vaddr;
 }
