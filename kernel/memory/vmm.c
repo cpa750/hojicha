@@ -68,6 +68,10 @@ uint16_t get_pt_idx(haddr_t virt);
 
 void map_framebuffer(vmm_t* vmm);
 static haddr_t map_in_current_cr3(haddr_t virt, haddr_t phys, haddr_t flags);
+static bool entry_is_present(haddr_t entry);
+static haddr_t entry_phys(haddr_t entry);
+static haddr_t* scratch_map_table(haddr_t scratch_addr, haddr_t phys);
+static haddr_t* walk_non_kernel_to_pt(vmm_t* vmm, haddr_t virt, bool create);
 
 void _invlpg(haddr_t virt);
 
@@ -239,140 +243,75 @@ haddr_t vmm_map_at_paddr(vmm_t* vmm,
                          haddr_t phys,
                          haddr_t flags) {
   haddr_t virt_base = virt & MAPPING_STRUCTURE_MASK;
-
-  // PML4 walk
-  haddr_t* pml3 = get_pml4_entry(virt);
   uint16_t pml4_idx = get_pml4_idx(virt);
   if (pml4_idx == RECURSIVE_IDX) { return 0; }
-  haddr_t* pml4_access = vmm->pml4;
-  haddr_t* pml3_access = pml3;
+
   if (vmm != g_kernel.vmm) {
-    map_in_current_cr3(
-        VIRT_SCRATCH_L4, (haddr_t)vmm->pml4, PAGE_PRESENT | PAGE_WRITABLE);
-    pml4_access = (haddr_t*)VIRT_SCRATCH_L4;
-    _invlpg(VIRT_SCRATCH_L4);
+    haddr_t* pt = walk_non_kernel_to_pt(vmm, virt, true);
+    if (pt == NULL) { return 0; }
+    uint16_t pt_idx = get_pt_idx(virt);
+    pt[pt_idx] = phys | flags;
+    return virt_base;
   }
-  if (!(pml4_access[pml4_idx] & (PAGE_PRESENT | PAGE_WRITABLE))) {
+
+  haddr_t* pml3 = get_pml4_entry(virt);
+  if (!entry_is_present(virtual_directory[pml4_idx])) {
     haddr_t new_pml3_phys = pmm_alloc_frame();
-    pml4_access[pml4_idx] = new_pml3_phys | PAGE_PRESENT | PAGE_WRITABLE;
-    if (vmm != g_kernel.vmm) {
-      map_in_current_cr3(
-          VIRT_SCRATCH_L3, new_pml3_phys, PAGE_PRESENT | PAGE_WRITABLE);
-      pml3_access = (haddr_t*)VIRT_SCRATCH_L3;
-      _invlpg(VIRT_SCRATCH_L3);
-    }
-    memset(pml3_access, 0, PAGE_SIZE);
-  } else if (vmm != g_kernel.vmm) {
-    haddr_t pml3_phys = pml4_access[pml4_idx] & MAPPING_STRUCTURE_MASK;
-    map_in_current_cr3(
-        VIRT_SCRATCH_L3, pml3_phys, PAGE_PRESENT | PAGE_WRITABLE);
-    pml3_access = (haddr_t*)VIRT_SCRATCH_L3;
-    _invlpg(VIRT_SCRATCH_L3);
+    if (new_pml3_phys == 0) { return 0; }
+    virtual_directory[pml4_idx] = new_pml3_phys | PAGE_PRESENT | PAGE_WRITABLE;
+    memset(pml3, 0, PAGE_SIZE);
   }
-  pml3 = pml3_access;
 
-  // PML3 walk
   haddr_t* pd = get_pml3_entry(virt);
-  haddr_t* pd_access = pd;
   uint16_t pml3_idx = get_pml3_idx(virt);
-  if (!(pml3[pml3_idx] & (PAGE_PRESENT | PAGE_WRITABLE))) {
+  if (!entry_is_present(pml3[pml3_idx])) {
     haddr_t new_pd_phys = pmm_alloc_frame();
+    if (new_pd_phys == 0) { return 0; }
     pml3[pml3_idx] = new_pd_phys | PAGE_PRESENT | PAGE_WRITABLE;
-    if (vmm != g_kernel.vmm) {
-      map_in_current_cr3(
-          VIRT_SCRATCH_L2, new_pd_phys, PAGE_PRESENT | PAGE_WRITABLE);
-      pd_access = (haddr_t*)VIRT_SCRATCH_L2;
-      _invlpg(VIRT_SCRATCH_L2);
-    }
-    memset(pd_access, 0, PAGE_SIZE);
-  } else if (vmm != g_kernel.vmm) {
-    haddr_t pd_phys = pml3[pml3_idx] & MAPPING_STRUCTURE_MASK;
-    map_in_current_cr3(VIRT_SCRATCH_L2, pd_phys, PAGE_PRESENT | PAGE_WRITABLE);
-    pd_access = (haddr_t*)VIRT_SCRATCH_L2;
-    _invlpg(VIRT_SCRATCH_L2);
+    memset(pd, 0, PAGE_SIZE);
   }
-  pd = pd_access;
 
-  // PD walk
   haddr_t* pt = get_pd_entry(virt);
-  haddr_t* pt_access = pt;
   uint16_t pd_idx = get_pd_idx(virt);
-  if (!(pd[pd_idx] & (PAGE_PRESENT | PAGE_WRITABLE))) {
+  if (!entry_is_present(pd[pd_idx])) {
     haddr_t new_pt_phys = pmm_alloc_frame();
+    if (new_pt_phys == 0) { return 0; }
     pd[pd_idx] = new_pt_phys | PAGE_PRESENT | PAGE_WRITABLE;
-    if (vmm != g_kernel.vmm) {
-      map_in_current_cr3(
-          VIRT_SCRATCH_L1, new_pt_phys, PAGE_PRESENT | PAGE_WRITABLE);
-      pt_access = (haddr_t*)VIRT_SCRATCH_L1;
-      _invlpg(VIRT_SCRATCH_L1);
-    }
-    memset(pt_access, 0, PAGE_SIZE);
-  } else if (vmm != g_kernel.vmm) {
-    haddr_t pt_phys = pd[pd_idx] & MAPPING_STRUCTURE_MASK;
-    map_in_current_cr3(VIRT_SCRATCH_L1, pt_phys, PAGE_PRESENT | PAGE_WRITABLE);
-    pt_access = (haddr_t*)VIRT_SCRATCH_L1;
-    _invlpg(VIRT_SCRATCH_L1);
+    memset(pt, 0, PAGE_SIZE);
   }
-  pt = pt_access;
 
   uint16_t pt_idx = get_pt_idx(virt);
   pt[pt_idx] = phys | flags;
-
   _invlpg(virt);
   return virt_base;
 }
 
 haddr_t vmm_unmap(vmm_t* vmm, haddr_t virt) {
   haddr_t virt_base = virt & MAPPING_STRUCTURE_MASK;
-
   uint16_t pml4_idx = get_pml4_idx(virt);
   if (pml4_idx == RECURSIVE_IDX) { return 0; }
 
-  haddr_t* pml4_access = NULL;
-  if (vmm == g_kernel.vmm) {
-    pml4_access = virtual_directory;
-  } else {
-    map_in_current_cr3(
-        VIRT_SCRATCH_L4, (haddr_t)vmm->pml4, PAGE_PRESENT | PAGE_WRITABLE);
-    pml4_access = (haddr_t*)VIRT_SCRATCH_L4;
-    _invlpg(VIRT_SCRATCH_L4);
+  if (vmm != g_kernel.vmm) {
+    haddr_t* pt = walk_non_kernel_to_pt(vmm, virt, false);
+    if (pt == NULL) { return 0; }
+    uint16_t pt_idx = get_pt_idx(virt);
+    pt[pt_idx] = 0;
+    return virt_base;
   }
 
-  if (!(pml4_access[pml4_idx] & (PAGE_PRESENT | PAGE_WRITABLE))) { return 0; }
-
+  if (!entry_is_present(virtual_directory[pml4_idx])) { return 0; }
   haddr_t* pml3 = get_pml4_entry(virt);
-  if (vmm != g_kernel.vmm) {
-    haddr_t pml3_phys = pml4_access[pml4_idx] & MAPPING_STRUCTURE_MASK;
-    map_in_current_cr3(
-        VIRT_SCRATCH_L3, pml3_phys, PAGE_PRESENT | PAGE_WRITABLE);
-    pml3 = (haddr_t*)VIRT_SCRATCH_L3;
-    _invlpg(VIRT_SCRATCH_L3);
-  }
-
   uint16_t pml3_idx = get_pml3_idx(virt);
-  if (!(pml3[pml3_idx] & (PAGE_PRESENT | PAGE_WRITABLE))) { return 0; }
+  if (!entry_is_present(pml3[pml3_idx])) { return 0; }
   haddr_t* pd = get_pml3_entry(virt);
-  if (vmm != g_kernel.vmm) {
-    haddr_t pd_phys = pml3[pml3_idx] & MAPPING_STRUCTURE_MASK;
-    map_in_current_cr3(VIRT_SCRATCH_L2, pd_phys, PAGE_PRESENT | PAGE_WRITABLE);
-    pd = (haddr_t*)VIRT_SCRATCH_L2;
-    _invlpg(VIRT_SCRATCH_L2);
-  }
 
   uint16_t pd_idx = get_pd_idx(virt);
-  if (!(pd[pd_idx] & (PAGE_PRESENT | PAGE_WRITABLE))) { return 0; }
+  if (!entry_is_present(pd[pd_idx])) { return 0; }
   haddr_t* pt = get_pd_entry(virt);
-  if (vmm != g_kernel.vmm) {
-    haddr_t pt_phys = pd[pd_idx] & MAPPING_STRUCTURE_MASK;
-    map_in_current_cr3(VIRT_SCRATCH_L1, pt_phys, PAGE_PRESENT | PAGE_WRITABLE);
-    pt = (haddr_t*)VIRT_SCRATCH_L1;
-    _invlpg(VIRT_SCRATCH_L1);
-  }
 
   uint16_t pt_idx = get_pt_idx(virt);
   pt[pt_idx] = 0;
-
-  if (vmm == g_kernel.vmm) { _invlpg(virt_base); }
+  _invlpg(virt_base);
   return virt_base;
 }
 
@@ -480,6 +419,75 @@ static haddr_t map_in_current_cr3(haddr_t virt, haddr_t phys, haddr_t flags) {
 
   _invlpg(virt);
   return virt_base;
+}
+
+static bool entry_is_present(haddr_t entry) {
+  return (entry & (PAGE_PRESENT | PAGE_WRITABLE)) ==
+         (PAGE_PRESENT | PAGE_WRITABLE);
+}
+
+static haddr_t entry_phys(haddr_t entry) {
+  return entry & MAPPING_STRUCTURE_MASK;
+}
+
+static haddr_t* scratch_map_table(haddr_t scratch_addr, haddr_t phys) {
+  if (map_in_current_cr3(scratch_addr, phys, PAGE_PRESENT | PAGE_WRITABLE) ==
+      0) {
+    return NULL;
+  }
+  _invlpg(scratch_addr);
+  return (haddr_t*)scratch_addr;
+}
+
+static haddr_t* walk_non_kernel_to_pt(vmm_t* vmm, haddr_t virt, bool create) {
+  uint16_t pml4_idx = get_pml4_idx(virt);
+  uint16_t pml3_idx = get_pml3_idx(virt);
+  uint16_t pd_idx = get_pd_idx(virt);
+
+  if (pml4_idx == RECURSIVE_IDX) { return NULL; }
+
+  haddr_t* pml4 = scratch_map_table(VIRT_SCRATCH_L4, (haddr_t)vmm->pml4);
+  if (pml4 == NULL) { return NULL; }
+
+  if (!entry_is_present(pml4[pml4_idx])) {
+    if (!create) { return NULL; }
+    haddr_t new_pml3_phys = pmm_alloc_frame();
+    if (new_pml3_phys == 0) { return NULL; }
+    pml4[pml4_idx] = new_pml3_phys | PAGE_PRESENT | PAGE_WRITABLE;
+
+    haddr_t* new_pml3 = scratch_map_table(VIRT_SCRATCH_L3, new_pml3_phys);
+    if (new_pml3 == NULL) { return NULL; }
+    memset(new_pml3, 0, PAGE_SIZE);
+  }
+
+  haddr_t* pml3 =
+      scratch_map_table(VIRT_SCRATCH_L3, entry_phys(pml4[pml4_idx]));
+  if (pml3 == NULL) { return NULL; }
+  if (!entry_is_present(pml3[pml3_idx])) {
+    if (!create) { return NULL; }
+    haddr_t new_pd_phys = pmm_alloc_frame();
+    if (new_pd_phys == 0) { return NULL; }
+    pml3[pml3_idx] = new_pd_phys | PAGE_PRESENT | PAGE_WRITABLE;
+
+    haddr_t* new_pd = scratch_map_table(VIRT_SCRATCH_L2, new_pd_phys);
+    if (new_pd == NULL) { return NULL; }
+    memset(new_pd, 0, PAGE_SIZE);
+  }
+
+  haddr_t* pd = scratch_map_table(VIRT_SCRATCH_L2, entry_phys(pml3[pml3_idx]));
+  if (pd == NULL) { return NULL; }
+  if (!entry_is_present(pd[pd_idx])) {
+    if (!create) { return NULL; }
+    haddr_t new_pt_phys = pmm_alloc_frame();
+    if (new_pt_phys == 0) { return NULL; }
+    pd[pd_idx] = new_pt_phys | PAGE_PRESENT | PAGE_WRITABLE;
+
+    haddr_t* new_pt = scratch_map_table(VIRT_SCRATCH_L1, new_pt_phys);
+    if (new_pt == NULL) { return NULL; }
+    memset(new_pt, 0, PAGE_SIZE);
+  }
+
+  return scratch_map_table(VIRT_SCRATCH_L1, entry_phys(pd[pd_idx]));
 }
 
 void _invlpg(haddr_t virt) {
