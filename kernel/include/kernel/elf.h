@@ -1,6 +1,7 @@
 #ifndef ELF_H
 #define ELF_H
 
+#include <kernel/multitask.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -23,10 +24,10 @@ typedef struct elf elf_t;
 elf_t* elf_read(void* buffer, uint64_t size);
 
 /*
- * Maps the program sections of an ELF executable into memory. Note that
- * currently, only static loading is implemented.
+ * Maps the program sections of an ELF executable into memory for the given
+ * `process`. Note that currently, only static loading is implemented.
  */
-bool elf_load(elf_t* elf);
+bool elf_load(process_block_t* proc, elf_t* elf);
 
 /*
  * Free the handle to an ELF executable and all its owned resources. This will

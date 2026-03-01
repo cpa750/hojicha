@@ -1,6 +1,7 @@
 #include <haddr.h>
 #include <hlog.h>
 #include <kernel/bootmodule.h>
+#include <kernel/kernel_state.h>
 #include <limine.h>
 #include <memory/vmm.h>
 #include <stdbool.h>
@@ -9,8 +10,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "kernel/kernel_state.h"
 
 __attribute__((
     used,
@@ -46,7 +45,8 @@ static bool map_page_containing(haddr_t addr) {
   if (addr < hhdm_offset) { return true; }
   haddr_t page = addr & ~(PAGE_SIZE - 1);
   haddr_t phys = page - hhdm_offset;
-  return vmm_map_at_paddr(page, phys, PAGE_PRESENT | PAGE_WRITABLE) != 0;
+  return vmm_map_at_paddr(
+             g_kernel.vmm, page, phys, PAGE_PRESENT | PAGE_WRITABLE) != 0;
 }
 
 static bool map_range(haddr_t addr, uint64_t size) {
@@ -57,7 +57,8 @@ static bool map_range(haddr_t addr, uint64_t size) {
   haddr_t end = (addr + size - 1) & ~(PAGE_SIZE - 1);
   for (haddr_t page = start; page <= end; page += PAGE_SIZE) {
     haddr_t phys = page - hhdm_offset;
-    if (vmm_map_at_paddr(page, phys, PAGE_PRESENT | PAGE_WRITABLE) == 0) {
+    if (vmm_map_at_paddr(
+            g_kernel.vmm, page, phys, PAGE_PRESENT | PAGE_WRITABLE) == 0) {
       return false;
     }
   }
@@ -97,7 +98,7 @@ bool bootmodule_capture_early() {
 }
 
 bool bootmodule_finalize_cache() {
-  hhdm_offset = vmm_state_get_kernel_offset(g_kernel.vmm);
+  hhdm_offset = vmm_get_kernel_offset(g_kernel.vmm);
   if (!early_capture_ready) { return false; }
 
   if (!map_range((haddr_t)captured_response,

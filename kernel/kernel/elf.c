@@ -1,10 +1,9 @@
+#include <haddr.h>
+#include <hlog.h>
 #include <kernel/elf.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "haddr.h"
-#include "hlog.h"
 
 #define ELF_MAGIC 0x464C457F
 
@@ -28,7 +27,6 @@
 #define ELF_PROG_HEADER_FLAG_READABLE   4
 
 static char* error_msg_prefix = "Could not read ELF file:";
-
 struct elf_header {
   uint32_t magic;
   uint8_t bits;
@@ -92,7 +90,7 @@ elf_t* elf_read(void* buffer, uint64_t size) {
   return ret;
 }
 
-bool elf_load(elf_t* elf) {
+bool elf_load(process_block_t* proc, elf_t* elf) {
   elf;
   return false;
 }

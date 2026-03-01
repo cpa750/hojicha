@@ -55,8 +55,9 @@ haddr_t last_footer;
 
 void kmalloc_initialize() {
   kernel_heap_grow_size = 5;  // Allocate 5 pages to start
-  first_available_vaddr = vmm_state_get_first_available_vaddr(g_kernel.vmm);
-  free_regions = (block_header_t*)vmm_map(first_available_vaddr,
+  first_available_vaddr = vmm_get_first_available_vaddr(g_kernel.vmm);
+  free_regions = (block_header_t*)vmm_map(g_kernel.vmm,
+                                          first_available_vaddr,
                                           kernel_heap_grow_size,
                                           PAGE_PRESENT | PAGE_WRITABLE);
 
@@ -81,6 +82,13 @@ void kmalloc_initialize() {
 #if defined(__kmalloc_test)
   kmalloc_test();
 #endif
+}
+
+void* kmalloc_page_aligned(size_t size) {
+  if (size > 0xFFFFFFFFFFFFFFFF) { return 0; }
+  block_header_t* new_block = grow_heap_by(pmm_addr_to_page(size) + 1);
+  occupy_block(new_block, size);
+  return new_block;
 }
 
 void* kmalloc(size_t size) {
@@ -207,7 +215,8 @@ block_header_t* grow_heap() { return grow_heap_by(kernel_heap_grow_size++); }
 block_header_t* grow_heap_by(size_t size) {
   haddr_t addr_to_map =
       ((haddr_t)last_footer + sizeof(last_footer) + 4095) & ~((uint64_t)4095);
-  haddr_t new_pages = vmm_map(addr_to_map, size, PAGE_PRESENT | PAGE_WRITABLE);
+  haddr_t new_pages =
+      vmm_map(g_kernel.vmm, addr_to_map, size, PAGE_PRESENT | PAGE_WRITABLE);
   if (new_pages == 0) { return NULL; }
 
   block_header_t* new_block = (block_header_t*)(last_footer + SIZEOF_FOOTER);

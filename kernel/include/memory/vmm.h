@@ -7,17 +7,33 @@
 #define PAGE_WRITABLE       0x2
 #define PAGE_USER_ACCESIBLE 0x4
 
-struct vmm_state;
-typedef struct vmm_state vmm_state_t;
-haddr_t vmm_state_get_kernel_offset(vmm_state_t* vmm_state);
-haddr_t vmm_state_get_first_available_vaddr(vmm_state_t* vmm_state);
-haddr_t vmm_state_get_last_available_vaddr(vmm_state_t* vmm_state);
-void vmm_state_dump(vmm_state_t* v);
+struct vmm;
+typedef struct vmm vmm_t;
+haddr_t vmm_get_kernel_offset(vmm_t* vmm);
+haddr_t vmm_get_first_available_vaddr(vmm_t* vmm);
+haddr_t vmm_get_last_available_vaddr(vmm_t* vmm);
+void vmm_dump(vmm_t* v);
 
+/*
+ * Bootstraps the kernel's VMM. Should only be called once, at kernel init.
+ */
 void initialize_vmm();
-haddr_t vmm_map_at_paddr(haddr_t virt, haddr_t phys, haddr_t flags);
-haddr_t vmm_map_single(haddr_t virt, haddr_t flags);
-haddr_t vmm_map(haddr_t virt, haddr_t size, haddr_t flags);
-haddr_t vmm_unmap(haddr_t virt);
+
+/*
+ * Creates a new VMM for use in a process. `flags` can optionally be passed,
+ * which will be used in the mapping of the page directories. The page
+ * directories will always be mapped as PAGE_PRESENT and PAGE_WRITABLE,
+ * regardless of the value of this argument.
+ * Can only be called after initializing kmalloc.
+ * The caller is responsible for freeing the handle with `vmm_free()`.
+ */
+vmm_t* vmm_new(haddr_t flags);
+
+void vmm_free(vmm_t* vmm);
+
+haddr_t vmm_map_at_paddr(vmm_t* vmm, haddr_t virt, haddr_t phys, haddr_t flags);
+haddr_t vmm_map_single(vmm_t* vmm, haddr_t virt, haddr_t flags);
+haddr_t vmm_map(vmm_t* vmm, haddr_t virt, haddr_t size, haddr_t flags);
+haddr_t vmm_unmap(vmm_t* vmm, haddr_t virt);
 
 #endif  // VMM_H

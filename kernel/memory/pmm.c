@@ -153,8 +153,10 @@ void pmm_initialize_bitmap() {
   haddr_t bitmap_paddr;
   for (uint64_t i = 1; i <= pages_for_bitmap; ++i) {
     uint64_t addr = early_alloc();
-    vmm_map_at_paddr(
-        pmm.kernel_vend + PAGE_SIZE * i, addr, PAGE_PRESENT | PAGE_WRITABLE);
+    vmm_map_at_paddr(g_kernel.vmm,
+                     pmm.kernel_vend + PAGE_SIZE * i,
+                     addr,
+                     PAGE_PRESENT | PAGE_WRITABLE);
     if (i == 1) { bitmap_paddr = addr; }
   }
 
