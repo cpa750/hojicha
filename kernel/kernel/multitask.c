@@ -1,12 +1,13 @@
 #include <drivers/pit.h>
 #include <haddr.h>
 #include <hlog.h>
+#include <kernel/elf.h>
 #include <kernel/kernel_state.h>
 #include <kernel/multitask.h>
-#include <memory/vmm.h>
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+
+#include "memory/vmm.h"
 
 #define PROC_STATUS_UNINITIALIZED 0b11111111
 #define PROC_STATUS_RUNNING       0b00000001
@@ -60,6 +61,10 @@ struct process_block {
   uint64_t elapsed;
   uint64_t sleep_until;
   uint64_t switch_timestamp;
+
+  vmm_t* vmm;
+  elf_t* elf;
+  bool is_kernel_proc;
 };
 
 process_block_t* multitask_pb_get_next(process_block_t* p) { return p->next; }
@@ -69,6 +74,8 @@ void multitask_pb_set_next(process_block_t* p, process_block_t* next) {
 hlogger_t* multitask_pb_get_logger(process_block_t* p) { return p->logger; }
 char* multitask_pb_get_name(process_block_t* p) { return p->name; }
 uint64_t multitask_pb_get_pid(process_block_t* p) { return p->pid; }
+vmm_t* multitask_pb_get_vmm(process_block_t* p) { return p->vmm; }
+void multitask_pb_set_elf(process_block_t* p, elf_t* elf) { p->elf = elf; }
 
 static multitask_state_t mt = {0};
 static pit_callback_t pit_callback = {0};
@@ -86,7 +93,8 @@ void insert_process_after(process_block_t* process, process_block_t* after);
 void mark_proc_range(process_block_t* start,
                      process_block_t* end,
                      uint8_t status);
-void proc_entry_wrapper(process_block_t* p);
+process_block_t* new_proc_shared(char* name, void* cr3);
+void proc_prelude(process_block_t* p);
 void set_last_ready_to_run(multitask_state_t* mt,
                            process_block_t* first_ready_to_run);
 void remove_proc(process_block_t* p);
@@ -126,38 +134,27 @@ void multitask_initialize(void) {
   pit_register_callback(&pit_callback);
 
   process_block_t* terminator_task =
-      multitask_proc_new("kterminator", terminator, kernel_process->cr3);
+      multitask_kproc_new("kterminator", terminator, kernel_process->cr3);
   multitask_scheduler_add_proc(terminator_task);
 }
 
-process_block_t* multitask_proc_new(char* name, proc_entry_t entry, void* cr3) {
-  ++(g_kernel.mt->total_processes_added);
-  ++(g_kernel.mt->process_count);
-  process_block_t* new_proc = (process_block_t*)malloc(sizeof(process_block_t));
-  new_proc->cr3 = cr3;
+process_block_t* multitask_kproc_new(char* name,
+                                     proc_entry_t entry,
+                                     void* cr3) {
+  process_block_t* new_proc = new_proc_shared(name, cr3);
+  new_proc->is_kernel_proc = true;
   new_proc->entry = entry;
-  uint8_t* stack_end = (uint8_t*)malloc(STACK_SIZE);
-  new_proc->stack_end = stack_end;
-  haddr_t stack_base = (haddr_t)(stack_end + STACK_SIZE);
-  stack_base &= ~0xFULL;
-  stack_base -= 8;
-  *(haddr_t*)stack_base = (haddr_t)proc_entry_wrapper;
-  stack_base -= 8 * 6;
-  *(haddr_t*)stack_base = (haddr_t)new_proc;
+  new_proc->vmm = g_kernel.vmm;
+  return new_proc;
+}
 
-  new_proc->pid = g_kernel.mt->total_processes_added;
-  if (name != NULL) {
-    new_proc->name = name;
-  } else {
-    itoa(new_proc->pid, new_proc->name, 10);
-  }
-  new_proc->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
-
-  // Because we pop 15 registers from the newly allocated stack
-  // in switch_to()
-  stack_base -= 8 * 9;
-  new_proc->rsp = (void*)stack_base;
-  new_proc->status = PROC_STATUS_UNINITIALIZED;
+process_block_t* multitask_uproc_new(char* name, elf_t* elf) {
+  vmm_t* vmm = vmm_new(PAGE_USER_ACCESIBLE);
+  process_block_t* new_proc = new_proc_shared(name, vmm_get_cr3(vmm));
+  new_proc->is_kernel_proc = false;
+  new_proc->elf = elf;
+  new_proc->vmm = g_kernel.vmm;
+  elf_map(elf, vmm);
   return new_proc;
 }
 
@@ -370,13 +367,48 @@ void insert_process_after(process_block_t* process, process_block_t* after) {
   after->next = process;
 }
 
-void proc_entry_wrapper(process_block_t* p) {
+process_block_t* new_proc_shared(char* name, void* cr3) {
+  ++(g_kernel.mt->total_processes_added);
+  ++(g_kernel.mt->process_count);
+  process_block_t* new_proc = (process_block_t*)malloc(sizeof(process_block_t));
+  new_proc->cr3 = cr3;
+  uint8_t* stack_end = (uint8_t*)malloc(STACK_SIZE);
+  new_proc->stack_end = stack_end;
+  haddr_t stack_base = (haddr_t)(stack_end + STACK_SIZE);
+  stack_base &= ~0xFULL;
+  stack_base -= 8;
+  *(haddr_t*)stack_base = (haddr_t)proc_prelude;
+  stack_base -= 8 * 6;
+  *(haddr_t*)stack_base = (haddr_t)new_proc;
+
+  new_proc->pid = g_kernel.mt->total_processes_added;
+  if (name != NULL) {
+    new_proc->name = name;
+  } else {
+    itoa(new_proc->pid, new_proc->name, 10);
+  }
+  new_proc->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
+
+  // Because we pop 15 registers from the newly allocated stack
+  // in switch_to()
+  stack_base -= 8 * 9;
+  new_proc->rsp = (void*)stack_base;
+  new_proc->status = PROC_STATUS_UNINITIALIZED;
+  return new_proc;
+}
+
+void proc_prelude(process_block_t* p) {
   if (p == NULL) { return; }
   if (p->status == PROC_STATUS_UNINITIALIZED) {
     p->status = PROC_STATUS_RUNNING;
     multitask_scheduler_unlock();
   }
-  p->entry();
+  // TODO wire in userspace switch, user stack and elf binary launch here
+  if (p->is_kernel_proc) {
+    p->entry();
+  } else {
+    elf_launch(p->elf, p->vmm);
+  }
   multitask_proc_terminate(p);
 }
 

@@ -12,6 +12,7 @@ typedef struct vmm vmm_t;
 haddr_t vmm_get_kernel_offset(vmm_t* vmm);
 haddr_t vmm_get_first_available_vaddr(vmm_t* vmm);
 haddr_t vmm_get_last_available_vaddr(vmm_t* vmm);
+haddr_t* vmm_get_cr3(vmm_t* vmm);
 void vmm_dump(vmm_t* v);
 
 /*
@@ -29,6 +30,10 @@ void initialize_vmm();
  */
 vmm_t* vmm_new(haddr_t flags);
 
+/*
+ * Frees a VMM created with `vmm_new()`. This should not be called until after
+ * the process using the VMM exits.
+ */
 void vmm_free(vmm_t* vmm);
 
 haddr_t vmm_map_at_paddr(vmm_t* vmm, haddr_t virt, haddr_t phys, haddr_t flags);

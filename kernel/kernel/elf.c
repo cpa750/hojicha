@@ -1,6 +1,9 @@
 #include <haddr.h>
 #include <hlog.h>
 #include <kernel/elf.h>
+#include <kernel/kernel_state.h>
+#include <memory/pmm.h>
+#include <memory/vmm.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,7 +29,8 @@
 #define ELF_PROG_HEADER_FLAG_WRITABLE   2
 #define ELF_PROG_HEADER_FLAG_READABLE   4
 
-static char* error_msg_prefix = "Could not read ELF file:";
+static char* read_error_msg_prefix = "Could not read ELF file:";
+static char* load_error_msg_prefix = "Could not load ELF file:";
 struct elf_header {
   uint32_t magic;
   uint8_t bits;
@@ -61,19 +65,26 @@ struct elf_program_header {
 } __attribute__((packed));
 typedef struct elf_program_header elf_program_header_t;
 
-bool is_valid_exec(elf_header_t* header);
+struct elf {
+  elf_header_t* header;
+  elf_program_header_t* program_headers;
+  void* buffer;
+};
+typedef struct elf elf_t;
+
+bool is_valid_header(elf_header_t* header);
 
 elf_t* elf_read(void* buffer, uint64_t size) {
   if (size < sizeof(elf_header_t)) {
     hlog_write(HLOG_ERROR,
                "%s provided buffer size is not large "
                "enough to contain ELF header.",
-               error_msg_prefix);
+               read_error_msg_prefix);
   }
   elf_header_t* elf_header = (elf_header_t*)malloc(sizeof(elf_header_t));
   elf_header = memcpy(elf_header, buffer, sizeof(elf_header_t));
 
-  if (!is_valid_exec(elf_header)) { return NULL; }
+  if (!is_valid_header(elf_header)) { return NULL; }
 
   elf_program_header_t* program_headers = (elf_program_header_t*)malloc(
       sizeof(elf_program_header_t) * elf_header->count_prog_header_table_entry);
@@ -87,22 +98,73 @@ elf_t* elf_read(void* buffer, uint64_t size) {
   elf_t* ret = (elf_t*)malloc(sizeof(elf_t));
   ret->header = elf_header;
   ret->program_headers = program_headers;
+  ret->buffer = buffer;
   return ret;
 }
 
-bool elf_load(process_block_t* proc, elf_t* elf) {
-  elf;
-  return false;
+bool elf_map(elf_t* elf, vmm_t* vmm) {
+  if (vmm == NULL) {
+    hlog_write(
+        HLOG_ERROR, "%s process does not have a VMM.", load_error_msg_prefix);
+    return false;
+  }
+
+  if (vmm == g_kernel.vmm) {
+    hlog_write(HLOG_WARN,
+               "Loading ELF using kernel VMM. Are you sure you're using "
+               "the right process handle?");
+  }
+
+  elf_program_header_t prog_header;
+  for (int i = 0; i < elf->header->count_prog_header_table_entry; ++i) {
+    prog_header = elf->program_headers[i];
+
+    if (prog_header.type == ELF_PROG_HEADER_TYPE_LOAD) {
+      // TODO: Do we actually need to + 1 here?
+      size_t page_count = pmm_addr_to_page(prog_header.buffer_size) + 1;
+      vmm_map(vmm, prog_header.load_vaddr, page_count, PAGE_USER_ACCESIBLE);
+    } else if (prog_header.type == ELF_PROG_HEADER_TYPE_DYNAMIC) {
+      hlog_write(HLOG_ERROR,
+                 "%s encountered dynamic program header. Currently only static "
+                 "binaries are supported.");
+      return false;
+    }
+  }
+
+  return true;
 }
 
-void elf_free(elf_t* elf) {
-  elf;
+void elf_launch(elf_t* elf, vmm_t* vmm) {
+  // TODO:
+  // Step 1: copy the binary
+  for (uint16_t i = 0; i < elf->header->count_prog_header_table_entry; ++i) {
+    elf_program_header_t prog_header = elf->program_headers[i];
+    if (prog_header.type == ELF_PROG_HEADER_TYPE_LOAD) {
+      // TODO: check that this memcpy is correct
+      memcpy((void*)prog_header.load_vaddr,
+             elf->buffer + prog_header.buffer_offset,
+             prog_header.buffer_size);
+    }
+  }
+
+  // Step 2: Set up user stack
+  // Step 3: Transition to userspace
+  // Step 4: Jump to the entry point
+  // Step 5: Profit
   return;
 }
 
-bool is_valid_exec(elf_header_t* header) {
+void elf_free(elf_t* elf) {
+  // TODO: what else is needed here?
+  free(elf->program_headers);
+  free(elf->header);
+  free(elf);
+  return;
+}
+
+bool is_valid_header(elf_header_t* header) {
   if (header->magic != ELF_MAGIC) {
-    hlog_write(HLOG_ERROR, "%s no magic.", error_msg_prefix);
+    hlog_write(HLOG_ERROR, "%s no magic.", read_error_msg_prefix);
     return false;
   }
 

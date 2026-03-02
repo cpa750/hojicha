@@ -44,6 +44,7 @@ haddr_t vmm_get_kernel_offset(vmm_t* vmm) { return vmm->kernel_offset; }
 haddr_t vmm_get_first_available_vaddr(vmm_t* vmm) {
   return vmm->first_available_vaddr;
 }
+haddr_t* vmm_get_cr3(vmm_t* vmm) { return vmm->pml4; }
 haddr_t vmm_get_last_available_vaddr(vmm_t* vmm) {
   return vmm->last_available_vaddr;
 }

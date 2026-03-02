@@ -196,43 +196,43 @@ void kernel_main() {
 
   semaphore = semaphore_create(1);
 
-  process_block_t* sleep_proc = multitask_proc_new(
+  process_block_t* sleep_proc = multitask_kproc_new(
       "sleep_proc", test_sleep, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(sleep_proc);
 
-  process_block_t* test1_proc = multitask_proc_new(
+  process_block_t* test1_proc = multitask_kproc_new(
       "test1", test1, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test1_proc);
 
-  process_block_t* test2_proc = multitask_proc_new(
+  process_block_t* test2_proc = multitask_kproc_new(
       "test2", test2, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test2_proc);
 
-  process_block_t* test3_proc = multitask_proc_new(
+  process_block_t* test3_proc = multitask_kproc_new(
       "test3", test3, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test3_proc);
 
-  process_block_t* test4_proc = multitask_proc_new(
+  process_block_t* test4_proc = multitask_kproc_new(
       "test4", test4, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test4_proc);
 
-  process_block_t* test5_proc = multitask_proc_new(
+  process_block_t* test5_proc = multitask_kproc_new(
       "test5", test5, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test5_proc);
 
-  process_block_t* test6_proc = multitask_proc_new(
+  process_block_t* test6_proc = multitask_kproc_new(
       "test6", test6, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test6_proc);
 
-  process_block_t* test7_proc = multitask_proc_new(
+  process_block_t* test7_proc = multitask_kproc_new(
       "test7", test7, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test7_proc);
 
-  process_block_t* test8_proc = multitask_proc_new(
+  process_block_t* test8_proc = multitask_kproc_new(
       "test8", test8, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test8_proc);
 
-  process_block_t* test9_proc = multitask_proc_new(
+  process_block_t* test9_proc = multitask_kproc_new(
       "test9", test9, multitask_process_block_get_cr3(kernel_proc));
   multitask_scheduler_add_proc(test9_proc);
 
