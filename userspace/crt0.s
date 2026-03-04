@@ -3,10 +3,10 @@
 .extern main
 
 _start:
-	call main
+  call main
 
-	/* Invalid instruction to trap the kernel into terminating the process */
-	ud2
+  /* Invalid instruction to trap the kernel into terminating the process */
+  ud2
 
 .size _start, . - _start
 

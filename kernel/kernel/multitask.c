@@ -13,7 +13,6 @@
 #define PROC_STATUS_RUNNING       0b00000001
 #define PROC_STATUS_READY_TO_RUN  0b00000010
 #define PROC_STATUS_READY_TO_DIE  0b00000100
-#define STACK_SIZE                16384
 #define QUANTUM_LENGTH            5000000  // 5 ms
 
 struct multitask_state {
@@ -48,6 +47,7 @@ struct process_block {
   void* cr3;
   void* rsp;
   uint8_t status;
+  uint8_t is_kernel_proc;
   proc_entry_t entry;
   // End asm-mapped fields
 
@@ -64,7 +64,6 @@ struct process_block {
 
   vmm_t* vmm;
   elf_t* elf;
-  bool is_kernel_proc;
 };
 
 process_block_t* multitask_pb_get_next(process_block_t* p) { return p->next; }
@@ -153,8 +152,7 @@ process_block_t* multitask_uproc_new(char* name, elf_t* elf) {
   process_block_t* new_proc = new_proc_shared(name, vmm_get_cr3(vmm));
   new_proc->is_kernel_proc = false;
   new_proc->elf = elf;
-  new_proc->vmm = g_kernel.vmm;
-  elf_map(elf, vmm);
+  new_proc->vmm = vmm;
   return new_proc;
 }
 
@@ -246,6 +244,12 @@ void multitask_schedule(void) {
 
 void multitask_switch(process_block_t* process) {
   asm volatile("cli");
+  hlog_add(HLOG_VERBOSE,
+           "Switching to process \"%s\" (PID: %d)",
+           process->name,
+           process->pid);
+  hlog_add(HLOG_VERBOSE, "address at: %x", process);
+  hlog_commit();
   switch_to(process);
   asm volatile("sti");
 }

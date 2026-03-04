@@ -35,15 +35,33 @@ void handle_fault(interrupt_frame_t* frame) {
 
   if (multitask_pb_get_pid(g_kernel.current_process) ==
       multitask_state_get_kernel_pid(g_kernel.mt)) {
-    hlog_write(
-        HLOG_FATAL, "%s exception in kernel. Aborting...", exception_str);
+    hlog_add(HLOG_FATAL,
+             "%s exception at %x in kernel. Aborting...",
+             exception_str,
+             frame->rip);
+    hlog_add(HLOG_DEBUG, "Error code: %b", frame->err_code);
+    if (frame->int_no == 14) {
+      uint64_t cr2 = 0;
+      asm volatile("\t movq %%cr2,%0" : "=r"(cr2));
+      hlog_add(HLOG_DEBUG, "CR2: %x", cr2);
+    }
+    hlog_commit();
     abort();
   } else {
-    hlog_write(HLOG_ERROR,
-               "%s exception in process '%s' (PID: %d). Terminating process...",
-               exception_str,
-               multitask_pb_get_name(g_kernel.current_process),
-               multitask_pb_get_pid(g_kernel.current_process));
+    hlog_add(
+        HLOG_ERROR,
+        "%s exception at %x in process '%s' (PID: %d). Terminating process...",
+        exception_str,
+        frame->rip,
+        multitask_pb_get_name(g_kernel.current_process),
+        multitask_pb_get_pid(g_kernel.current_process));
+    hlog_add(HLOG_DEBUG, "Error code: %b", frame->err_code);
+    if (frame->int_no == 14) {
+      uint64_t cr2 = 0;
+      asm volatile("\t movq %%cr2,%0" : "=r"(cr2));
+      hlog_add(HLOG_DEBUG, "CR2: %x", cr2);
+    }
+    hlog_commit();
     multitask_proc_terminate(g_kernel.current_process);
   }
   if (frame->int_no < 19) {

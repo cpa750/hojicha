@@ -9,8 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define PAGE_SIZE 4096
-
 __attribute__((
     used,
     section(".limine_requests"))) static volatile struct limine_memmap_request

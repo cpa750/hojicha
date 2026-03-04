@@ -9,6 +9,7 @@
 
 #define PROC_STATUS_PAUSED    0b00000100
 #define PROC_STATUS_SEMAPHORE 0b00001000
+#define STACK_SIZE            16384  // 4 pages
 
 typedef struct elf elf_t;
 

@@ -247,6 +247,8 @@ void kernel_main() {
                userspace_mod->size);
   }
   elf_t* bigmaths = elf_read(userspace_mod->address, userspace_mod->size);
+  process_block_t* elf_proc = multitask_uproc_new("bigmaths", bigmaths);
+  multitask_scheduler_add_proc(elf_proc);
 
   // while (1) asm volatile("hlt");
 

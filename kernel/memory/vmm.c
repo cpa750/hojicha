@@ -19,6 +19,8 @@
 #define MAPPING_STRUCTURE_MASK 0xFFFFFFFFFFFFF000ULL
 #define PD_ENTRIES             511ULL
 #define RECURSIVE_IDX          510ULL
+#define KERNEL_PML4_FIRST      256ULL
+#define KERNEL_PML4_LAST       511ULL
 #define VIRT_PT_START          0
 #define VIRT_SCRATCH_ADDR      LOW_REGION_END
 #define VIRT_PML4              VIRT_SCRATCH_ADDR + 0x1000
@@ -37,14 +39,14 @@ struct vmm {
   haddr_t last_available_vaddr;
   haddr_t kernel_offset;
 
-  haddr_t* pml4;
+  haddr_t* pml4_phys;
 };
 typedef struct vmm vmm_t;
 haddr_t vmm_get_kernel_offset(vmm_t* vmm) { return vmm->kernel_offset; }
 haddr_t vmm_get_first_available_vaddr(vmm_t* vmm) {
   return vmm->first_available_vaddr;
 }
-haddr_t* vmm_get_cr3(vmm_t* vmm) { return vmm->pml4; }
+haddr_t* vmm_get_cr3(vmm_t* vmm) { return vmm->pml4_phys; }
 haddr_t vmm_get_last_available_vaddr(vmm_t* vmm) {
   return vmm->last_available_vaddr;
 }
@@ -62,6 +64,7 @@ haddr_t* get_pml4_entry(haddr_t virt);
 haddr_t* get_pml3_entry(haddr_t virt);
 haddr_t* get_pd_entry(haddr_t virt);
 haddr_t* get_pt_entry(haddr_t virt);
+static haddr_t* get_current_pml4(void);
 uint16_t get_pml4_idx(haddr_t virt);
 uint16_t get_pml3_idx(haddr_t virt);
 uint16_t get_pd_idx(haddr_t virt);
@@ -135,88 +138,62 @@ void initialize_vmm() {
   load_pd((haddr_t*)pml4_physical);
 
   g_kernel.vmm = &kernel_vmm;
-  kernel_vmm.pml4 = bootstrap_pml4;
+  kernel_vmm.pml4_phys = bootstrap_pml4;
   map_framebuffer(&kernel_vmm);
   pmm_initialize_bitmap();
 
+  for (haddr_t idx = KERNEL_PML4_FIRST; idx <= KERNEL_PML4_LAST; ++idx) {
+    if (idx == RECURSIVE_IDX) { continue; }
+    if (entry_is_present(bootstrap_pml4[idx])) { continue; }
+
+    haddr_t new_pml3_phys = pmm_alloc_frame();
+    if (new_pml3_phys == 0) {
+      printf("OOM initializing kernel shared upper-half mappings. Halt.");
+      abort();
+    }
+
+    bootstrap_pml4[idx] = new_pml3_phys | PAGE_PRESENT | PAGE_WRITABLE;
+    haddr_t* new_pml3 = scratch_map_table(VIRT_SCRATCH_L3, new_pml3_phys);
+    if (new_pml3 == NULL) {
+      printf("Unable to map shared upper-half PML3. Halt.");
+      abort();
+    }
+    memset(new_pml3, 0, PAGE_SIZE);
+  }
+
   kernel_vmm.first_available_vaddr =
-      pmm_page_to_addr_base(pmm_addr_to_page(LOW_REGION_END + PAGE_SIZE));
-  kernel_vmm.last_available_vaddr = LAST_VADDR;
-  kernel_vmm.pml4 = bootstrap_pml4;
+      kernel_vstart + (kernel_end - kernel_start) + pmm_page_to_addr_base(1);
+  kernel_vmm.last_available_vaddr = (haddr_t)virtual_directory;
+  kernel_vmm.pml4_phys = (haddr_t*)pml4_physical;
 }
 
 vmm_t* vmm_new(haddr_t flags) {
   vmm_t* vmm = (vmm_t*)malloc(sizeof(vmm_t));
+  if (vmm == NULL) { return NULL; }
 
-  haddr_t* pml4 = (haddr_t*)pmm_alloc_frame();
-  haddr_t* kernel_pml3 = (haddr_t*)pmm_alloc_frame();
-  haddr_t* kernel_pd = (haddr_t*)pmm_alloc_frame();
-  haddr_t* kernel_pde = (haddr_t*)pmm_alloc_frame();
-  haddr_t* low_identity_pde = (haddr_t*)pmm_alloc_frame();
+  haddr_t pml4 = pmm_alloc_frame();
+  if (pml4 == 0) { return NULL; }
 
-  vmm_map_at_paddr(g_kernel.vmm,
-                   VIRT_SCRATCH_ADDR,
-                   (haddr_t)low_identity_pde,
-                   PAGE_PRESENT | PAGE_WRITABLE);
-  _invlpg(VIRT_SCRATCH_ADDR);
-  for (haddr_t addr = 0; addr < LOW_REGION_END; addr += 4096) {
-    low_identity_pde[pmm_addr_to_page(addr)] =
-        addr | PAGE_PRESENT | PAGE_WRITABLE;
-  }
-
-  haddr_t kernel_page_count = pmm_state_get_kernel_page_count(g_kernel.pmm);
-
-  check_kernel_size(kernel_page_count);
-
-  haddr_t kernel_start = pmm_state_get_kernel_start(g_kernel.pmm);
-  haddr_t kernel_end = pmm_state_get_kernel_end(g_kernel.pmm);
   vmm->kernel_offset = g_kernel.vmm->kernel_offset;
+  vmm->pml4_phys = (haddr_t*)pml4;
 
-  vmm_map_at_paddr(g_kernel.vmm,
-                   VIRT_SCRATCH_ADDR,
-                   (haddr_t)kernel_pde,
-                   PAGE_PRESENT | PAGE_WRITABLE);
-  _invlpg(VIRT_SCRATCH_ADDR);
-  uint64_t kernel_page = 0;
-  for (haddr_t addr = kernel_start; addr <= kernel_end; addr += 4096) {
-    ((haddr_t*)VIRT_SCRATCH_ADDR)[kernel_page++] =
-        addr | PAGE_PRESENT | PAGE_WRITABLE;
+  haddr_t* new_pml4 = scratch_map_table(VIRT_SCRATCH_L4, pml4);
+  haddr_t* kernel_pml4 =
+      scratch_map_table(VIRT_SCRATCH_L3, (haddr_t)g_kernel.vmm->pml4_phys);
+  if (new_pml4 == NULL || kernel_pml4 == NULL) { return NULL; }
+
+  memset(new_pml4, 0, PAGE_SIZE);
+  for (haddr_t idx = KERNEL_PML4_FIRST; idx <= KERNEL_PML4_LAST; ++idx) {
+    if (idx == RECURSIVE_IDX) { continue; }
+    new_pml4[idx] = kernel_pml4[idx];
   }
 
-  vmm_map_at_paddr(g_kernel.vmm,
-                   VIRT_SCRATCH_ADDR,
-                   (haddr_t)pml4,
-                   PAGE_PRESENT | PAGE_WRITABLE);
-  _invlpg(VIRT_SCRATCH_ADDR);
-  ((haddr_t*)VIRT_SCRATCH_ADDR)[RECURSIVE_IDX] =
-      (haddr_t)pml4 | PAGE_PRESENT | PAGE_WRITABLE | flags;
-  ((haddr_t*)VIRT_SCRATCH_ADDR)[511] =
-      (haddr_t)kernel_pml3 | PAGE_PRESENT | PAGE_WRITABLE | flags;
-
-  vmm_map_at_paddr(g_kernel.vmm,
-                   VIRT_SCRATCH_ADDR,
-                   (haddr_t)kernel_pml3,
-                   PAGE_PRESENT | PAGE_WRITABLE);
-  _invlpg(VIRT_SCRATCH_ADDR);
-  ((haddr_t*)VIRT_SCRATCH_ADDR)[510] =
-      (haddr_t)kernel_pd | PAGE_PRESENT | PAGE_WRITABLE | flags;
-
-  vmm_map_at_paddr(g_kernel.vmm,
-                   VIRT_SCRATCH_ADDR,
-                   (haddr_t)kernel_pd,
-                   PAGE_PRESENT | PAGE_WRITABLE);
-  _invlpg(VIRT_SCRATCH_ADDR);
-  ((haddr_t*)VIRT_SCRATCH_ADDR)[0] =
-      (haddr_t)kernel_pde | PAGE_PRESENT | PAGE_WRITABLE | flags;
-
-  map_framebuffer(vmm);
-  vmm_map_at_paddr(
-      vmm, VIRT_PML4, (haddr_t)pml4, PAGE_PRESENT | PAGE_WRITABLE | flags);
+  new_pml4[RECURSIVE_IDX] = pml4 | PAGE_PRESENT | PAGE_WRITABLE | flags;
 
   vmm->first_available_vaddr =
-      pmm_page_to_addr_base(pmm_addr_to_page(LOW_REGION_END + PAGE_SIZE));
+      pmm_page_to_addr_base(pmm_addr_to_page(VIRT_SCRATCH_L1 + PAGE_SIZE));
   vmm->last_available_vaddr = LAST_VADDR;
-  vmm->pml4 = pml4;
+  vmm->pml4_phys = (haddr_t*)pml4;
   return vmm;
 }
 
@@ -252,6 +229,7 @@ haddr_t vmm_map_at_paddr(vmm_t* vmm,
     if (pt == NULL) { return 0; }
     uint16_t pt_idx = get_pt_idx(virt);
     pt[pt_idx] = phys | flags;
+    _invlpg(virt);
     return virt_base;
   }
 
@@ -334,6 +312,13 @@ haddr_t* get_pml4_entry(haddr_t virt) {
   return (haddr_t*)entry;
 }
 
+static haddr_t* get_current_pml4(void) {
+  haddr_t entry = CANONICAL_HIGH | (RECURSIVE_IDX << 39) |
+                  (RECURSIVE_IDX << 30) | (RECURSIVE_IDX << 21) |
+                  (RECURSIVE_IDX << 12);
+  return (haddr_t*)entry;
+}
+
 haddr_t* get_pml3_entry(haddr_t virt) {
   uint32_t pml4_idx = get_pml4_idx(virt);
   uint32_t pml3_idx = get_pml3_idx(virt);
@@ -392,12 +377,12 @@ void map_framebuffer(vmm_t* vmm) {
 static haddr_t map_in_current_cr3(haddr_t virt, haddr_t phys, haddr_t flags) {
   haddr_t virt_base = virt & MAPPING_STRUCTURE_MASK;
 
+  haddr_t* pml4 = get_current_pml4();
   haddr_t* pml3 = get_pml4_entry(virt);
   uint16_t pml4_idx = get_pml4_idx(virt);
   if (pml4_idx == RECURSIVE_IDX) { return 0; }
-  if (!(virtual_directory[pml4_idx] & (PAGE_PRESENT | PAGE_WRITABLE))) {
-    virtual_directory[pml4_idx] =
-        pmm_alloc_frame() | PAGE_PRESENT | PAGE_WRITABLE;
+  if (!(pml4[pml4_idx] & (PAGE_PRESENT | PAGE_WRITABLE))) {
+    pml4[pml4_idx] = pmm_alloc_frame() | PAGE_PRESENT | PAGE_WRITABLE;
     memset(pml3, 0, PAGE_SIZE);
   }
 
@@ -447,7 +432,7 @@ static haddr_t* walk_non_kernel_to_pt(vmm_t* vmm, haddr_t virt, bool create) {
 
   if (pml4_idx == RECURSIVE_IDX) { return NULL; }
 
-  haddr_t* pml4 = scratch_map_table(VIRT_SCRATCH_L4, (haddr_t)vmm->pml4);
+  haddr_t* pml4 = scratch_map_table(VIRT_SCRATCH_L4, (haddr_t)vmm->pml4_phys);
   if (pml4 == NULL) { return NULL; }
 
   if (!entry_is_present(pml4[pml4_idx])) {

@@ -5,6 +5,7 @@
 #include <memory/pmm.h>
 #include <memory/vmm.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -62,6 +63,7 @@ struct elf_program_header {
   uint64_t reserved_paddr;
   uint64_t buffer_size;
   uint64_t mapped_size;
+  uint64_t align;
 } __attribute__((packed));
 typedef struct elf_program_header elf_program_header_t;
 
@@ -69,8 +71,11 @@ struct elf {
   elf_header_t* header;
   elf_program_header_t* program_headers;
   void* buffer;
+  haddr_t load_addr;
 };
 typedef struct elf elf_t;
+
+extern void enter_ring3(haddr_t rsp, haddr_t rip);
 
 bool is_valid_header(elf_header_t* header);
 
@@ -116,13 +121,19 @@ bool elf_map(elf_t* elf, vmm_t* vmm) {
   }
 
   elf_program_header_t prog_header;
+  haddr_t lowest_load = INT64_MAX;
   for (int i = 0; i < elf->header->count_prog_header_table_entry; ++i) {
     prog_header = elf->program_headers[i];
-
     if (prog_header.type == ELF_PROG_HEADER_TYPE_LOAD) {
+      if (prog_header.load_vaddr < lowest_load) {
+        lowest_load = prog_header.load_vaddr;
+      }
       // TODO: Do we actually need to + 1 here?
       size_t page_count = pmm_addr_to_page(prog_header.buffer_size) + 1;
-      vmm_map(vmm, prog_header.load_vaddr, page_count, PAGE_USER_ACCESIBLE);
+      vmm_map(vmm,
+              prog_header.load_vaddr,
+              page_count,
+              PAGE_USER_ACCESIBLE | PAGE_PRESENT | PAGE_WRITABLE);
     } else if (prog_header.type == ELF_PROG_HEADER_TYPE_DYNAMIC) {
       hlog_write(HLOG_ERROR,
                  "%s encountered dynamic program header. Currently only static "
@@ -130,13 +141,11 @@ bool elf_map(elf_t* elf, vmm_t* vmm) {
       return false;
     }
   }
-
   return true;
 }
 
 void elf_launch(elf_t* elf, vmm_t* vmm) {
-  // TODO:
-  // Step 1: copy the binary
+  elf_map(elf, vmm);
   for (uint16_t i = 0; i < elf->header->count_prog_header_table_entry; ++i) {
     elf_program_header_t prog_header = elf->program_headers[i];
     if (prog_header.type == ELF_PROG_HEADER_TYPE_LOAD) {
@@ -147,10 +156,15 @@ void elf_launch(elf_t* elf, vmm_t* vmm) {
     }
   }
 
-  // Step 2: Set up user stack
-  // Step 3: Transition to userspace
-  // Step 4: Jump to the entry point
-  // Step 5: Profit
+  uint64_t stack_size = STACK_SIZE / PAGE_SIZE;
+  haddr_t user_stack_location = pmm_page_to_addr_base(
+      pmm_addr_to_page(vmm_get_last_available_vaddr(vmm)) - (stack_size + 1));
+  vmm_map(vmm,
+          user_stack_location,
+          stack_size,
+          PAGE_USER_ACCESIBLE | PAGE_PRESENT | PAGE_WRITABLE);
+
+  enter_ring3(user_stack_location + stack_size - 1, elf->header->offset_entry);
   return;
 }
 
