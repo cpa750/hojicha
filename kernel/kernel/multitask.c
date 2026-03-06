@@ -6,6 +6,7 @@
 #include <kernel/multitask.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "memory/vmm.h"
 
@@ -77,6 +78,8 @@ uint64_t multitask_pb_get_pid(process_block_t* p) { return p->pid; }
 vmm_t* multitask_pb_get_vmm(process_block_t* p) { return p->vmm; }
 void multitask_pb_set_elf(process_block_t* p, elf_t* elf) { p->elf = elf; }
 void multitask_pb_dump(process_block_t* p, hlog_level_t log_level) {
+  haddr_t vmm_cr3 = 0;
+  if (p->vmm != NULL) { vmm_cr3 = (haddr_t)vmm_get_cr3(p->vmm); }
   hlog_write(log_level,
              "Process block for \"%s\" (at %x):\n"
              "CR3:\t\t\t%x\n"
@@ -103,7 +106,7 @@ void multitask_pb_dump(process_block_t* p, hlog_level_t log_level) {
              (haddr_t)p->next,
              (haddr_t)p->stack_end,
              (haddr_t)p->vmm,
-             (haddr_t)vmm_get_cr3(p->vmm),
+             vmm_cr3,
              (haddr_t)p->elf);
 }
 
@@ -135,6 +138,7 @@ void wake_procs_before_timestamp(uint64_t timestamp);
 void multitask_initialize(void) {
   process_block_t* kernel_process =
       (process_block_t*)malloc(sizeof(process_block_t));
+  memset(kernel_process, 0, sizeof(process_block_t));
   haddr_t cr3;
   haddr_t rsp;
   asm volatile("\t movq %%cr3,%0" : "=r"(cr3));
@@ -144,9 +148,11 @@ void multitask_initialize(void) {
   kernel_process->rsp0 = (void*)rsp;
   kernel_process->next = NULL;
   kernel_process->status = PROC_STATUS_RUNNING;
+  kernel_process->is_kernel_proc = true;
   kernel_process->name = "hojicha";
   kernel_process->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
   kernel_process->pid = UINT64_MAX;
+  kernel_process->vmm = g_kernel.vmm;
   mt.kernel_pid = kernel_process->pid;
 
   mt.first_ready_to_run = NULL;
@@ -276,24 +282,13 @@ void multitask_schedule(void) {
 
 void multitask_switch(process_block_t* process) {
   asm volatile("cli");
-  hlog_add(HLOG_VERBOSE,
-           "Switching to process \"%s\" (PID: %d)",
-           process->name,
-           process->pid);
-  hlog_add(HLOG_VERBOSE, "address at: %x", process);
-  hlog_commit();
-  multitask_pb_dump(process, HLOG_VERBOSE);
   uint64_t cs = 0;
   asm volatile("\t movq %%cs,%0" : "=r"(cs));
   uint8_t cpl = cs & 0b11;
   bool is_ctx_switch = (!cpl && !process->is_kernel_proc) ||
                        (cpl == 3 && process->is_kernel_proc);
   hlog_write(HLOG_VERBOSE, "switching to PID %d", process->pid);
-  if (process->pid == 12) {
-    switch_to(process, is_ctx_switch);
-  } else {
-    switch_to(process, is_ctx_switch);
-  }
+  switch_to(process, is_ctx_switch);
   asm volatile("sti");
 }
 
@@ -351,9 +346,15 @@ void multitask_sleep_ns(uint64_t ns) {
 }
 
 void multitask_proc_terminate(process_block_t* p) {
+  if (p == NULL) { return; }
   multitask_scheduler_postpone();
 
   multitask_scheduler_lock();
+  if (p->status == PROC_STATUS_READY_TO_DIE) {
+    multitask_scheduler_unlock();
+    multitask_scheduler_resume();
+    return;
+  }
   if (p != g_kernel.current_process) { remove_proc(p); }
   p->next = g_kernel.mt->ready_to_die;
   g_kernel.mt->ready_to_die = p;
@@ -418,6 +419,7 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
   ++(g_kernel.mt->total_processes_added);
   ++(g_kernel.mt->process_count);
   process_block_t* new_proc = (process_block_t*)malloc(sizeof(process_block_t));
+  memset(new_proc, 0, sizeof(process_block_t));
   new_proc->cr3 = cr3;
   uint8_t* stack_end = (uint8_t*)malloc(STACK_SIZE);
   new_proc->stack_end = stack_end;
