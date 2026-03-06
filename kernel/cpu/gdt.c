@@ -81,7 +81,7 @@ void initialize_gdt() {
   // User code segment
   create_gdt_entry(gdt_entries, 3, 0xFFFFFFFF, 0x0, 0xFA, 0x20);
   // User data segment
-  create_gdt_entry(gdt_entries, 4, 0xFFFFFFFF, 0x0, 0xF2, 0x20);
+  create_gdt_entry(gdt_entries, 4, 0xFFFFFFFF, 0x0, 0xF2, 0x0);
   // Task state segment
   create_system_segment(
       gdt_entries, 5, sizeof(tss_t) - 1, (haddr_t)&tss, 0x89, 0x0);

@@ -12,7 +12,7 @@ enter_ring3:
     push rdi
 
     ; Flags
-    mov rdx, 0x200 ; Enable interrupts
+    mov rdx, 0x202 ; Enable interrupts
     push rdx
 
     ; User code segment

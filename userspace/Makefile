@@ -2,7 +2,7 @@ DEFAULT_HOST!=../default_host.sh
 HOST?=$(DEFAULT_HOST)
 CC?=$(HOST)-gcc
 
-CFLAGS?=-O2 -Wall -Wextra -std=gnu11 -ffreestanding -fno-stack-protector -fno-pie
+CFLAGS?=-O2 -Wall -Wextra -std=gnu11 -ffreestanding -fno-stack-protector -fno-pie -fno-pic
 CPPFLAGS?=
 LDFLAGS?=-nostdlib -static -no-pie -Wl,-melf_x86_64 -Wl,-e,_start
 LIBS?=-lgcc

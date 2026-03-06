@@ -4,12 +4,12 @@
 %define G_KERNEL_CURRENT_PROCESS     8
 %define PCB_CR3                      0
 %define PCB_RSP                      8
-%define PCB_STATUS                   16
-%define PCB_IS_KERNEL                24
+%define PCB_RSP0                     16
+%define PCB_STATUS                   24
+%define PCB_IS_KERNEL                25
 %define PCB_STATUS_RUNNING           1
 %define PCB_STATUS_UNINITIALIZED     255
 %define PCB_ENTRY                    32
-%define PCB_RSP0                     8
 %define TSS_RSP0                     4
 
 extern g_kernel
@@ -58,16 +58,10 @@ switch_to:
     mov cr3, rax
 
 .skip_cr3:
-    mov rbx, [rdi + PCB_IS_KERNEL]
-    test rbx, rbx
-    jz .skip_tss
-    mov rbx, [rdi + PCB_RSP0]
-    ; TODO: should we be doing this for literally every switch? Or just
-    ; kernel process switching?
     mov rcx, [g_kernel + G_KERNEL_TSS]
+    mov rbx, [rdi + PCB_RSP0]
     mov [rcx + TSS_RSP0], rbx
 
-.skip_tss:
     pop r15
     pop r14
     pop r13

@@ -30,6 +30,9 @@
 #define ELF_PROG_HEADER_FLAG_WRITABLE   2
 #define ELF_PROG_HEADER_FLAG_READABLE   4
 
+#define USER_SPACE_MIN_VADDR 0x0000000000100000ULL
+#define USER_SPACE_MAX_VADDR 0x00007FFFFFFFF000ULL
+
 static char* read_error_msg_prefix = "Could not read ELF file:";
 static char* load_error_msg_prefix = "Could not load ELF file:";
 struct elf_header {
@@ -128,8 +131,7 @@ bool elf_map(elf_t* elf, vmm_t* vmm) {
       if (prog_header.load_vaddr < lowest_load) {
         lowest_load = prog_header.load_vaddr;
       }
-      // TODO: Do we actually need to + 1 here?
-      size_t page_count = pmm_addr_to_page(prog_header.buffer_size) + 1;
+      size_t page_count = (prog_header.mapped_size + PAGE_SIZE - 1) / PAGE_SIZE;
       vmm_map(vmm,
               prog_header.load_vaddr,
               page_count,
@@ -146,25 +148,42 @@ bool elf_map(elf_t* elf, vmm_t* vmm) {
 
 void elf_launch(elf_t* elf, vmm_t* vmm) {
   elf_map(elf, vmm);
+  haddr_t highest_loaded_addr = USER_SPACE_MIN_VADDR;
   for (uint16_t i = 0; i < elf->header->count_prog_header_table_entry; ++i) {
     elf_program_header_t prog_header = elf->program_headers[i];
     if (prog_header.type == ELF_PROG_HEADER_TYPE_LOAD) {
-      // TODO: check that this memcpy is correct
+      haddr_t segment_end = prog_header.load_vaddr + prog_header.mapped_size;
+      if (segment_end > highest_loaded_addr) { highest_loaded_addr = segment_end; }
       memcpy((void*)prog_header.load_vaddr,
              elf->buffer + prog_header.buffer_offset,
              prog_header.buffer_size);
+      if (prog_header.mapped_size > prog_header.buffer_size) {
+        memset((void*)(prog_header.load_vaddr + prog_header.buffer_size),
+               0,
+               prog_header.mapped_size - prog_header.buffer_size);
+      }
     }
   }
 
-  uint64_t stack_size = STACK_SIZE / PAGE_SIZE;
-  haddr_t user_stack_location = pmm_page_to_addr_base(
-      pmm_addr_to_page(vmm_get_last_available_vaddr(vmm)) - (stack_size + 1));
+  uint64_t stack_size = (STACK_SIZE + PAGE_SIZE - 1) / PAGE_SIZE;
+  haddr_t user_stack_top = USER_SPACE_MAX_VADDR;
+  haddr_t user_stack_location =
+      user_stack_top - pmm_page_to_addr_base(stack_size);
+
+  if (user_stack_location <= highest_loaded_addr + PAGE_SIZE) {
+    hlog_write(HLOG_ERROR,
+               "%s no room for user stack in lower-half userspace range.",
+               load_error_msg_prefix);
+    abort();
+  }
+
   vmm_map(vmm,
           user_stack_location,
           stack_size,
           PAGE_USER_ACCESIBLE | PAGE_PRESENT | PAGE_WRITABLE);
 
-  enter_ring3(user_stack_location + stack_size - 1, elf->header->offset_entry);
+  user_stack_top = user_stack_location + pmm_page_to_addr_base(stack_size);
+  enter_ring3(user_stack_top, elf->header->offset_entry);
   return;
 }
 
@@ -204,4 +223,3 @@ bool is_valid_header(elf_header_t* header) {
 
   return true;
 }
-

@@ -4,6 +4,7 @@
 #include <haddr.h>
 
 struct interrupt_frame {
+  haddr_t stack_alignment_padding;
   haddr_t cr2;
   haddr_t rax;
   haddr_t rbx;
@@ -19,8 +20,8 @@ struct interrupt_frame {
   haddr_t r13;
   haddr_t r14;
   haddr_t r15;
-  haddr_t err_code;
   haddr_t int_no;
+  haddr_t err_code;
   haddr_t rip;
   haddr_t cs;
   haddr_t rflags;
