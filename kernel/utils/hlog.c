@@ -1,6 +1,6 @@
 #include <hlog.h>
-#include <kernel/kernel_state.h>
-#include <kernel/multitask.h>
+#include <kernel/g_kernel.h>
+#include <multitask/scheduler.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -43,7 +43,7 @@ uint64_t hlog_free_logger(hlogger_t* logger) {
 }
 
 void hlog_add(hlog_level_t level, const char* restrict format, ...) {
-  hlogger_t* logger = multitask_pb_get_logger(g_kernel.current_process);
+  hlogger_t* logger = sched_pb_get_logger(g_kernel.current_process);
   if (level > logger->max_level) { return; }
   va_list args;
   va_start(args, format);
@@ -85,7 +85,7 @@ void add_log_internal(hlogger_t* logger,
 }
 
 uint64_t hlog_commit(void) {
-  return hlog_commit_logger(multitask_pb_get_logger(g_kernel.current_process));
+  return hlog_commit_logger(sched_pb_get_logger(g_kernel.current_process));
 }
 
 uint64_t hlog_commit_logger(hlogger_t* logger) {
@@ -94,8 +94,8 @@ uint64_t hlog_commit_logger(hlogger_t* logger) {
   while (log != NULL) {
     bytes_written += print_level(log->level);
     bytes_written += printf("[%s] (PID: %d): ",
-                            multitask_pb_get_name(log->proc),
-                            multitask_pb_get_pid(log->proc));
+                            sched_pb_get_name(log->proc),
+                            sched_pb_get_pid(log->proc));
 
     bytes_written += printf("%s\n", log->buf);
     free(log->buf);
@@ -109,7 +109,7 @@ uint64_t hlog_commit_logger(hlogger_t* logger) {
 }
 
 uint64_t hlog_write(hlog_level_t level, const char* restrict format, ...) {
-  hlogger_t* logger = multitask_pb_get_logger(g_kernel.current_process);
+  hlogger_t* logger = sched_pb_get_logger(g_kernel.current_process);
   if (level > logger->max_level) { return 0; }
 
   va_list args;
@@ -157,11 +157,10 @@ uint64_t write_log_internal(hlog_level_t level,
                             va_list args) {
   uint64_t bytes_written = 0;
   char pid_string_buf[64];
-  itoa(multitask_pb_get_pid(proc), pid_string_buf, 10);
+  itoa(sched_pb_get_pid(proc), pid_string_buf, 10);
   bytes_written += print_level(level);
-  bytes_written += printf("[%s] (PID: %d): ",
-                          multitask_pb_get_name(proc),
-                          multitask_pb_get_pid(proc));
+  bytes_written += printf(
+      "[%s] (PID: %d): ", sched_pb_get_name(proc), sched_pb_get_pid(proc));
   bytes_written += vprintf(format, args);
   bytes_written += printf("\n");
   return bytes_written;

@@ -1,9 +1,9 @@
 #include <haddr.h>
 #include <hlog.h>
-#include <kernel/bootmodule.h>
-#include <kernel/kernel_state.h>
+#include <kernel/g_kernel.h>
 #include <limine.h>
 #include <memory/vmm.h>
+#include <multitask/bootmodule.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

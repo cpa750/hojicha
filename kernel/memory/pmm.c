@@ -1,5 +1,5 @@
 #include <drivers/serial.h>
-#include <kernel/kernel_state.h>
+#include <kernel/g_kernel.h>
 #include <limine.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>

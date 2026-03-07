@@ -2,7 +2,7 @@
 #include <drivers/vga.h>
 #include <fonts/inconsolata.h>
 #include <io.h>
-#include <kernel/kernel_state.h>
+#include <kernel/g_kernel.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

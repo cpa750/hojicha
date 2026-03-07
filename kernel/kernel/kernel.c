@@ -7,15 +7,15 @@
 #include <drivers/tty.h>
 #include <drivers/vga.h>
 #include <hlog.h>
-#include <kernel/bootmodule.h>
-#include <kernel/elf.h>
-#include <kernel/kernel_state.h>
-#include <kernel/multitask.h>
-#include <kernel/semaphore.h>
+#include <kernel/g_kernel.h>
 #include <limine.h>
 #include <memory/kmalloc.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
+#include <multitask/bootmodule.h>
+#include <multitask/elf.h>
+#include <multitask/scheduler.h>
+#include <multitask/semaphore.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -48,12 +48,12 @@ void test2(void) {
 }
 
 void test3(void) {
-  multitask_sleep(7);
+  sched_current_sleep(7);
   hlog_write(HLOG_INFO, "test3, about to die o7");
 }
 
 void test4(void) {
-  multitask_sleep(7);
+  sched_current_sleep(7);
   hlog_write(HLOG_INFO, "test4, about to die o7");
 }
 
@@ -61,7 +61,7 @@ void test5(void) {
   hlog_write(HLOG_INFO, "locking semaphore...");
   semaphore_lock(semaphore);
   hlog_write(HLOG_INFO, "locked semaphore and sleeping 17s");
-  multitask_sleep(7);
+  sched_current_sleep(7);
   hlog_write(HLOG_INFO, "unlocking semaphore and dying o7");
   semaphore_unlock(semaphore);
 }
@@ -85,7 +85,7 @@ void test7(void) {
 }
 
 void test8(void) {
-  multitask_sleep(20);
+  sched_current_sleep(20);
   hlog_write(HLOG_INFO, "trying to lock semaphore...");
   bool success = semaphore_try_lock(semaphore);
   if (!success) {
@@ -97,7 +97,7 @@ void test8(void) {
 }
 void test9(void) {
   hlog_write(HLOG_DEBUG, "sleeping 15s...");
-  multitask_sleep(15);
+  sched_current_sleep(15);
   hlog_write(HLOG_DEBUG, "page faulting...");
   *(volatile int*)0 = 0;
   hlog_write(HLOG_ERROR, "somehow returned from the segfault");
@@ -105,7 +105,7 @@ void test9(void) {
 
 void test_sleep(void) {
   while (1) {
-    multitask_sleep(5);
+    sched_current_sleep(5);
     hlog_write(HLOG_INFO, "awake!");
     sleep_awake_1 = true;
     sleep_awake_2 = true;
@@ -171,7 +171,7 @@ void kernel_main() {
     abort();
   }
   print_ok("Bootmodules");
-  multitask_initialize();
+  sched_initialize();
   print_ok("Multitasking");
 
   printf("\n");
@@ -196,45 +196,45 @@ void kernel_main() {
 
   semaphore = semaphore_create(1);
 
-  process_block_t* sleep_proc = multitask_kproc_new(
-      "sleep_proc", test_sleep, multitask_process_block_get_cr3(kernel_proc));
-  multitask_scheduler_add_proc(sleep_proc);
+  process_block_t* sleep_proc =
+      sched_kproc_new("sleep_proc", test_sleep, sched_pb_get_cr3(kernel_proc));
+  sched_add_proc(sleep_proc);
 
-  process_block_t* test1_proc = multitask_kproc_new(
-      "test1", test1, multitask_process_block_get_cr3(kernel_proc));
-  multitask_scheduler_add_proc(test1_proc);
+  process_block_t* test1_proc =
+      sched_kproc_new("test1", test1, sched_pb_get_cr3(kernel_proc));
+  sched_add_proc(test1_proc);
 
-  process_block_t* test2_proc = multitask_kproc_new(
-      "test2", test2, multitask_process_block_get_cr3(kernel_proc));
-  multitask_scheduler_add_proc(test2_proc);
+  process_block_t* test2_proc =
+      sched_kproc_new("test2", test2, sched_pb_get_cr3(kernel_proc));
+  sched_add_proc(test2_proc);
 
-  process_block_t* test3_proc = multitask_kproc_new(
-      "test3", test3, multitask_process_block_get_cr3(kernel_proc));
-  multitask_scheduler_add_proc(test3_proc);
+  process_block_t* test3_proc =
+      sched_kproc_new("test3", test3, sched_pb_get_cr3(kernel_proc));
+  sched_add_proc(test3_proc);
 
-  process_block_t* test4_proc = multitask_kproc_new(
-      "test4", test4, multitask_process_block_get_cr3(kernel_proc));
-  multitask_scheduler_add_proc(test4_proc);
+  process_block_t* test4_proc =
+      sched_kproc_new("test4", test4, sched_pb_get_cr3(kernel_proc));
+  sched_add_proc(test4_proc);
 
-  process_block_t* test5_proc = multitask_kproc_new(
-      "test5", test5, multitask_process_block_get_cr3(kernel_proc));
-  multitask_scheduler_add_proc(test5_proc);
+  process_block_t* test5_proc =
+      sched_kproc_new("test5", test5, sched_pb_get_cr3(kernel_proc));
+  sched_add_proc(test5_proc);
 
-  process_block_t* test6_proc = multitask_kproc_new(
-      "test6", test6, multitask_process_block_get_cr3(kernel_proc));
-  multitask_scheduler_add_proc(test6_proc);
+  process_block_t* test6_proc =
+      sched_kproc_new("test6", test6, sched_pb_get_cr3(kernel_proc));
+  sched_add_proc(test6_proc);
 
-  process_block_t* test7_proc = multitask_kproc_new(
-      "test7", test7, multitask_process_block_get_cr3(kernel_proc));
-  multitask_scheduler_add_proc(test7_proc);
+  process_block_t* test7_proc =
+      sched_kproc_new("test7", test7, sched_pb_get_cr3(kernel_proc));
+  sched_add_proc(test7_proc);
 
-  process_block_t* test8_proc = multitask_kproc_new(
-      "test8", test8, multitask_process_block_get_cr3(kernel_proc));
-  multitask_scheduler_add_proc(test8_proc);
+  process_block_t* test8_proc =
+      sched_kproc_new("test8", test8, sched_pb_get_cr3(kernel_proc));
+  sched_add_proc(test8_proc);
 
-  process_block_t* test9_proc = multitask_kproc_new(
-      "test9", test9, multitask_process_block_get_cr3(kernel_proc));
-  multitask_scheduler_add_proc(test9_proc);
+  process_block_t* test9_proc =
+      sched_kproc_new("test9", test9, sched_pb_get_cr3(kernel_proc));
+  sched_add_proc(test9_proc);
 
   bootmodule_t* userspace_mod = bootmodule_get("bigmaths.elf");
   if (userspace_mod == NULL) {
@@ -247,14 +247,14 @@ void kernel_main() {
                userspace_mod->size);
   }
   elf_t* bigmaths = elf_read(userspace_mod->address, userspace_mod->size);
-  process_block_t* elf_proc = multitask_uproc_new("bigmaths", bigmaths);
-  multitask_scheduler_add_proc(elf_proc);
+  process_block_t* elf_proc = sched_uproc_new("bigmaths", bigmaths);
+  sched_add_proc(elf_proc);
 
   // while (1) asm volatile("hlt");
 
   uint64_t count = 0;
   while (1) {
-    multitask_sleep(1);
+    sched_current_sleep(1);
 
     hlog_add(HLOG_DEBUG, "Kernel awake");
     if (count % 5 == 0) { hlog_commit(); }
@@ -262,17 +262,17 @@ void kernel_main() {
 
     ++count;
 
-    // It's a known bug that multitask_proc_terminate() is called
+    // It's a known bug that sched_proc_terminate() is called
     // multiple times on these processes when count wraps around,
     // causing a page fault in the terminator function. We should
     // remove these eventually.
     if (count == 15) {
       hlog_write(HLOG_WARN, "terminating task 2");
-      multitask_proc_terminate(test2_proc);
+      sched_proc_terminate(test2_proc);
     }
     if (count == 21) {
       hlog_write(HLOG_WARN, "terminating task 1");
-      multitask_proc_terminate(test1_proc);
+      sched_proc_terminate(test1_proc);
     }
   }
 }

@@ -1,7 +1,7 @@
 #include <cpu/isr.h>
 #include <hlog.h>
-#include <kernel/kernel_state.h>
-#include <kernel/multitask.h>
+#include <kernel/g_kernel.h>
+#include <multitask/scheduler.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -33,8 +33,8 @@ void handle_fault(interrupt_frame_t* frame) {
     exception_str = "Reserved";
   }
 
-  if (multitask_pb_get_pid(g_kernel.current_process) ==
-      multitask_state_get_kernel_pid(g_kernel.mt)) {
+  if (sched_pb_get_pid(g_kernel.current_process) ==
+      sched_state_get_kernel_pid(g_kernel.mt)) {
     hlog_add(HLOG_FATAL,
              "%s exception at %x in kernel. Aborting...",
              exception_str,
@@ -53,8 +53,8 @@ void handle_fault(interrupt_frame_t* frame) {
         "%s exception at %x in process '%s' (PID: %d). Terminating process...",
         exception_str,
         frame->rip,
-        multitask_pb_get_name(g_kernel.current_process),
-        multitask_pb_get_pid(g_kernel.current_process));
+        sched_pb_get_name(g_kernel.current_process),
+        sched_pb_get_pid(g_kernel.current_process));
     hlog_add(HLOG_DEBUG, "Error code: %b", frame->err_code);
     if (frame->int_no == 14) {
       uint64_t cr2 = 0;
@@ -62,7 +62,7 @@ void handle_fault(interrupt_frame_t* frame) {
       hlog_add(HLOG_DEBUG, "CR2: %x", cr2);
     }
     hlog_commit();
-    multitask_proc_terminate(g_kernel.current_process);
+    sched_proc_terminate(g_kernel.current_process);
   }
   if (frame->int_no < 19) {
     printf("%s exception.\n", error_messages[frame->int_no]);

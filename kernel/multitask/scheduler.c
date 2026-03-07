@@ -1,14 +1,13 @@
 #include <drivers/pit.h>
 #include <haddr.h>
 #include <hlog.h>
-#include <kernel/elf.h>
-#include <kernel/kernel_state.h>
-#include <kernel/multitask.h>
+#include <kernel/g_kernel.h>
+#include <memory/vmm.h>
+#include <multitask/elf.h>
+#include <multitask/scheduler.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "memory/vmm.h"
 
 #define PROC_STATUS_UNINITIALIZED 0b11111111
 #define PROC_STATUS_RUNNING       0b00000001
@@ -16,7 +15,7 @@
 #define PROC_STATUS_READY_TO_DIE  0b00000100
 #define QUANTUM_LENGTH            5000000  // 5 ms
 
-struct multitask_state {
+struct sched_state {
   process_block_t* first_ready_to_run;
   process_block_t* last_ready_to_run;
   process_block_t* ready_to_die;
@@ -38,7 +37,7 @@ struct multitask_state {
   uint64_t kernel_pid;
 };
 
-uint64_t multitask_state_get_kernel_pid(multitask_state_t* mt) {
+uint64_t sched_state_get_kernel_pid(sched_state_t* mt) {
   return mt->kernel_pid;
 }
 
@@ -68,15 +67,15 @@ struct process_block {
   elf_t* elf;
 };
 
-process_block_t* multitask_pb_get_next(process_block_t* p) { return p->next; }
-void multitask_pb_set_next(process_block_t* p, process_block_t* next) {
+process_block_t* sched_pb_get_next(process_block_t* p) { return p->next; }
+void sched_pb_set_next(process_block_t* p, process_block_t* next) {
   p->next = next;
 }
-hlogger_t* multitask_pb_get_logger(process_block_t* p) { return p->logger; }
-char* multitask_pb_get_name(process_block_t* p) { return p->name; }
-uint64_t multitask_pb_get_pid(process_block_t* p) { return p->pid; }
-vmm_t* multitask_pb_get_vmm(process_block_t* p) { return p->vmm; }
-void multitask_pb_set_elf(process_block_t* p, elf_t* elf) { p->elf = elf; }
+hlogger_t* sched_pb_get_logger(process_block_t* p) { return p->logger; }
+char* sched_pb_get_name(process_block_t* p) { return p->name; }
+uint64_t sched_pb_get_pid(process_block_t* p) { return p->pid; }
+vmm_t* sched_pb_get_vmm(process_block_t* p) { return p->vmm; }
+void sched_pb_set_elf(process_block_t* p, elf_t* elf) { p->elf = elf; }
 void multitask_pb_dump(process_block_t* p, hlog_level_t log_level) {
   haddr_t vmm_cr3 = 0;
   if (p->vmm != NULL) { vmm_cr3 = (haddr_t)vmm_get_cr3(p->vmm); }
@@ -110,7 +109,7 @@ void multitask_pb_dump(process_block_t* p, hlog_level_t log_level) {
              (haddr_t)p->elf);
 }
 
-static multitask_state_t mt = {0};
+static sched_state_t mt = {0};
 static pit_callback_t pit_callback = {0};
 
 extern void switch_to(process_block_t* process, bool is_ctx_switch);
@@ -128,14 +127,14 @@ void mark_proc_range(process_block_t* start,
                      uint8_t status);
 process_block_t* new_proc_shared(char* name, void* cr3);
 void proc_prelude(process_block_t* p);
-void set_last_ready_to_run(multitask_state_t* mt,
+void set_last_ready_to_run(sched_state_t* mt,
                            process_block_t* first_ready_to_run);
 void remove_proc(process_block_t* p);
 void sleep_proc_until(process_block_t* process, uint64_t timestamp);
 void terminator(void);
 void wake_procs_before_timestamp(uint64_t timestamp);
 
-void multitask_initialize(void) {
+void sched_initialize(void) {
   process_block_t* kernel_process =
       (process_block_t*)malloc(sizeof(process_block_t));
   memset(kernel_process, 0, sizeof(process_block_t));
@@ -171,13 +170,11 @@ void multitask_initialize(void) {
   pit_register_callback(&pit_callback);
 
   process_block_t* terminator_task =
-      multitask_kproc_new("kterminator", terminator, kernel_process->cr3);
-  multitask_scheduler_add_proc(terminator_task);
+      sched_kproc_new("kterminator", terminator, kernel_process->cr3);
+  sched_add_proc(terminator_task);
 }
 
-process_block_t* multitask_kproc_new(char* name,
-                                     proc_entry_t entry,
-                                     void* cr3) {
+process_block_t* sched_kproc_new(char* name, proc_entry_t entry, void* cr3) {
   process_block_t* new_proc = new_proc_shared(name, cr3);
   new_proc->is_kernel_proc = true;
   new_proc->entry = entry;
@@ -185,7 +182,7 @@ process_block_t* multitask_kproc_new(char* name,
   return new_proc;
 }
 
-process_block_t* multitask_uproc_new(char* name, elf_t* elf) {
+process_block_t* sched_uproc_new(char* name, elf_t* elf) {
   vmm_t* vmm = vmm_new(PAGE_USER_ACCESIBLE);
   process_block_t* new_proc = new_proc_shared(name, vmm_get_cr3(vmm));
   new_proc->is_kernel_proc = false;
@@ -194,13 +191,13 @@ process_block_t* multitask_uproc_new(char* name, elf_t* elf) {
   return new_proc;
 }
 
-void multitask_scheduler_add_proc(process_block_t* process) {
-  multitask_scheduler_postpone();
+void sched_add_proc(process_block_t* process) {
+  sched_postpone();
   process->next = NULL;
   if (g_kernel.mt->first_ready_to_run == NULL) {
     g_kernel.mt->first_ready_to_run = process;
     g_kernel.mt->last_ready_to_run = process;
-    multitask_scheduler_resume();
+    sched_resume();
     return;
   }
 
@@ -209,10 +206,10 @@ void multitask_scheduler_add_proc(process_block_t* process) {
   }
   g_kernel.mt->last_ready_to_run->next = process;
   g_kernel.mt->last_ready_to_run = process;
-  multitask_scheduler_resume();
+  sched_resume();
 }
 
-void multitask_schedule(void) {
+void schedule_advance(void) {
   // TODO: refactor this mess of a function
   if (g_kernel.mt->switch_lock_count > 0) {
     g_kernel.mt->switch_lock_flag = true;
@@ -292,40 +289,40 @@ void multitask_switch(process_block_t* process) {
   asm volatile("sti");
 }
 
-void multitask_scheduler_lock(void) {
+void sched_lock(void) {
   // TODO: this will need more fleshing out for multi-core support
   asm volatile("cli");
   g_kernel.mt->irq_lock_count++;
 }
 
-void multitask_scheduler_unlock(void) {
+void sched_unlock(void) {
   if (g_kernel.mt->irq_lock_count > 0) { g_kernel.mt->irq_lock_count--; }
   if (g_kernel.mt->irq_lock_count == 0) { asm volatile("sti"); }
 }
 
-void multitask_scheduler_postpone(void) {
+void sched_postpone(void) {
   // TODO: this will need more fleshing out for multi-core support
   asm volatile("cli");
   g_kernel.mt->irq_lock_count++;
   g_kernel.mt->switch_lock_count++;
 }
 
-void multitask_scheduler_resume(void) {
+void sched_resume(void) {
   if (g_kernel.mt->switch_lock_count > 0) { g_kernel.mt->switch_lock_count--; }
   if (g_kernel.mt->switch_lock_count == 0 && g_kernel.mt->switch_lock_flag) {
     g_kernel.mt->switch_lock_flag = false;
-    multitask_schedule();
+    schedule_advance();
   }
   if (g_kernel.mt->irq_lock_count > 0) { g_kernel.mt->irq_lock_count--; }
   if (g_kernel.mt->irq_lock_count == 0) { asm volatile("sti"); }
 }
 
-void multitask_block(uint8_t reason) {
+void sched_current_block(uint8_t reason) {
   block_process(g_kernel.current_process, reason);
 }
 
-void multitask_unblock(process_block_t* process) {
-  multitask_scheduler_lock();
+void sched_proc_unblock(process_block_t* process) {
+  sched_lock();
 
   if (g_kernel.mt->first_ready_to_run != NULL) {
     process->status = PROC_STATUS_READY_TO_RUN;
@@ -335,42 +332,44 @@ void multitask_unblock(process_block_t* process) {
     multitask_switch(process);
   }
 
-  multitask_scheduler_unlock();
+  sched_unlock();
 }
 
-void multitask_sleep(uint64_t s) { multitask_sleep_ns(s * 1000000000ULL); }
+void sched_current_sleep(uint64_t s) {
+  sched_current_sleep_ns(s * 1000000000ULL);
+}
 
-void multitask_sleep_ns(uint64_t ns) {
+void sched_current_sleep_ns(uint64_t ns) {
   sleep_proc_until(g_kernel.current_process,
                    pit_get_ns_elapsed_since_init(g_kernel.pit) + ns);
 }
 
-void multitask_proc_terminate(process_block_t* p) {
+void sched_proc_terminate(process_block_t* p) {
   if (p == NULL) { return; }
-  multitask_scheduler_postpone();
+  sched_postpone();
 
-  multitask_scheduler_lock();
+  sched_lock();
   if (p->status == PROC_STATUS_READY_TO_DIE) {
-    multitask_scheduler_unlock();
-    multitask_scheduler_resume();
+    sched_unlock();
+    sched_resume();
     return;
   }
   if (p != g_kernel.current_process) { remove_proc(p); }
   p->next = g_kernel.mt->ready_to_die;
   g_kernel.mt->ready_to_die = p;
-  multitask_scheduler_unlock();
+  sched_unlock();
 
   block_process(p, PROC_STATUS_READY_TO_DIE);
-  multitask_scheduler_resume();
+  sched_resume();
 }
 
-void* multitask_process_block_get_cr3(process_block_t* p) { return p->cr3; }
+void* sched_pb_get_cr3(process_block_t* p) { return p->cr3; }
 
 void block_process(process_block_t* p, uint8_t reason) {
-  multitask_scheduler_lock();
+  sched_lock();
   p->status = reason;
-  multitask_schedule();
-  multitask_scheduler_unlock();
+  schedule_advance();
+  sched_unlock();
 }
 
 /*
@@ -394,18 +393,18 @@ process_block_t* find_last_sleep_timestamp_less_than_equal(
 void handle_timer(uint64_t timestamp) {
   // TODO: figure out why calls to printf() that are preempted break
   // framebuffer line scrolling
-  multitask_scheduler_postpone();
+  sched_postpone();
   wake_procs_before_timestamp(timestamp);
   if (g_kernel.mt->quantum_remaining != 0) {
     if (g_kernel.mt->quantum_remaining <= g_kernel.mt->tick_interval_ns) {
-      multitask_scheduler_lock();
-      multitask_schedule();
-      multitask_scheduler_unlock();
+      sched_lock();
+      schedule_advance();
+      sched_unlock();
     } else {
       g_kernel.mt->quantum_remaining -= g_kernel.mt->tick_interval_ns;
     }
   }
-  multitask_scheduler_resume();
+  sched_resume();
 }
 
 void insert_process_after(process_block_t* process, process_block_t* after) {
@@ -451,7 +450,7 @@ void proc_prelude(process_block_t* p) {
   if (p == NULL) { return; }
   if (p->status == PROC_STATUS_UNINITIALIZED) {
     p->status = PROC_STATUS_RUNNING;
-    multitask_scheduler_unlock();
+    sched_unlock();
   }
   // TODO wire in userspace switch, user stack and elf binary launch here
   if (p->is_kernel_proc) {
@@ -459,7 +458,7 @@ void proc_prelude(process_block_t* p) {
   } else {
     elf_launch(p->elf, p->vmm);
   }
-  multitask_proc_terminate(p);
+  sched_proc_terminate(p);
 }
 
 void remove_proc(process_block_t* p) {
@@ -510,7 +509,7 @@ void remove_proc(process_block_t* p) {
   }
 }
 
-void set_last_ready_to_run(multitask_state_t* mt,
+void set_last_ready_to_run(sched_state_t* mt,
                            process_block_t* first_ready_to_run) {
   if (first_ready_to_run->next == NULL) {
     mt->last_ready_to_run = first_ready_to_run;
@@ -520,7 +519,7 @@ void set_last_ready_to_run(multitask_state_t* mt,
 }
 
 void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
-  multitask_scheduler_postpone();
+  sched_postpone();
   process->sleep_until = timestamp;
   process->status = PROC_STATUS_PAUSED;
 
@@ -529,10 +528,10 @@ void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
   if (g_kernel.mt->sleeping == NULL) {
     process->next = NULL;
     g_kernel.mt->sleeping = process;
-    multitask_scheduler_lock();
-    multitask_schedule();
-    multitask_scheduler_unlock();
-    multitask_scheduler_resume();
+    sched_lock();
+    schedule_advance();
+    sched_unlock();
+    sched_resume();
     return;
   }
 
@@ -544,10 +543,10 @@ void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
   }
   insert_process_after(process, last);
 
-  multitask_scheduler_lock();
-  multitask_schedule();
-  multitask_scheduler_unlock();
-  multitask_scheduler_resume();
+  sched_lock();
+  schedule_advance();
+  sched_unlock();
+  sched_resume();
 }
 
 /*
@@ -557,11 +556,11 @@ void terminator(void) {
   while (true) {
     if (g_kernel.mt->ready_to_die == NULL) {
       // TODO: improve this so it immediately yields with `multitask_block()`
-      multitask_scheduler_lock();
-      multitask_schedule();
-      multitask_scheduler_unlock();
+      sched_lock();
+      schedule_advance();
+      sched_unlock();
     } else {
-      multitask_scheduler_postpone();
+      sched_postpone();
       process_block_t* next;
       for (process_block_t* p = g_kernel.mt->ready_to_die; p != NULL;) {
         next = p->next;
@@ -573,7 +572,7 @@ void terminator(void) {
         p = next;
       }
       g_kernel.mt->ready_to_die = NULL;
-      multitask_scheduler_resume();
+      sched_resume();
     }
   }
 }

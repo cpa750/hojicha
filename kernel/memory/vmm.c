@@ -1,6 +1,6 @@
 #include <drivers/vga.h>
 #include <haddr.h>
-#include <kernel/kernel_state.h>
+#include <kernel/g_kernel.h>
 #include <limine.h>
 #include <memory/kmalloc.h>
 #include <memory/pmm.h>

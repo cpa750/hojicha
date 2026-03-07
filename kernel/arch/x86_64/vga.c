@@ -1,7 +1,7 @@
 #include <drivers/vga.h>
 #include <fonts/inconsolata.h>
 #include <haddr.h>
-#include <kernel/kernel_state.h>
+#include <kernel/g_kernel.h>
 #include <limine.h>
 #include <stdint.h>
 #include <stdio.h>

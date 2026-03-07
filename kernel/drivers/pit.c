@@ -1,7 +1,7 @@
 #include <drivers/pic.h>
 #include <drivers/pit.h>
 #include <io.h>
-#include <kernel/kernel_state.h>
+#include <kernel/g_kernel.h>
 
 #include "stddef.h"
 

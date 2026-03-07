@@ -90,16 +90,16 @@ drivers/pit.c \
 drivers/tty.c \
 drivers/serial.c \
 fonts/inconsolata.c \
-kernel/bootmodule.c \
-kernel/elf.c \
 kernel/kernel.c \
-kernel/kernel_state.c \
-kernel/multitask.c \
-kernel/semaphore.c \
+kernel/g_kernel.c \
 memory/kmalloc.c \
 memory/kmalloc_test.c \
 memory/pmm.c \
 memory/vmm.c \
+multitask/bootmodule.c \
+multitask/elf.c \
+multitask/scheduler.c \
+multitask/semaphore.c \
 utils/hlog.c \
 utils/io.c \
 
