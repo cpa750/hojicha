@@ -1,18 +1,19 @@
 #include <drivers/pit.h>
 #include <haddr.h>
 #include <hlog.h>
+#include <kernel/elf.h>
 #include <kernel/kernel_state.h>
 #include <kernel/multitask.h>
-#include <memory/vmm.h>
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
+
+#include "memory/vmm.h"
 
 #define PROC_STATUS_UNINITIALIZED 0b11111111
 #define PROC_STATUS_RUNNING       0b00000001
 #define PROC_STATUS_READY_TO_RUN  0b00000010
 #define PROC_STATUS_READY_TO_DIE  0b00000100
-#define STACK_SIZE                16384
 #define QUANTUM_LENGTH            5000000  // 5 ms
 
 struct multitask_state {
@@ -46,7 +47,9 @@ struct process_block {
   // Begin asm-mapped fields
   void* cr3;
   void* rsp;
+  void* rsp0;
   uint8_t status;
+  uint8_t is_kernel_proc;
   proc_entry_t entry;
   // End asm-mapped fields
 
@@ -60,6 +63,9 @@ struct process_block {
   uint64_t elapsed;
   uint64_t sleep_until;
   uint64_t switch_timestamp;
+
+  vmm_t* vmm;
+  elf_t* elf;
 };
 
 process_block_t* multitask_pb_get_next(process_block_t* p) { return p->next; }
@@ -69,11 +75,45 @@ void multitask_pb_set_next(process_block_t* p, process_block_t* next) {
 hlogger_t* multitask_pb_get_logger(process_block_t* p) { return p->logger; }
 char* multitask_pb_get_name(process_block_t* p) { return p->name; }
 uint64_t multitask_pb_get_pid(process_block_t* p) { return p->pid; }
+vmm_t* multitask_pb_get_vmm(process_block_t* p) { return p->vmm; }
+void multitask_pb_set_elf(process_block_t* p, elf_t* elf) { p->elf = elf; }
+void multitask_pb_dump(process_block_t* p, hlog_level_t log_level) {
+  haddr_t vmm_cr3 = 0;
+  if (p->vmm != NULL) { vmm_cr3 = (haddr_t)vmm_get_cr3(p->vmm); }
+  hlog_write(log_level,
+             "Process block for \"%s\" (at %x):\n"
+             "CR3:\t\t\t%x\n"
+             "RSP0:\t\t\t%x\n"
+             "RSP:\t\t\t%x\n"
+             "Status:\t\t\t%d\n"
+             "Is kernel:\t\t%d\n"
+             "Entry:\t\t\t%x\n"
+             "PID:\t\t\t%d\n"
+             "Next:\t\t\t%x\n"
+             "Stack end:\t\t%x\n"
+             "VMM:\t\t\t%x\n"
+             "VMM->pml4_phy:\t%x\n"
+             "elf:\t\t\t%x\n",
+             p->name,
+             (haddr_t)p,
+             (haddr_t)p->cr3,
+             (haddr_t)p->rsp0,
+             (haddr_t)p->rsp,
+             (haddr_t)p->status,
+             (haddr_t)p->is_kernel_proc,
+             (haddr_t)p->entry,
+             (haddr_t)p->pid,
+             (haddr_t)p->next,
+             (haddr_t)p->stack_end,
+             (haddr_t)p->vmm,
+             vmm_cr3,
+             (haddr_t)p->elf);
+}
 
 static multitask_state_t mt = {0};
 static pit_callback_t pit_callback = {0};
 
-extern void switch_to(process_block_t* process);
+extern void switch_to(process_block_t* process, bool is_ctx_switch);
 
 void multitask_switch(process_block_t* process);
 
@@ -86,7 +126,8 @@ void insert_process_after(process_block_t* process, process_block_t* after);
 void mark_proc_range(process_block_t* start,
                      process_block_t* end,
                      uint8_t status);
-void proc_entry_wrapper(process_block_t* p);
+process_block_t* new_proc_shared(char* name, void* cr3);
+void proc_prelude(process_block_t* p);
 void set_last_ready_to_run(multitask_state_t* mt,
                            process_block_t* first_ready_to_run);
 void remove_proc(process_block_t* p);
@@ -97,17 +138,21 @@ void wake_procs_before_timestamp(uint64_t timestamp);
 void multitask_initialize(void) {
   process_block_t* kernel_process =
       (process_block_t*)malloc(sizeof(process_block_t));
+  memset(kernel_process, 0, sizeof(process_block_t));
   haddr_t cr3;
   haddr_t rsp;
   asm volatile("\t movq %%cr3,%0" : "=r"(cr3));
   asm volatile("\t movq %%rsp,%0" : "=r"(rsp));
   kernel_process->cr3 = (void*)cr3;
   kernel_process->rsp = (void*)rsp;
+  kernel_process->rsp0 = (void*)rsp;
   kernel_process->next = NULL;
   kernel_process->status = PROC_STATUS_RUNNING;
+  kernel_process->is_kernel_proc = true;
   kernel_process->name = "hojicha";
   kernel_process->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
   kernel_process->pid = UINT64_MAX;
+  kernel_process->vmm = g_kernel.vmm;
   mt.kernel_pid = kernel_process->pid;
 
   mt.first_ready_to_run = NULL;
@@ -126,38 +171,26 @@ void multitask_initialize(void) {
   pit_register_callback(&pit_callback);
 
   process_block_t* terminator_task =
-      multitask_proc_new("kterminator", terminator, kernel_process->cr3);
+      multitask_kproc_new("kterminator", terminator, kernel_process->cr3);
   multitask_scheduler_add_proc(terminator_task);
 }
 
-process_block_t* multitask_proc_new(char* name, proc_entry_t entry, void* cr3) {
-  ++(g_kernel.mt->total_processes_added);
-  ++(g_kernel.mt->process_count);
-  process_block_t* new_proc = (process_block_t*)malloc(sizeof(process_block_t));
-  new_proc->cr3 = cr3;
+process_block_t* multitask_kproc_new(char* name,
+                                     proc_entry_t entry,
+                                     void* cr3) {
+  process_block_t* new_proc = new_proc_shared(name, cr3);
+  new_proc->is_kernel_proc = true;
   new_proc->entry = entry;
-  uint8_t* stack_end = (uint8_t*)malloc(STACK_SIZE);
-  new_proc->stack_end = stack_end;
-  haddr_t stack_base = (haddr_t)(stack_end + STACK_SIZE);
-  stack_base &= ~0xFULL;
-  stack_base -= 8;
-  *(haddr_t*)stack_base = (haddr_t)proc_entry_wrapper;
-  stack_base -= 8 * 6;
-  *(haddr_t*)stack_base = (haddr_t)new_proc;
+  new_proc->vmm = g_kernel.vmm;
+  return new_proc;
+}
 
-  new_proc->pid = g_kernel.mt->total_processes_added;
-  if (name != NULL) {
-    new_proc->name = name;
-  } else {
-    itoa(new_proc->pid, new_proc->name, 10);
-  }
-  new_proc->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
-
-  // Because we pop 15 registers from the newly allocated stack
-  // in switch_to()
-  stack_base -= 8 * 9;
-  new_proc->rsp = (void*)stack_base;
-  new_proc->status = PROC_STATUS_UNINITIALIZED;
+process_block_t* multitask_uproc_new(char* name, elf_t* elf) {
+  vmm_t* vmm = vmm_new(PAGE_USER_ACCESIBLE);
+  process_block_t* new_proc = new_proc_shared(name, vmm_get_cr3(vmm));
+  new_proc->is_kernel_proc = false;
+  new_proc->elf = elf;
+  new_proc->vmm = vmm;
   return new_proc;
 }
 
@@ -249,7 +282,13 @@ void multitask_schedule(void) {
 
 void multitask_switch(process_block_t* process) {
   asm volatile("cli");
-  switch_to(process);
+  uint64_t cs = 0;
+  asm volatile("\t movq %%cs,%0" : "=r"(cs));
+  uint8_t cpl = cs & 0b11;
+  bool is_ctx_switch = (!cpl && !process->is_kernel_proc) ||
+                       (cpl == 3 && process->is_kernel_proc);
+  hlog_write(HLOG_VERBOSE, "switching to PID %d", process->pid);
+  switch_to(process, is_ctx_switch);
   asm volatile("sti");
 }
 
@@ -307,9 +346,15 @@ void multitask_sleep_ns(uint64_t ns) {
 }
 
 void multitask_proc_terminate(process_block_t* p) {
+  if (p == NULL) { return; }
   multitask_scheduler_postpone();
 
   multitask_scheduler_lock();
+  if (p->status == PROC_STATUS_READY_TO_DIE) {
+    multitask_scheduler_unlock();
+    multitask_scheduler_resume();
+    return;
+  }
   if (p != g_kernel.current_process) { remove_proc(p); }
   p->next = g_kernel.mt->ready_to_die;
   g_kernel.mt->ready_to_die = p;
@@ -370,23 +415,62 @@ void insert_process_after(process_block_t* process, process_block_t* after) {
   after->next = process;
 }
 
-void proc_entry_wrapper(process_block_t* p) {
+process_block_t* new_proc_shared(char* name, void* cr3) {
+  ++(g_kernel.mt->total_processes_added);
+  ++(g_kernel.mt->process_count);
+  process_block_t* new_proc = (process_block_t*)malloc(sizeof(process_block_t));
+  memset(new_proc, 0, sizeof(process_block_t));
+  new_proc->cr3 = cr3;
+  uint8_t* stack_end = (uint8_t*)malloc(STACK_SIZE);
+  new_proc->stack_end = stack_end;
+  haddr_t stack_base = (haddr_t)(stack_end + STACK_SIZE);
+  new_proc->rsp0 = (void*)stack_base;
+  stack_base &= ~0xFULL;
+  stack_base -= 8;
+  *(haddr_t*)stack_base = (haddr_t)proc_prelude;
+  stack_base -= 8 * 6;
+  *(haddr_t*)stack_base = (haddr_t)new_proc;
+
+  new_proc->pid = g_kernel.mt->total_processes_added;
+  if (name != NULL) {
+    new_proc->name = name;
+  } else {
+    itoa(new_proc->pid, new_proc->name, 10);
+  }
+  new_proc->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
+
+  // Because we pop 15 registers from the newly allocated stack
+  // in switch_to()
+  stack_base -= 8 * 9;
+  new_proc->rsp = (void*)stack_base;
+  new_proc->status = PROC_STATUS_UNINITIALIZED;
+  return new_proc;
+}
+
+void proc_prelude(process_block_t* p) {
   if (p == NULL) { return; }
   if (p->status == PROC_STATUS_UNINITIALIZED) {
     p->status = PROC_STATUS_RUNNING;
     multitask_scheduler_unlock();
   }
-  p->entry();
+  // TODO wire in userspace switch, user stack and elf binary launch here
+  if (p->is_kernel_proc) {
+    p->entry();
+  } else {
+    elf_launch(p->elf, p->vmm);
+  }
   multitask_proc_terminate(p);
 }
 
 void remove_proc(process_block_t* p) {
   // TODO: tidy this up
   process_block_t* head;
+  bool is_ready_queue = false;
   switch (p->status) {
     case PROC_STATUS_READY_TO_RUN:
     case PROC_STATUS_UNINITIALIZED:
       head = g_kernel.mt->first_ready_to_run;
+      is_ready_queue = true;
       break;
     case PROC_STATUS_PAUSED:
       head = g_kernel.mt->sleeping;
@@ -400,6 +484,9 @@ void remove_proc(process_block_t* p) {
       case PROC_STATUS_READY_TO_RUN:
       case PROC_STATUS_UNINITIALIZED:
         g_kernel.mt->first_ready_to_run = p->next;
+        if (g_kernel.mt->last_ready_to_run == p) {
+          g_kernel.mt->last_ready_to_run = g_kernel.mt->first_ready_to_run;
+        }
         break;
       case PROC_STATUS_PAUSED:
         g_kernel.mt->sleeping = p->next;
@@ -415,6 +502,9 @@ void remove_proc(process_block_t* p) {
     }
     if (proc != NULL) {
       last->next = proc->next;
+      if (is_ready_queue && g_kernel.mt->last_ready_to_run == proc) {
+        g_kernel.mt->last_ready_to_run = last;
+      }
       proc->next = NULL;
     }
   }
@@ -472,13 +562,15 @@ void terminator(void) {
       multitask_scheduler_unlock();
     } else {
       multitask_scheduler_postpone();
-      for (process_block_t* p = g_kernel.mt->ready_to_die; p != NULL;
-           p = p->next) {
+      process_block_t* next;
+      for (process_block_t* p = g_kernel.mt->ready_to_die; p != NULL;) {
+        next = p->next;
         // TODO: we ideally need to hand the logs committing off to a
         // dedicated task
         hlog_free_logger(p->logger);
         free(p->stack_end);
         free(p);
+        p = next;
       }
       g_kernel.mt->ready_to_die = NULL;
       multitask_scheduler_resume();

@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 void kmalloc_initialize();
+void* kmalloc_page_aligned(size_t size);
 void* kmalloc(size_t size);
 void kfree(void* ptr);
 

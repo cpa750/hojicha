@@ -31,6 +31,8 @@ hlogger_t* hlog_new(hlog_level_t level, uint64_t bufsize) {
   hlogger_t* logger = (hlogger_t*)malloc(sizeof(hlogger_t));
   logger->max_level = level;
   logger->bufsize = bufsize;
+  logger->pending_logs_head = NULL;
+  logger->pending_logs_tail = NULL;
   return logger;
 }
 
@@ -198,4 +200,3 @@ uint64_t print_level(hlog_level_t level) {
   total_bytes += printf("] ");
   return total_bytes;
 }
-

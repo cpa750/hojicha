@@ -90,6 +90,8 @@ drivers/pit.c \
 drivers/tty.c \
 drivers/serial.c \
 fonts/inconsolata.c \
+kernel/bootmodule.c \
+kernel/elf.c \
 kernel/kernel.c \
 kernel/kernel_state.c \
 kernel/multitask.c \

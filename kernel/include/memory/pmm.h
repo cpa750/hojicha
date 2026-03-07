@@ -5,6 +5,8 @@
 #include <kernel/multiboot.h>
 #include <stdint.h>
 
+#define PAGE_SIZE 4096
+
 struct pmm_state;
 typedef struct pmm_state pmm_state_t;
 haddr_t pmm_state_get_total_mem(pmm_state_t*);

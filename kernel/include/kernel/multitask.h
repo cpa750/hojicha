@@ -3,10 +3,15 @@
 
 #include <haddr.h>
 #include <hlog.h>
+#include <memory/vmm.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #define PROC_STATUS_PAUSED    0b00000100
 #define PROC_STATUS_SEMAPHORE 0b00001000
+#define STACK_SIZE            16384  // 4 pages
+
+typedef struct elf elf_t;
 
 /*
  * The entry point of the process. Must take no parameters and return void.
@@ -24,6 +29,8 @@ void multitask_pb_set_next(process_block_t* p, process_block_t* next);
 hlogger_t* multitask_pb_get_logger(process_block_t* p);
 char* multitask_pb_get_name(process_block_t* p);
 uint64_t multitask_pb_get_pid(process_block_t* p);
+vmm_t* multitask_pb_get_vmm(process_block_t* p);
+void multitask_pb_set_elf(process_block_t* p, elf_t* elf);
 
 struct multitask_state;
 typedef struct multitask_state multitask_state_t;
@@ -33,13 +40,22 @@ uint64_t multitask_state_get_kernel_pid(multitask_state_t* mt);
 void multitask_initialize(void);
 
 /*
- * Creates a new process with the given entry address.
+ * Creates a new kernel process with the given entry address.
  * The memory allocated for the task is deallocated via a call
  * to `multitask_proc_terminate()`, or when the process finishes
  * and the scheduler cleans up. The caller must not call `free()`
  * on the process handle manually.
  */
-process_block_t* multitask_proc_new(char* name, proc_entry_t entry, void* cr3);
+process_block_t* multitask_kproc_new(char* name, proc_entry_t entry, void* cr3);
+
+/*
+ * Creates a new user space process with the given entry address.
+ * The memory allocated for the task is deallocated via a call
+ * to `multitask_proc_terminate()`, or when the process finishes
+ * and the scheduler cleans up. The caller must not call `free()`
+ * on the process handle manually.
+ */
+process_block_t* multitask_uproc_new(char* name, elf_t* elf);
 
 /*
  * Adds a proc to the scheduler's queue.
