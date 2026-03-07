@@ -1,7 +1,8 @@
 #ifndef __HOJICHA_SYS_SYSCALLS_H
 #define __HOJICHA_SYS_SYSCALLS_H
 
-#define __HOJICHA_SYS_SYSCALL_EXIT 0x3C
+#define __HOJICHA_SYS_SYSCALL_NANOSLEEP 0x23
+#define __HOJICHA_SYS_SYSCALL_EXIT      0x3C
 
 static inline long __syscall0(long n) {
   long ret;

@@ -102,6 +102,7 @@ multitask/scheduler.c \
 multitask/semaphore.c \
 multitask/syscall.c \
 multitask/syscalls/syscall_exit.c \
+multitask/syscalls/syscall_nanosleep.c \
 utils/hlog.c \
 utils/io.c \
 

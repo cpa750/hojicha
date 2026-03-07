@@ -5,7 +5,8 @@
 
 #include "cpu/isr.h"
 
-#define SYSCALL_EXIT 0x3C
+#define SYSCALL_EXIT      0x3C
+#define SYSCALL_NANOSLEEP 0x23
 
 struct syscall {
   syscall_callback_t callback;
@@ -18,6 +19,9 @@ void syscall_handle(interrupt_frame_t* frame) {
   switch (frame->rax) {
     case SYSCALL_EXIT:
       ret = syscall_exit((int)frame->rdi);
+      break;
+    case SYSCALL_NANOSLEEP:
+      ret = syscall_nanosleep((unsigned long)frame->rdi);
       break;
     default:
       hlog_write(HLOG_WARN, "Syscall %d is invalid.", frame->rax);

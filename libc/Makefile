@@ -77,7 +77,9 @@ string/memmove.c \
 string/memset.c \
 string/strcmp.c \
 string/strcpy.c \
-string/strlen.c
+string/strlen.c \
+time/nanosleep.c \
+unistd/sleep.c
 
 # Build directory versions
 OBJDIRS := $(sort $(dir $(addprefix $(BUILDDIR)/,$(LIBC_SRC:.c=.o))))
