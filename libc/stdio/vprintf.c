@@ -1,6 +1,4 @@
-#include <drivers/serial.h>
 #include <limits.h>
-#include <memory/kmalloc.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -9,10 +7,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(__is_libk) && defined(__printf_serial)
+#include <drivers/serial.h>
+#endif
+
 static bool print(const char* data, size_t length) {
   const unsigned char* raw_bytes = (const unsigned char*)data;
   for (size_t i = 0; i < length; i++) {
-#if defined(__printf_serial)
+#if defined(__is_libk) && defined(__printf_serial)
     serial_write_char(raw_bytes[i]);
 #endif
     if (putchar(raw_bytes[i]) == EOF) { return false; }
@@ -105,4 +107,3 @@ int vprintf(const char* restrict format, va_list parameters) {
   }
   return bytes_written;
 }
-

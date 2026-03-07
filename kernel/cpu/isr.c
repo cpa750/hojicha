@@ -2,6 +2,7 @@
 #include <hlog.h>
 #include <kernel/g_kernel.h>
 #include <multitask/scheduler.h>
+#include <multitask/syscall.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -33,8 +34,13 @@ void handle_fault(interrupt_frame_t* frame) {
     exception_str = "Reserved";
   }
 
+  if (frame->int_no == SYSCALL_INT_NO) {
+    syscall_handle(frame);
+    return;
+  }
+
   if (sched_pb_get_pid(g_kernel.current_process) ==
-      sched_state_get_kernel_pid(g_kernel.mt)) {
+      sched_state_get_kernel_pid(g_kernel.sched)) {
     hlog_add(HLOG_FATAL,
              "%s exception at %x in kernel. Aborting...",
              exception_str,
@@ -48,13 +54,13 @@ void handle_fault(interrupt_frame_t* frame) {
     hlog_commit();
     abort();
   } else {
-    hlog_add(
-        HLOG_ERROR,
-        "%s exception at %x in process '%s' (PID: %d). Terminating process...",
-        exception_str,
-        frame->rip,
-        sched_pb_get_name(g_kernel.current_process),
-        sched_pb_get_pid(g_kernel.current_process));
+    hlog_add(HLOG_ERROR,
+             "%s exception at %x in process '%s' (PID: %d). Terminating "
+             "process...",
+             exception_str,
+             frame->rip,
+             sched_pb_get_name(g_kernel.current_process),
+             sched_pb_get_pid(g_kernel.current_process));
     hlog_add(HLOG_DEBUG, "Error code: %b", frame->err_code);
     if (frame->int_no == 14) {
       uint64_t cr2 = 0;

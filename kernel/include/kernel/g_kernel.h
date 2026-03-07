@@ -27,7 +27,7 @@ struct kernel_state {
   process_block_t* current_process;
   // End asm-mapped fields
 
-  sched_state_t* mt;
+  sched_state_t* sched;
   pit_state_t* pit;
   pmm_state_t* pmm;
   tty_state_t* tty;

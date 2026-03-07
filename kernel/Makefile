@@ -100,6 +100,8 @@ multitask/bootmodule.c \
 multitask/elf.c \
 multitask/scheduler.c \
 multitask/semaphore.c \
+multitask/syscall.c \
+multitask/syscalls/syscall_exit.c \
 utils/hlog.c \
 utils/io.c \
 

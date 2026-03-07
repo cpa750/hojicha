@@ -71,6 +71,7 @@ stdlib/free.c \
 stdlib/itoa.c \
 stdlib/utoa.c \
 stdlib/malloc.c \
+stdlib/exit.c \
 string/memcmp.c \
 string/memmove.c \
 string/memset.c \
@@ -86,7 +87,7 @@ FREEOBJS   = $(addprefix $(BUILDDIR)/,$(LIBC_SRC:.c=.o)) \
 LIBK_OBJS  = $(FREEOBJS:.o=.libk.o)
 LIBC_OBJS  = $(FREEOBJS:.o=.libc.o)
 
-BINARIES = $(BUILDDIR)/libk.a
+BINARIES = $(BUILDDIR)/libc.a $(BUILDDIR)/libk.a
 
 .PHONY: all clean install install-headers install-libs
 .SUFFIXES: .o .libk.o .c .s .asm

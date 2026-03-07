@@ -311,6 +311,11 @@ haddr_t vmm_unmap(vmm_t* vmm, haddr_t virt) {
   return virt_base;
 }
 
+void vmm_free(vmm_t* vmm) {
+  // TODO: give back the physical pages we allocated
+  free(vmm);
+}
+
 void check_kernel_size(haddr_t kernel_page_count) {
   if (kernel_page_count > 1023 - 256) {
     // TODO: we need support for more than one PDE for the kernel

@@ -2,6 +2,7 @@
 #include <drivers/keyboard.h>
 #include <drivers/pic.h>
 #include <drivers/pit.h>
+#include <multitask/syscall.h>
 
 void handle_irq(interrupt_frame_t* frame) {
   switch (frame->int_no) {
@@ -11,8 +12,5 @@ void handle_irq(interrupt_frame_t* frame) {
     case 33:
       handle_keyboard();
       break;
-      // case 0x80:
-      //   __syscall();
-      //   break;
   }
 }

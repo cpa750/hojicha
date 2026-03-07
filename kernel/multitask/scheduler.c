@@ -163,7 +163,7 @@ void sched_initialize(void) {
   mt.process_count = 1;
 
   mt.tick_interval_ns = pit_state_get_tick_interval_ns(g_kernel.pit);
-  g_kernel.mt = &mt;
+  g_kernel.sched = &mt;
   g_kernel.current_process = kernel_process;
   pit_callback.callback_func = handle_timer;
   pit_callback.next = NULL;
@@ -194,38 +194,39 @@ process_block_t* sched_uproc_new(char* name, elf_t* elf) {
 void sched_add_proc(process_block_t* process) {
   sched_postpone();
   process->next = NULL;
-  if (g_kernel.mt->first_ready_to_run == NULL) {
-    g_kernel.mt->first_ready_to_run = process;
-    g_kernel.mt->last_ready_to_run = process;
+  if (g_kernel.sched->first_ready_to_run == NULL) {
+    g_kernel.sched->first_ready_to_run = process;
+    g_kernel.sched->last_ready_to_run = process;
     sched_resume();
     return;
   }
 
-  if (g_kernel.mt->last_ready_to_run == NULL) {
-    set_last_ready_to_run(g_kernel.mt, g_kernel.mt->first_ready_to_run);
+  if (g_kernel.sched->last_ready_to_run == NULL) {
+    set_last_ready_to_run(g_kernel.sched, g_kernel.sched->first_ready_to_run);
   }
-  g_kernel.mt->last_ready_to_run->next = process;
-  g_kernel.mt->last_ready_to_run = process;
+  g_kernel.sched->last_ready_to_run->next = process;
+  g_kernel.sched->last_ready_to_run = process;
   sched_resume();
 }
 
 void schedule_advance(void) {
   // TODO: refactor this mess of a function
-  if (g_kernel.mt->switch_lock_count > 0) {
-    g_kernel.mt->switch_lock_flag = true;
+  if (g_kernel.sched->switch_lock_count > 0) {
+    g_kernel.sched->switch_lock_flag = true;
     return;
   }
 
-  g_kernel.mt->time_elapsed = pit_get_ns_elapsed_since_init(g_kernel.pit);
+  g_kernel.sched->time_elapsed = pit_get_ns_elapsed_since_init(g_kernel.pit);
   if (g_kernel.current_process != NULL) {
     g_kernel.current_process->elapsed +=
-        g_kernel.mt->time_elapsed - g_kernel.current_process->switch_timestamp;
+        g_kernel.sched->time_elapsed -
+        g_kernel.current_process->switch_timestamp;
   } else {
-    g_kernel.mt->time_idle +=
-        g_kernel.mt->time_elapsed - g_kernel.mt->idle_switch_timestamp;
+    g_kernel.sched->time_idle +=
+        g_kernel.sched->time_elapsed - g_kernel.sched->idle_switch_timestamp;
   }
 
-  if (g_kernel.mt->first_ready_to_run != NULL) {
+  if (g_kernel.sched->first_ready_to_run != NULL) {
     if (g_kernel.current_process != NULL &&
         g_kernel.current_process->status == PROC_STATUS_RUNNING) {
       g_kernel.current_process->status = PROC_STATUS_READY_TO_RUN;
@@ -233,22 +234,25 @@ void schedule_advance(void) {
       // We only want to place the old process in the ready-to-run queue if
       // it's being pre-empted. Otherwise, (for example, sleeping) it belongs
       // in a difference queue handled elsewhere.
-      if (g_kernel.mt->last_ready_to_run == NULL) {
-        g_kernel.mt->last_ready_to_run = g_kernel.mt->first_ready_to_run;
+      if (g_kernel.sched->last_ready_to_run == NULL) {
+        g_kernel.sched->last_ready_to_run = g_kernel.sched->first_ready_to_run;
       }
-      g_kernel.mt->last_ready_to_run->next = g_kernel.current_process;
-      g_kernel.mt->last_ready_to_run = g_kernel.mt->last_ready_to_run->next;
-      if (g_kernel.mt->first_ready_to_run != g_kernel.mt->last_ready_to_run) {
-        g_kernel.mt->last_ready_to_run->next = NULL;
+      g_kernel.sched->last_ready_to_run->next = g_kernel.current_process;
+      g_kernel.sched->last_ready_to_run =
+          g_kernel.sched->last_ready_to_run->next;
+      if (g_kernel.sched->first_ready_to_run !=
+          g_kernel.sched->last_ready_to_run) {
+        g_kernel.sched->last_ready_to_run->next = NULL;
       }
     }
 
-    g_kernel.mt->quantum_remaining = QUANTUM_LENGTH;
-    process_block_t* next = g_kernel.mt->first_ready_to_run;
-    next->switch_timestamp = g_kernel.mt->time_elapsed;
-    g_kernel.mt->first_ready_to_run = g_kernel.mt->first_ready_to_run->next;
-    if (next == g_kernel.mt->last_ready_to_run) {
-      g_kernel.mt->last_ready_to_run = NULL;
+    g_kernel.sched->quantum_remaining = QUANTUM_LENGTH;
+    process_block_t* next = g_kernel.sched->first_ready_to_run;
+    next->switch_timestamp = g_kernel.sched->time_elapsed;
+    g_kernel.sched->first_ready_to_run =
+        g_kernel.sched->first_ready_to_run->next;
+    if (next == g_kernel.sched->last_ready_to_run) {
+      g_kernel.sched->last_ready_to_run = NULL;
     }
 
     // TODO: what happens if we sleep the only available process?
@@ -257,21 +261,22 @@ void schedule_advance(void) {
   } else if (g_kernel.current_process->status != PROC_STATUS_RUNNING) {
     process_block_t* proc = g_kernel.current_process;
     g_kernel.current_process = NULL;
-    g_kernel.mt->idle_switch_timestamp = g_kernel.mt->time_elapsed;
+    g_kernel.sched->idle_switch_timestamp = g_kernel.sched->time_elapsed;
 
     do {
       asm volatile("sti");
       asm volatile("hlt");
       asm volatile("cli");
-    } while (g_kernel.mt->first_ready_to_run == NULL);
+    } while (g_kernel.sched->first_ready_to_run == NULL);
 
-    g_kernel.mt->quantum_remaining = 0;
+    g_kernel.sched->quantum_remaining = 0;
     g_kernel.current_process = proc;
-    proc->switch_timestamp = g_kernel.mt->time_elapsed;
-    proc = g_kernel.mt->first_ready_to_run;
-    g_kernel.mt->first_ready_to_run = g_kernel.mt->first_ready_to_run->next;
-    if (proc == g_kernel.mt->last_ready_to_run) {
-      g_kernel.mt->last_ready_to_run = NULL;
+    proc->switch_timestamp = g_kernel.sched->time_elapsed;
+    proc = g_kernel.sched->first_ready_to_run;
+    g_kernel.sched->first_ready_to_run =
+        g_kernel.sched->first_ready_to_run->next;
+    if (proc == g_kernel.sched->last_ready_to_run) {
+      g_kernel.sched->last_ready_to_run = NULL;
     }
     multitask_switch(proc);
   }
@@ -292,29 +297,32 @@ void multitask_switch(process_block_t* process) {
 void sched_lock(void) {
   // TODO: this will need more fleshing out for multi-core support
   asm volatile("cli");
-  g_kernel.mt->irq_lock_count++;
+  g_kernel.sched->irq_lock_count++;
 }
 
 void sched_unlock(void) {
-  if (g_kernel.mt->irq_lock_count > 0) { g_kernel.mt->irq_lock_count--; }
-  if (g_kernel.mt->irq_lock_count == 0) { asm volatile("sti"); }
+  if (g_kernel.sched->irq_lock_count > 0) { g_kernel.sched->irq_lock_count--; }
+  if (g_kernel.sched->irq_lock_count == 0) { asm volatile("sti"); }
 }
 
 void sched_postpone(void) {
   // TODO: this will need more fleshing out for multi-core support
   asm volatile("cli");
-  g_kernel.mt->irq_lock_count++;
-  g_kernel.mt->switch_lock_count++;
+  g_kernel.sched->irq_lock_count++;
+  g_kernel.sched->switch_lock_count++;
 }
 
 void sched_resume(void) {
-  if (g_kernel.mt->switch_lock_count > 0) { g_kernel.mt->switch_lock_count--; }
-  if (g_kernel.mt->switch_lock_count == 0 && g_kernel.mt->switch_lock_flag) {
-    g_kernel.mt->switch_lock_flag = false;
+  if (g_kernel.sched->switch_lock_count > 0) {
+    g_kernel.sched->switch_lock_count--;
+  }
+  if (g_kernel.sched->switch_lock_count == 0 &&
+      g_kernel.sched->switch_lock_flag) {
+    g_kernel.sched->switch_lock_flag = false;
     schedule_advance();
   }
-  if (g_kernel.mt->irq_lock_count > 0) { g_kernel.mt->irq_lock_count--; }
-  if (g_kernel.mt->irq_lock_count == 0) { asm volatile("sti"); }
+  if (g_kernel.sched->irq_lock_count > 0) { g_kernel.sched->irq_lock_count--; }
+  if (g_kernel.sched->irq_lock_count == 0) { asm volatile("sti"); }
 }
 
 void sched_current_block(uint8_t reason) {
@@ -324,10 +332,10 @@ void sched_current_block(uint8_t reason) {
 void sched_proc_unblock(process_block_t* process) {
   sched_lock();
 
-  if (g_kernel.mt->first_ready_to_run != NULL) {
+  if (g_kernel.sched->first_ready_to_run != NULL) {
     process->status = PROC_STATUS_READY_TO_RUN;
-    g_kernel.mt->last_ready_to_run->next = process;
-    g_kernel.mt->last_ready_to_run = process;
+    g_kernel.sched->last_ready_to_run->next = process;
+    g_kernel.sched->last_ready_to_run = process;
   } else {
     multitask_switch(process);
   }
@@ -355,8 +363,8 @@ void sched_proc_terminate(process_block_t* p) {
     return;
   }
   if (p != g_kernel.current_process) { remove_proc(p); }
-  p->next = g_kernel.mt->ready_to_die;
-  g_kernel.mt->ready_to_die = p;
+  p->next = g_kernel.sched->ready_to_die;
+  g_kernel.sched->ready_to_die = p;
   sched_unlock();
 
   block_process(p, PROC_STATUS_READY_TO_DIE);
@@ -395,13 +403,13 @@ void handle_timer(uint64_t timestamp) {
   // framebuffer line scrolling
   sched_postpone();
   wake_procs_before_timestamp(timestamp);
-  if (g_kernel.mt->quantum_remaining != 0) {
-    if (g_kernel.mt->quantum_remaining <= g_kernel.mt->tick_interval_ns) {
+  if (g_kernel.sched->quantum_remaining != 0) {
+    if (g_kernel.sched->quantum_remaining <= g_kernel.sched->tick_interval_ns) {
       sched_lock();
       schedule_advance();
       sched_unlock();
     } else {
-      g_kernel.mt->quantum_remaining -= g_kernel.mt->tick_interval_ns;
+      g_kernel.sched->quantum_remaining -= g_kernel.sched->tick_interval_ns;
     }
   }
   sched_resume();
@@ -415,8 +423,8 @@ void insert_process_after(process_block_t* process, process_block_t* after) {
 }
 
 process_block_t* new_proc_shared(char* name, void* cr3) {
-  ++(g_kernel.mt->total_processes_added);
-  ++(g_kernel.mt->process_count);
+  ++(g_kernel.sched->total_processes_added);
+  ++(g_kernel.sched->process_count);
   process_block_t* new_proc = (process_block_t*)malloc(sizeof(process_block_t));
   memset(new_proc, 0, sizeof(process_block_t));
   new_proc->cr3 = cr3;
@@ -430,7 +438,7 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
   stack_base -= 8 * 6;
   *(haddr_t*)stack_base = (haddr_t)new_proc;
 
-  new_proc->pid = g_kernel.mt->total_processes_added;
+  new_proc->pid = g_kernel.sched->total_processes_added;
   if (name != NULL) {
     new_proc->name = name;
   } else {
@@ -468,11 +476,11 @@ void remove_proc(process_block_t* p) {
   switch (p->status) {
     case PROC_STATUS_READY_TO_RUN:
     case PROC_STATUS_UNINITIALIZED:
-      head = g_kernel.mt->first_ready_to_run;
+      head = g_kernel.sched->first_ready_to_run;
       is_ready_queue = true;
       break;
     case PROC_STATUS_PAUSED:
-      head = g_kernel.mt->sleeping;
+      head = g_kernel.sched->sleeping;
       break;
     default:
       return;
@@ -482,13 +490,14 @@ void remove_proc(process_block_t* p) {
     switch (p->status) {
       case PROC_STATUS_READY_TO_RUN:
       case PROC_STATUS_UNINITIALIZED:
-        g_kernel.mt->first_ready_to_run = p->next;
-        if (g_kernel.mt->last_ready_to_run == p) {
-          g_kernel.mt->last_ready_to_run = g_kernel.mt->first_ready_to_run;
+        g_kernel.sched->first_ready_to_run = p->next;
+        if (g_kernel.sched->last_ready_to_run == p) {
+          g_kernel.sched->last_ready_to_run =
+              g_kernel.sched->first_ready_to_run;
         }
         break;
       case PROC_STATUS_PAUSED:
-        g_kernel.mt->sleeping = p->next;
+        g_kernel.sched->sleeping = p->next;
         break;
       default:
         return;
@@ -501,8 +510,8 @@ void remove_proc(process_block_t* p) {
     }
     if (proc != NULL) {
       last->next = proc->next;
-      if (is_ready_queue && g_kernel.mt->last_ready_to_run == proc) {
-        g_kernel.mt->last_ready_to_run = last;
+      if (is_ready_queue && g_kernel.sched->last_ready_to_run == proc) {
+        g_kernel.sched->last_ready_to_run = last;
       }
       proc->next = NULL;
     }
@@ -525,9 +534,9 @@ void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
 
   // TODO rewrite this to use `multitask_block()`
 
-  if (g_kernel.mt->sleeping == NULL) {
+  if (g_kernel.sched->sleeping == NULL) {
     process->next = NULL;
-    g_kernel.mt->sleeping = process;
+    g_kernel.sched->sleeping = process;
     sched_lock();
     schedule_advance();
     sched_unlock();
@@ -536,10 +545,10 @@ void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
   }
 
   process_block_t* last = find_last_sleep_timestamp_less_than_equal(
-      g_kernel.mt->sleeping, timestamp);
+      g_kernel.sched->sleeping, timestamp);
   if (last == NULL) {
-    process->next = g_kernel.mt->sleeping;
-    g_kernel.mt->sleeping = process;
+    process->next = g_kernel.sched->sleeping;
+    g_kernel.sched->sleeping = process;
   }
   insert_process_after(process, last);
 
@@ -554,7 +563,7 @@ void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
  */
 void terminator(void) {
   while (true) {
-    if (g_kernel.mt->ready_to_die == NULL) {
+    if (g_kernel.sched->ready_to_die == NULL) {
       // TODO: improve this so it immediately yields with `multitask_block()`
       sched_lock();
       schedule_advance();
@@ -562,7 +571,7 @@ void terminator(void) {
     } else {
       sched_postpone();
       process_block_t* next;
-      for (process_block_t* p = g_kernel.mt->ready_to_die; p != NULL;) {
+      for (process_block_t* p = g_kernel.sched->ready_to_die; p != NULL;) {
         next = p->next;
         // TODO: we ideally need to hand the logs committing off to a
         // dedicated task
@@ -571,20 +580,20 @@ void terminator(void) {
         free(p);
         p = next;
       }
-      g_kernel.mt->ready_to_die = NULL;
+      g_kernel.sched->ready_to_die = NULL;
       sched_resume();
     }
   }
 }
 
 void wake_procs_before_timestamp(uint64_t timestamp) {
-  if (g_kernel.mt->sleeping == NULL ||
-      g_kernel.mt->sleeping->sleep_until > timestamp) {
+  if (g_kernel.sched->sleeping == NULL ||
+      g_kernel.sched->sleeping->sleep_until > timestamp) {
     return;
   }
 
   process_block_t* last_to_wake = NULL;
-  for (process_block_t* curr = g_kernel.mt->sleeping; curr != NULL;
+  for (process_block_t* curr = g_kernel.sched->sleeping; curr != NULL;
        curr = curr->next) {
     if (curr->sleep_until <= timestamp) {
       curr->status = PROC_STATUS_READY_TO_RUN;
@@ -594,14 +603,14 @@ void wake_procs_before_timestamp(uint64_t timestamp) {
     }
   }
 
-  if (g_kernel.mt->first_ready_to_run == NULL) {
-    g_kernel.mt->first_ready_to_run = g_kernel.mt->sleeping;
-    g_kernel.mt->last_ready_to_run = last_to_wake;
+  if (g_kernel.sched->first_ready_to_run == NULL) {
+    g_kernel.sched->first_ready_to_run = g_kernel.sched->sleeping;
+    g_kernel.sched->last_ready_to_run = last_to_wake;
   } else {
-    g_kernel.mt->last_ready_to_run->next = g_kernel.mt->sleeping;
-    g_kernel.mt->last_ready_to_run = last_to_wake;
+    g_kernel.sched->last_ready_to_run->next = g_kernel.sched->sleeping;
+    g_kernel.sched->last_ready_to_run = last_to_wake;
   }
 
-  g_kernel.mt->sleeping = last_to_wake->next;
-  g_kernel.mt->last_ready_to_run->next = NULL;
+  g_kernel.sched->sleeping = last_to_wake->next;
+  g_kernel.sched->last_ready_to_run->next = NULL;
 }
