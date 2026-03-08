@@ -17,8 +17,8 @@ typedef void (*syscall_callback_t)(interrupt_frame_t* frame);
  * RSI: Argument 2
  * RDX: Argument 3
  * R10: Argument 4
- * R9:  Argument 5
- * R8:  Argument 6
+ * R8:  Argument 5
+ * R9:  Argument 6
  *
  * Performs argument validation and dispatches to the correct syscall. Will
  * fail if the syscall number or the arguments are not valid, or if there is

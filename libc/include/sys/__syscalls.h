@@ -4,74 +4,22 @@
 #define __HOJICHA_SYS_SYSCALL_NANOSLEEP 0x23
 #define __HOJICHA_SYS_SYSCALL_EXIT      0x3C
 
-static inline long __syscall0(long n) {
-  long ret;
-  asm volatile("int $0x80" : "=a"(ret) : "a"(n) : "memory", "cc");
-  return ret;
-}
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-static inline long __syscall1(long n, long a1) {
-  long ret;
-  asm volatile("int $0x80" : "=a"(ret) : "a"(n), "D"(a1) : "memory", "cc");
-  return ret;
-}
+extern long __syscall0(long n);
+extern long __syscall1(long n, long a1);
+extern long __syscall2(long n, long a1, long a2);
+extern long __syscall3(long n, long a1, long a2, long a3);
+extern long __syscall4(long n, long a1, long a2, long a3, long a4);
+extern long __syscall5(long n, long a1, long a2, long a3, long a4, long a5);
+extern long
+__syscall6(long n, long a1, long a2, long a3, long a4, long a5, long a6);
 
-static inline long __syscall2(long n, long a1, long a2) {
-  long ret;
-  asm volatile("int $0x80"
-               : "=a"(ret)
-               : "a"(n), "D"(a1), "S"(a2)
-               : "memory", "cc");
-  return ret;
+#ifdef __cplusplus
 }
-
-static inline long __syscall3(long n, long a1, long a2, long a3) {
-  long ret;
-  asm volatile("int $0x80"
-               : "=a"(ret)
-               : "a"(n), "D"(a1), "S"(a2), "d"(a3)
-               : "memory", "cc");
-  return ret;
-}
-
-static inline long __syscall4(long n, long a1, long a2, long a3, long a4) {
-  long ret;
-  register long r10 asm("r10") = a4;
-  asm volatile("int $0x80"
-               : "=a"(ret)
-               : "a"(n), "D"(a1), "S"(a2), "d"(a3), "r"(r10)
-               : "memory", "cc");
-  return ret;
-}
-
-static inline long __syscall5(long n,
-                              long a1,
-                              long a2,
-                              long a3,
-                              long a4,
-                              long a5) {
-  long ret;
-  register long r10 asm("r10") = a4;
-  register long r8 asm("r8") = a5;
-  asm volatile("int $0x80"
-               : "=a"(ret)
-               : "a"(n), "D"(a1), "S"(a2), "d"(a3), "r"(r10), "r"(r8)
-               : "memory", "cc");
-  return ret;
-}
-
-static inline long
-__syscall6(long n, long a1, long a2, long a3, long a4, long a5, long a6) {
-  long ret;
-  register long r10 asm("r10") = a4;
-  register long r8 asm("r8") = a5;
-  register long r9 asm("r9") = a6;
-  asm volatile("int $0x80"
-               : "=a"(ret)
-               : "a"(n), "D"(a1), "S"(a2), "d"(a3), "r"(r10), "r"(r8), "r"(r9)
-               : "memory", "cc");
-  return ret;
-}
+#endif
 
 #endif  // __HOJICHA_SYS_SYSCALLS_H
 
