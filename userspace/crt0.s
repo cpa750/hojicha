@@ -1,12 +1,15 @@
 .global _start
 .type _start, @function
 .extern main
+.extern exit
 
 _start:
   call main
+  mov %eax, %edi
+  call exit
 
-  /* Invalid instruction to trap the kernel into terminating the process */
-  ud2
+1:
+  jmp 1b
 
 .size _start, . - _start
 

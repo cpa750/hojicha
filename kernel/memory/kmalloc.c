@@ -1,5 +1,5 @@
 #include <haddr.h>
-#include <kernel/kernel_state.h>
+#include <kernel/g_kernel.h>
 #include <memory/kmalloc.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
@@ -112,8 +112,16 @@ void* kmalloc(size_t size) {
 }
 
 void kfree(void* ptr) {
+  if (ptr == NULL) { return; }
   block_header_t* current_block =
       (block_header_t*)((haddr_t)ptr - SIZEOF_HEADER);
+  if ((haddr_t)current_block < first_available_vaddr ||
+      (haddr_t)current_block >= last_footer) {
+    return;
+  }
+
+  if (current_block->footer == NULL) { return; }
+
   current_block->is_free = true;
   // Special case to handle when the first available block is freed
   if ((haddr_t)current_block == first_available_vaddr) {
@@ -180,17 +188,25 @@ block_header_t* find_first_fit_block(block_header_t* block, size_t size) {
 }
 
 block_header_t* get_next(block_header_t* block) {
-  if (((haddr_t)block->footer + SIZEOF_FOOTER) >= last_footer) { return NULL; }
-  return (block_header_t*)((haddr_t)block->footer + SIZEOF_FOOTER);
+  if (block == NULL || block->footer == NULL) { return NULL; }
+
+  haddr_t footer_addr = (haddr_t)block->footer;
+  if (footer_addr < first_available_vaddr || footer_addr >= last_footer) {
+    return NULL;
+  }
+
+  haddr_t next_addr = footer_addr + SIZEOF_FOOTER;
+  if (next_addr >= last_footer) { return NULL; }
+  return (block_header_t*)next_addr;
 }
 
 block_header_t* get_next_free(block_header_t* block) {
   block_header_t* next = get_next(block);
-  if (!next->is_free) {
-    if (next->footer != NULL) { return get_next_free(next); }
-    return NULL;
+  while (next != NULL) {
+    if (next->is_free) { return next; }
+    next = get_next(next);
   }
-  return next;
+  return NULL;
 }
 
 block_header_t* get_previous(block_header_t* block) {

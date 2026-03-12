@@ -1,6 +1,6 @@
 #include <drivers/vga.h>
 #include <haddr.h>
-#include <kernel/kernel_state.h>
+#include <kernel/g_kernel.h>
 #include <limine.h>
 #include <memory/kmalloc.h>
 #include <memory/pmm.h>
@@ -309,6 +309,11 @@ haddr_t vmm_unmap(vmm_t* vmm, haddr_t virt) {
   pt[pt_idx] = 0;
   _invlpg(virt_base);
   return virt_base;
+}
+
+void vmm_free(vmm_t* vmm) {
+  // TODO: give back the physical pages we allocated
+  free(vmm);
 }
 
 void check_kernel_size(haddr_t kernel_page_count) {

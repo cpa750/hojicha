@@ -41,11 +41,13 @@ void initialize_idt() {
 
 extern void* isr_stub_table[];
 extern void* irq_stub_table[];
+extern void syscall_isr(void);
 
 void create_isr_entries() {
   for (size_t vector = 0; vector < 32; vector++) {
     create_idt_entry(entries, vector, isr_stub_table[vector], 0x8E, 0x08);
   }
+  create_idt_entry(entries, 0x80, (void*)syscall_isr, 0xEE, 0x08);
 }
 
 void create_irq_entries() {

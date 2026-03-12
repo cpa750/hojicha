@@ -50,7 +50,7 @@ for PROJECT in $PROJECTS; do
   (cd $PROJECT && DESTDIR="$SYSROOT" bear --append -- $MAKE $DEBUG_QEMU $KMALLOC_TEST $HLOG_LEVEL HOST=$HOST install)
 done
 
-make -C userspace all
+make -C userspace all HOST=$HOST SYSROOT="$SYSROOT"
 mkdir -p "$SYSROOT/boot"
 find userspace/bin -maxdepth 1 -type f -name '*.elf' -exec cp -f {} "$SYSROOT/boot/" \;
 mkdir -p "$SYSROOT/boot/limine"

@@ -1,7 +1,7 @@
 #include <cpu/gdt.h>
 #include <cpu/tss.h>
 #include <haddr.h>
-#include <kernel/kernel_state.h>
+#include <kernel/g_kernel.h>
 #include <stdio.h>
 #include <stdlib.h>
 

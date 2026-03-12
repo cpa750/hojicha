@@ -2,6 +2,7 @@
 #include <drivers/keyboard.h>
 #include <drivers/pic.h>
 #include <drivers/pit.h>
+#include <multitask/syscall.h>
 
 void handle_irq(interrupt_frame_t* frame) {
   switch (frame->int_no) {

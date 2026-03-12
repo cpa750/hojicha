@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #if defined(__is_libk)
-#include <kernel/kernel_state.h>
+#include <kernel/g_kernel.h>
 #endif
 
 __attribute__((__noreturn__)) void abort(void) {

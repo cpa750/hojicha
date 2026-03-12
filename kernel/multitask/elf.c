@@ -1,9 +1,9 @@
 #include <haddr.h>
 #include <hlog.h>
-#include <kernel/elf.h>
-#include <kernel/kernel_state.h>
+#include <kernel/g_kernel.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
+#include <multitask/elf.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -153,7 +153,9 @@ void elf_launch(elf_t* elf, vmm_t* vmm) {
     elf_program_header_t prog_header = elf->program_headers[i];
     if (prog_header.type == ELF_PROG_HEADER_TYPE_LOAD) {
       haddr_t segment_end = prog_header.load_vaddr + prog_header.mapped_size;
-      if (segment_end > highest_loaded_addr) { highest_loaded_addr = segment_end; }
+      if (segment_end > highest_loaded_addr) {
+        highest_loaded_addr = segment_end;
+      }
       memcpy((void*)prog_header.load_vaddr,
              elf->buffer + prog_header.buffer_offset,
              prog_header.buffer_size);

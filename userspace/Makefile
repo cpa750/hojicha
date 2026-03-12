@@ -1,11 +1,17 @@
 DEFAULT_HOST!=../default_host.sh
 HOST?=$(DEFAULT_HOST)
+SYSROOT?=../sysroot
 CC?=$(HOST)-gcc
 
-CFLAGS?=-O2 -Wall -Wextra -std=gnu11 -ffreestanding -fno-stack-protector -fno-pie -fno-pic
+CFLAGS:=-O2 -Wall -Wextra -std=gnu11 -ffreestanding -fno-stack-protector -fno-pie -fno-pic
 CPPFLAGS?=
-LDFLAGS?=-nostdlib -static -no-pie -Wl,-melf_x86_64 -Wl,-e,_start
-LIBS?=-lgcc
+LDFLAGS?=-nostdlib -static -no-pie -Wl,-melf_x86_64 -Wl,-e,_start --sysroot=$(SYSROOT) -L$(SYSROOT)/usr/lib
+LIBS?=-lc -lgcc
+
+CFLAGS += --sysroot=$(SYSROOT)
+ifneq ($(findstring -elf,$(HOST)),)
+CPPFLAGS += -isystem $(SYSROOT)/usr/include
+endif
 
 BUILDDIR?=bin
 SOURCES:=$(wildcard *.c)

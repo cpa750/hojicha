@@ -1,6 +1,9 @@
+#include <time.h>
+#include <unistd.h>
+
 int main(void) {
-  long long ret = 0;
-  for (int i = 0; i < 1000000000; ++i) { ret += i; }
-  return ret;  // Big maths
+  sleep(5);
+  nanosleep(500000);
+  return 2 + 2 - 1;  // Big maths
 }
 

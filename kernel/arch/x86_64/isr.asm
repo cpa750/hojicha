@@ -102,3 +102,8 @@ isr_stub_table:
 %assign i i+1 
 %endrep
 
+global syscall_isr
+syscall_isr:
+    push qword 0
+    push qword 0x80
+    jmp isr_common

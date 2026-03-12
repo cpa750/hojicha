@@ -71,12 +71,15 @@ stdlib/free.c \
 stdlib/itoa.c \
 stdlib/utoa.c \
 stdlib/malloc.c \
+stdlib/exit.c \
 string/memcmp.c \
 string/memmove.c \
 string/memset.c \
 string/strcmp.c \
 string/strcpy.c \
-string/strlen.c
+string/strlen.c \
+time/nanosleep.c \
+unistd/sleep.c
 
 # Build directory versions
 OBJDIRS := $(sort $(dir $(addprefix $(BUILDDIR)/,$(LIBC_SRC:.c=.o))))
@@ -86,7 +89,7 @@ FREEOBJS   = $(addprefix $(BUILDDIR)/,$(LIBC_SRC:.c=.o)) \
 LIBK_OBJS  = $(FREEOBJS:.o=.libk.o)
 LIBC_OBJS  = $(FREEOBJS:.o=.libc.o)
 
-BINARIES = $(BUILDDIR)/libk.a
+BINARIES = $(BUILDDIR)/libc.a $(BUILDDIR)/libk.a
 
 .PHONY: all clean install install-headers install-libs
 .SUFFIXES: .o .libk.o .c .s .asm

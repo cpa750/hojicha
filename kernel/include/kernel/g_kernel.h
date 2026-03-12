@@ -1,13 +1,13 @@
-#ifndef KERNEL_STATE_H
-#define KERNEL_STATE_H
+#ifndef G_KERNEL_H
+#define G_KERNEL_H
 
 #include <cpu/tss.h>
 #include <drivers/pit.h>
-#include <kernel/multitask.h>
+#include <multitask/scheduler.h>
 #include <stdint.h>
 
-struct multitask_state;
-typedef struct multitask_state multitask_state_t;
+struct sched_state;
+typedef struct sched_state sched_state_t;
 
 struct pmm_state;
 typedef struct pmm_state pmm_state_t;
@@ -27,7 +27,7 @@ struct kernel_state {
   process_block_t* current_process;
   // End asm-mapped fields
 
-  multitask_state_t* mt;
+  sched_state_t* sched;
   pit_state_t* pit;
   pmm_state_t* pmm;
   tty_state_t* tty;
@@ -40,4 +40,4 @@ extern kernel_state_t g_kernel;
 void initialize_g_kernel();
 void g_kernel_dump();
 
-#endif  // KERNEL_STATE_H
+#endif  // G_KERNEL_H

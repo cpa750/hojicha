@@ -1,5 +1,4 @@
 #include <limits.h>
-#include <memory/kmalloc.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -108,4 +107,3 @@ int vsnprintf(char* buffer, const char* format, va_list parameters) {
   buffer[0] = '\0';
   return bytes_written;
 }
-
