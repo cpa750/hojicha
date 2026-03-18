@@ -9,17 +9,17 @@ fi
 
 mkdir -p iso_root/boot/limine
 cp -v sysroot/boot/hojicha.kernel iso_root/boot/hojicha
-USERSPACE_BIN_DIR=sysroot/boot
-USERSPACE_BINS=$(find "$USERSPACE_BIN_DIR" -maxdepth 1 -type f -name '*.elf' -printf '%f\n' | sort)
+BOOT_MODULE_DIR=sysroot/boot
+BOOT_MODULES=$(find "$BOOT_MODULE_DIR" -maxdepth 1 -type f \( -name '*.elf' -o -name '*.tar' \) -printf '%f\n' | sort)
 
-for bin in $USERSPACE_BINS; do
-  cp -v "$USERSPACE_BIN_DIR/$bin" "iso_root/boot/$bin"
+for module in $BOOT_MODULES; do
+  cp -v "$BOOT_MODULE_DIR/$module" "iso_root/boot/$module"
 done
 
-awk -v bins="$USERSPACE_BINS" '
+awk -v modules="$BOOT_MODULES" '
   { print }
   /^[[:space:]]*path:/ && !done {
-    count = split(bins, names, "\n")
+    count = split(modules, names, "\n")
     for (i = 1; i <= count; i++) {
       if (names[i] != "") {
         printf "    module_path: boot():/boot/%s\n", names[i]
