@@ -90,6 +90,8 @@ drivers/pit.c \
 drivers/tty.c \
 drivers/serial.c \
 fonts/inconsolata.c \
+fs/initrd.c \
+fs/vfs.c \
 kernel/kernel.c \
 kernel/g_kernel.c \
 memory/kmalloc.c \

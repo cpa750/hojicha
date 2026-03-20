@@ -21,6 +21,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "fs/initrd.h"
+
 static process_block_t* kernel_proc;
 
 static semaphore_t* semaphore;
@@ -249,6 +251,18 @@ void kernel_main() {
   elf_t* bigmaths = elf_read(userspace_mod->address, userspace_mod->size);
   process_block_t* elf_proc = sched_uproc_new("bigmaths", bigmaths);
   sched_add_proc(elf_proc);
+
+  bootmodule_t* initrd_mod = bootmodule_get("initrd.tar");
+  if (initrd_mod == NULL) {
+    hlog_write(HLOG_ERROR, "Unable to find cached module initrd.tar");
+  } else {
+    hlog_write(HLOG_INFO,
+               "Loaded cached module %s at %x (%d bytes)",
+               initrd_mod->name,
+               initrd_mod->address,
+               initrd_mod->size);
+  }
+  ird_from_ustar(initrd_mod->address, initrd_mod->size);
 
   // while (1) asm volatile("hlt");
 
