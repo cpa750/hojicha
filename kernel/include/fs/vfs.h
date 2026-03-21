@@ -5,6 +5,7 @@
 
 typedef enum {
   VFS_STATUS_OK = 0,
+  VFS_STATUS_NOENT,
   VFS_STATUS_NOTDIR,
   VFS_STATUS_ISDIR,
   VFS_STATUS_NOMEM,
@@ -132,4 +133,3 @@ vfs_status_t vfs_readdir(vfile_t* dir, vfs_dirent_t* out);
 vfs_status_t vfs_close(vfile_t* file);
 
 #endif  // HOJICHA_VFS_H
-

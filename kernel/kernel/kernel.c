@@ -264,7 +264,11 @@ void kernel_main() {
                initrd_mod->size);
   }
   vfs_mount_t* initrd = NULL;
-  ird_from_ustar(initrd_mod->address, initrd_mod->size, &initrd);
+  initrd_from_ustar(initrd_mod->address, initrd_mod->size, &initrd);
+  vfs_mount_root(initrd);
+  vnode_t* test = NULL;
+  vfs_status_t res = vfs_lookup("/etc/test.txt", &test);
+  if (res != VFS_STATUS_OK) { hlog_write(HLOG_ERROR, "uh oh..."); }
 
   // while (1) asm volatile("hlt");
 

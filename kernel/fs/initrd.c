@@ -2,9 +2,35 @@
 #include <fs/ustar.h>
 #include <fs/vfs.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct ird_inode ird_inode_t;
+struct ird_inode {
+  char* name;
+  uint64_t name_size;
+  void* buf;
+  uint64_t size;
+  vfs_node_type_t type;
+  ird_inode_t* parent;
+  ird_inode_t* first_child;
+  // TODO: currently we have to walk a linked list to get to target,
+  // a hashmap would be better here.
+  ird_inode_t* next_sibling;
+};
+
+typedef struct ird_file ird_file_t;
+struct ird_file {
+  char* buf;
+};
+
+vfs_status_t initrd_lookup(vnode_t* dir,
+                           const char* name,
+                           uint32_t name_len,
+                           vnode_t** out);
+void initrd_release(vnode_t* vnode);
+vnode_t* create_vnode(ird_inode_t* inode);
 void add_child(ird_inode_t* parent, ird_inode_t* new_child);
 ird_inode_t* create_root();
 ird_inode_t* create_dir(char* name, uint64_t name_len, ird_inode_t* parent);
@@ -20,9 +46,15 @@ uint64_t get_header_size(ustar_header_t* header);
 uint64_t get_name_start_idx(char* filename, uint64_t len);
 bool is_zero_block(void* block);
 
-vfs_status_t ird_from_ustar(void* buffer,
-                            uint64_t size,
-                            vfs_mount_t** mount_out) {
+static const vnode_ops_t initrd_vnode_ops = {
+    .lookup = initrd_lookup,
+    .open = NULL,
+    .release = initrd_release,
+};
+
+vfs_status_t initrd_from_ustar(void* buffer,
+                               uint64_t size,
+                               vfs_mount_t** mount_out) {
   ird_inode_t* root = create_root();
 
   uint64_t buf_pos = 0;
@@ -90,17 +122,70 @@ vfs_status_t ird_from_ustar(void* buffer,
     }
   }
 
-  vnode_t* root_vnode = (vnode_t*)malloc(sizeof(vnode_t));
-  root_vnode->fs_data = root;
-  root_vnode->ops = NULL;
-  root_vnode->refcount = 1;
-  root_vnode->type = VFS_NODE_DIR;
+  vnode_t* root_vnode = create_vnode(root);
+  if (root_vnode == NULL) { return VFS_STATUS_NOMEM; }
 
   vfs_mount_t* m = (vfs_mount_t*)malloc(sizeof(vfs_mount_t));
   m->root = root_vnode;
   m->fs_data = NULL;
   *mount_out = m;
   return VFS_STATUS_OK;
+}
+
+vfs_status_t initrd_lookup(vnode_t* dir,
+                           const char* name,
+                           uint32_t name_len,
+                           vnode_t** out) {
+  if (dir == NULL || dir->type != VFS_NODE_DIR) { return VFS_STATUS_NOTDIR; }
+
+  ird_inode_t* dir_inode = (ird_inode_t*)dir->fs_data;
+  ird_inode_t* child =
+      find_child(dir_inode->first_child, (char*)name, name_len);
+  if (child == NULL) { return VFS_STATUS_NOENT; }
+
+  vnode_t* child_vnode = create_vnode(child);
+  if (child_vnode == NULL) { return VFS_STATUS_NOMEM; }
+
+  *out = child_vnode;
+  return VFS_STATUS_OK;
+}
+
+void initrd_release(vnode_t* vnode) { free(vnode); }
+
+vfs_status_t initrd_open(vnode_t* vnode, uint32_t flags, vfile_t** out) {
+  if ((flags & VFS_OPEN_DIRECTORY) && vnode->type != VFS_NODE_DIR) {
+    *out = NULL;
+    return VFS_STATUS_NOTDIR;
+  }
+
+  if ((flags & VFS_OPEN_READ) && vnode->type != VFS_NODE_FILE) {
+    *out = NULL;
+    return VFS_STATUS_ISDIR;  // TODO: this should really be decided based
+                              // on actual filetype
+  }
+
+  ird_file_t* file = (ird_file_t*)malloc(sizeof(ird_file_t));
+  file->buf = ((ird_inode_t*)(vnode->fs_data))->buf;
+
+  vfile_t* vfile = (vfile_t*)malloc(sizeof(vfile_t));
+  vfile->flags = flags;
+  vfile->fs_data = NULL;
+  vfile->offset = 0;
+  vfile->fs_data = (void*)file;
+
+  *out = vfile;
+  return VFS_STATUS_OK;
+}
+
+vnode_t* create_vnode(ird_inode_t* inode) {
+  vnode_t* vnode = (vnode_t*)malloc(sizeof(vnode_t));
+  if (vnode == NULL) { return NULL; }
+
+  vnode->fs_data = inode;
+  vnode->ops = &initrd_vnode_ops;
+  vnode->refcount = 1;
+  vnode->type = inode->type;
+  return vnode;
 }
 
 ird_inode_t* create_root() {

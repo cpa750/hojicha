@@ -34,11 +34,6 @@ struct ustar_file {
 };
 typedef struct ustar_file ustar_file_t;
 
-/*
- * Parses a raw ustar blob from `buf` into a newly-allocated ramfs.
- */
-uint64_t ustar_read_next_to_initrd_inode(ustar_file_t* u, ird_inode_t* target);
-
 static inline uint64_t ustar_oct2dec(char* str, int size) {
   // Thank you OSDev Wiki for the octal to decimal helper function
   int n = 0;
