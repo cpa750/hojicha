@@ -22,6 +22,7 @@
 #include <stdlib.h>
 
 #include "fs/initrd.h"
+#include "fs/vfs.h"
 
 static process_block_t* kernel_proc;
 
@@ -262,7 +263,8 @@ void kernel_main() {
                initrd_mod->address,
                initrd_mod->size);
   }
-  ird_from_ustar(initrd_mod->address, initrd_mod->size);
+  vfs_mount_t* initrd = NULL;
+  ird_from_ustar(initrd_mod->address, initrd_mod->size, &initrd);
 
   // while (1) asm volatile("hlt");
 

@@ -54,7 +54,6 @@ struct vfs_mount {
 };
 
 struct vnode {
-  vfs_mount_t* mount;
   const vnode_ops_t* ops;
   vfs_node_type_t type;
   uint32_t refcount;

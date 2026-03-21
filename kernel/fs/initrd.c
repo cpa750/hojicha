@@ -1,39 +1,54 @@
 #include <fs/initrd.h>
 #include <fs/ustar.h>
 #include <fs/vfs.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
 void add_child(ird_inode_t* parent, ird_inode_t* new_child);
 ird_inode_t* create_root();
+ird_inode_t* create_dir(char* name, uint64_t name_len, ird_inode_t* parent);
+ird_inode_t* dir_lookup(char* path, uint64_t path_len, ird_inode_t* root);
+ird_inode_t* find_child(ird_inode_t* first_child,
+                        char* name,
+                        uint64_t name_len);
 ird_inode_t* get_or_create_prefix(char* path,
                                   uint64_t path_len,
                                   ird_inode_t* root);
+uint64_t get_entry_len(char* filename);
+uint64_t get_header_size(ustar_header_t* header);
 uint64_t get_name_start_idx(char* filename, uint64_t len);
+bool is_zero_block(void* block);
 
-vfs_status_t ird_from_ustar(void* buffer, uint64_t size) {
+vfs_status_t ird_from_ustar(void* buffer,
+                            uint64_t size,
+                            vfs_mount_t** mount_out) {
   ird_inode_t* root = create_root();
 
   uint64_t buf_pos = 0;
-  while (buf_pos < size) {
+  while (buf_pos + HOJICHA_USTAR_HEADER_LEN_BYTES <= size) {
     ustar_header_t* h = (ustar_header_t*)(buffer + buf_pos);
-    if (!strcmp(h->filename, "./")) {
-      buf_pos +=
-          ((((ustar_oct2dec(h->filesize_bytes_oct, 12) + 511) / 512)) + 1) *
-          512;
+    if (is_zero_block(h)) { break; }
+
+    uint64_t entry_len = get_entry_len(h->filename);
+    uint64_t header_size = get_header_size(h);
+
+    if (entry_len == 2 && memcmp(h->filename, "./", 2) == 0) {
+      buf_pos += header_size;
       continue;
     }
 
     if (h->type == '0' || h->type == '\0') {
-      uint64_t name_offset =
-          get_name_start_idx(h->filename, strlen(h->filename));
+      uint64_t name_offset = get_name_start_idx(h->filename, entry_len);
 
       ird_inode_t* new = (ird_inode_t*)malloc(sizeof(ird_inode_t));
       new->size = ustar_oct2dec(h->filesize_bytes_oct, 12);
       new->name = h->filename + name_offset;  // Skip leading './'
-      new->name_size = strlen(new->name);
-      new->buf = buffer + 512;
+      new->name_size = entry_len - name_offset;
+      new->buf = buffer + buf_pos + HOJICHA_USTAR_HEADER_LEN_BYTES;
       new->type = VFS_NODE_FILE;
+      new->first_child = NULL;
+      new->next_sibling = NULL;
 
       ird_inode_t* parent;
       if (name_offset == 2) {  // Skip the leading `./`
@@ -41,15 +56,50 @@ vfs_status_t ird_from_ustar(void* buffer, uint64_t size) {
       } else {
         parent = get_or_create_prefix(h->filename, name_offset, root);
       }
+      if (parent == NULL) { return VFS_STATUS_NOTDIR; }
       new->parent = parent;
       add_child(parent, new);
-      buf_pos += ((((new->size + 511) / 512)) + 1) * 512;
+      buf_pos += header_size;
+    } else if (h->type == '5') {
+      if (entry_len > 0 && h->filename[entry_len - 1] == '/') { entry_len--; }
+
+      if (entry_len > 2) {
+        uint64_t name_offset = get_name_start_idx(h->filename, entry_len);
+        uint64_t name_len = entry_len - name_offset;
+
+        ird_inode_t* parent;
+        if (name_offset == 2) {
+          parent = root;
+        } else {
+          parent = get_or_create_prefix(h->filename, name_offset, root);
+        }
+        if (parent == NULL) { return VFS_STATUS_NOTDIR; }
+
+        if (find_child(parent->first_child,
+                       h->filename + name_offset,
+                       name_len) == NULL) {
+          ird_inode_t* dir =
+              create_dir(h->filename + name_offset, name_len, parent);
+          add_child(parent, dir);
+        }
+      }
+
+      buf_pos += header_size;
     } else {
-      buf_pos +=
-          ((((ustar_oct2dec(h->filesize_bytes_oct, 12) + 511) / 512)) + 1) *
-          512;
+      buf_pos += header_size;
     }
   }
+
+  vnode_t* root_vnode = (vnode_t*)malloc(sizeof(vnode_t));
+  root_vnode->fs_data = root;
+  root_vnode->ops = NULL;
+  root_vnode->refcount = 1;
+  root_vnode->type = VFS_NODE_DIR;
+
+  vfs_mount_t* m = (vfs_mount_t*)malloc(sizeof(vfs_mount_t));
+  m->root = root_vnode;
+  m->fs_data = NULL;
+  *mount_out = m;
   return VFS_STATUS_OK;
 }
 
@@ -57,6 +107,8 @@ ird_inode_t* create_root() {
   ird_inode_t* root = (ird_inode_t*)malloc(sizeof(ird_inode_t));
   root->name = "";
   root->name_size = 0;
+  root->buf = NULL;
+  root->size = 0;
   root->type = VFS_NODE_DIR;
   root->parent = NULL;
   root->first_child = NULL;
@@ -65,14 +117,73 @@ ird_inode_t* create_root() {
 }
 
 void add_child(ird_inode_t* parent, ird_inode_t* new_child) {
+  new_child->next_sibling = NULL;
+
+  if (parent->first_child == NULL) {
+    parent->first_child = new_child;
+    return;
+  }
+
   ird_inode_t* target = parent->first_child;
   while (target->next_sibling != NULL) { target = target->next_sibling; }
   target->next_sibling = new_child;
-  new_child->next_sibling = NULL;
 }
 
-// TODO
-ird_inode_t* dir_lookup(char* path, uint64_t path_len, ird_inode_t* root) {}
+ird_inode_t* create_dir(char* name, uint64_t name_len, ird_inode_t* parent) {
+  ird_inode_t* dir = (ird_inode_t*)malloc(sizeof(ird_inode_t));
+  char* dir_name = (char*)malloc(name_len + 1);
+
+  memcpy(dir_name, name, name_len);
+  dir_name[name_len] = '\0';
+
+  dir->name = dir_name;
+  dir->name_size = name_len;
+  dir->buf = NULL;
+  dir->size = 0;
+  dir->type = VFS_NODE_DIR;
+  dir->parent = parent;
+  dir->first_child = NULL;
+  dir->next_sibling = NULL;
+  return dir;
+}
+
+ird_inode_t* dir_lookup(char* path, uint64_t path_len, ird_inode_t* root) {
+  if (root == NULL) { return NULL; }
+
+  uint64_t path_start = 0;
+  ird_inode_t* ret = root;
+
+  if (path_len >= 2 && path[0] == '.' && path[1] == '/') { path_start = 2; }
+
+  while (path_start < path_len) {
+    while (path_start < path_len && path[path_start] == '/') { path_start++; }
+    if (path_start >= path_len) { return ret; }
+
+    uint64_t path_end = path_start;
+    while (path_end < path_len && path[path_end] != '/') { path_end++; }
+
+    uint64_t name_len = path_end - path_start;
+    ird_inode_t* next =
+        find_child(ret->first_child, path + path_start, name_len);
+    if (next == NULL || next->type != VFS_NODE_DIR) { return NULL; }
+
+    ret = next;
+    path_start = path_end + 1;
+  }
+
+  return ret;
+}
+
+ird_inode_t* find_child(ird_inode_t* first_child,
+                        char* name,
+                        uint64_t name_len) {
+  for (ird_inode_t* n = first_child; n != NULL; n = n->next_sibling) {
+    if (n->name_size == name_len && memcmp(name, n->name, name_len) == 0) {
+      return n;
+    }
+  }
+  return NULL;
+}
 
 /*
  * Ensures a directory path (prefix) exists from the given `root`.
@@ -82,46 +193,61 @@ ird_inode_t* get_or_create_prefix(char* path,
                                   uint64_t path_len,
                                   ird_inode_t* root) {
   uint64_t path_start = 0;
-  uint64_t path_end = 0;
 
   ird_inode_t* ret = dir_lookup(path, path_len, root);
   if (ret != NULL) { return ret; }
 
   ret = root;
-  while (path_start < path_len - 1) {
-    // Skip the relative path '.' that tar includes in the filename
-    if (path[path_start] == '.') {
-      path_start += 2;
-      path_end = path_start;
-      continue;
+  if (path_len >= 2 && path[0] == '.' && path[1] == '/') { path_start = 2; }
+
+  while (path_start < path_len) {
+    while (path_start < path_len && path[path_start] == '/') { path_start++; }
+    if (path_start >= path_len) { break; }
+
+    uint64_t path_end = path_start;
+    while (path_end < path_len && path[path_end] != '/') { path_end++; }
+
+    uint64_t name_len = path_end - path_start;
+    ird_inode_t* next =
+        find_child(ret->first_child, path + path_start, name_len);
+
+    if (next == NULL) {
+      next = create_dir(path + path_start, name_len, ret);
+      add_child(ret, next);
+    } else if (next->type != VFS_NODE_DIR) {
+      return NULL;
     }
 
-    while (path[path_end] != '/' && path_end < path_len) { path_end++; }
-    if (path[path_end] == '/') {
-      ird_inode_t* new = (ird_inode_t*)malloc(sizeof(ird_inode_t));
-
-      new->parent = ret;
-      add_child(ret, new);
-
-      char* name = (char*)malloc(path_end - path_start + 1);
-      name[path_end - path_start] = '\0';
-      memcpy(name, path + path_start, path_end - path_end);
-      new->name = name;
-      new->name_size = path_end - path_start + 1;
-
-      new->type = VFS_NODE_DIR;
-
-      path_start = path_end + 2;
-      path_end = path_start;
-      ret = new;
-    }
+    ret = next;
+    path_start = path_end + 1;
   }
   return ret;
 }
 
+uint64_t get_entry_len(char* filename) {
+  uint64_t len = 0;
+  while (filename[len] != '\0') { len++; }
+  return len;
+}
+
+uint64_t get_header_size(ustar_header_t* header) {
+  uint64_t file_size = ustar_oct2dec(header->filesize_bytes_oct, 12);
+  return (((file_size + 511) / 512) + 1) * 512;
+}
+
 uint64_t get_name_start_idx(char* filename, uint64_t len) {
+  while (len > 0 && filename[len - 1] == '/') { len--; }
   --len;
   while (filename[len] != '/') { --len; }
   return len + 1;
 }
 
+bool is_zero_block(void* block) {
+  unsigned char* bytes = (unsigned char*)block;
+
+  for (uint64_t i = 0; i < HOJICHA_USTAR_HEADER_LEN_BYTES; ++i) {
+    if (bytes[i] != 0) { return false; }
+  }
+
+  return true;
+}
