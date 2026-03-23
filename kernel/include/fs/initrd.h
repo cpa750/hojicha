@@ -3,9 +3,7 @@
 
 #include <fs/vfs.h>
 
-/*
- * Create an initrd VFS mount from a USTAR image.
- */
+uint8_t initrd_initalize();
 vfs_status_t initrd_from_ustar(void* buffer,
                                uint64_t size,
                                vfs_mount_t** mount_out);

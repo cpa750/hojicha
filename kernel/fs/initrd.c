@@ -1,6 +1,8 @@
 #include <fs/initrd.h>
 #include <fs/ustar.h>
 #include <fs/vfs.h>
+#include <hlog.h>
+#include <multitask/bootmodule.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -55,6 +57,25 @@ static const vfs_file_ops_t initrd_vfile_ops = {
     .readdir = NULL,
     .close = NULL,
 };
+
+uint8_t initrd_initalize() {
+  bootmodule_t* initrd_module = bootmodule_get("initrd.tar");
+  if (initrd_module == NULL) {
+    hlog_write(HLOG_ERROR, "Unable to find cached module initrd.tar");
+    return VFS_STATUS_NOENT;
+  } else {
+    hlog_write(HLOG_INFO,
+               "Loaded cached module %s at %x (%d bytes)",
+               initrd_module->name,
+               initrd_module->address,
+               initrd_module->size);
+  }
+  vfs_mount_t* initrd = NULL;
+  vfs_status_t ret =
+      initrd_from_ustar(initrd_module->address, initrd_module->size, &initrd);
+  if (ret != VFS_STATUS_OK) { return ret; }
+  return vfs_mount_root(initrd);
+}
 
 vfs_status_t initrd_from_ustar(void* buffer,
                                uint64_t size,

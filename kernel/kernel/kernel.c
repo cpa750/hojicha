@@ -6,6 +6,7 @@
 #include <drivers/serial.h>
 #include <drivers/tty.h>
 #include <drivers/vga.h>
+#include <fs/vfs.h>
 #include <hlog.h>
 #include <kernel/g_kernel.h>
 #include <limine.h>
@@ -22,7 +23,6 @@
 #include <stdlib.h>
 
 #include "fs/initrd.h"
-#include "fs/vfs.h"
 
 void print_ok(const char* component);
 
@@ -85,6 +85,7 @@ void kernel_main() {
   print_ok("Bootmodules");
   sched_initialize();
   print_ok("Multitasking");
+  if (initrd_initalize() == 0) { print_ok("Initrd"); }
 
   printf("\n");
 
@@ -104,19 +105,6 @@ void kernel_main() {
 
   asm volatile("sti");
 
-  bootmodule_t* initrd_module = bootmodule_get("initrd.tar");
-  if (initrd_module == NULL) {
-    hlog_write(HLOG_ERROR, "Unable to find cached module initrd.tar");
-  } else {
-    hlog_write(HLOG_INFO,
-               "Loaded cached module %s at %x (%d bytes)",
-               initrd_module->name,
-               initrd_module->address,
-               initrd_module->size);
-  }
-  vfs_mount_t* initrd = NULL;
-  initrd_from_ustar(initrd_module->address, initrd_module->size, &initrd);
-  vfs_mount_root(initrd);
   vfs_file_t* f = NULL;
   vfs_open("/usr/bin/bigmaths.elf", VFS_OPEN_READ, &f);
   vfs_stat_t* bigmaths_stat = NULL;
