@@ -14,10 +14,7 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-if [ ! -d "$INITRD_ROOT" ]; then
-  echo "Missing initrd root: $INITRD_ROOT" >&2
-  exit 1
-fi
+mkdir -p "$INITRD_ROOT/etc" "$INITRD_ROOT/usr"
 
 rm -rf "$INITRD_OUT_DIR"
 mkdir -p "$INITRD_OUT_DIR"
