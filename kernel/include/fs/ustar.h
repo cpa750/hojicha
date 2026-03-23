@@ -35,22 +35,16 @@ struct ustar_file {
 typedef struct ustar_file ustar_file_t;
 
 static inline uint64_t ustar_oct2dec(char* str, int size) {
-  // Thank you OSDev Wiki for the octal to decimal helper function
-  int n = 0;
-  char* orig_c = str;
-  char c = *orig_c;
-  while (size-- > 0) {
+  uint64_t n = 0;
+
+  while (size > 0 && str[size - 1] == '\0') { size--; }
+
+  for (int i = 0; i < size; ++i) {
     n *= 8;
-    if (*orig_c == '\000') {
-      c = '0';
-    } else {
-      c = *orig_c;
-    }
-    n += c - '0';
-    orig_c++;
+    n += str[i] - '0';
   }
+
   return n;
 }
 
 #endif  // HOJICHA_USTAR_H
-

@@ -1,7 +1,6 @@
 #include <fs/vfs.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdlib.h>
 
 static vfs_mount_t* root_mount = NULL;
 
@@ -23,13 +22,13 @@ vfs_status_t vfs_mount_root(vfs_mount_t* mount) {
   return VFS_STATUS_OK;
 }
 
-vfs_status_t vfs_lookup(const char* absolute_path, vnode_t** out) {
+vfs_status_t vfs_lookup(const char* absolute_path, vfs_node_t** out) {
   if (absolute_path == NULL || out == NULL || root_mount == NULL ||
       root_mount->root == NULL || absolute_path[0] != '/') {
     return VFS_STATUS_NOENT;
   }
 
-  vnode_t* current = root_mount->root;
+  vfs_node_t* current = root_mount->root;
   bool current_is_root = true;
   const char* cursor = absolute_path;
 
@@ -57,7 +56,7 @@ vfs_status_t vfs_lookup(const char* absolute_path, vnode_t** out) {
       component_len++;
     }
 
-    vnode_t* next = NULL;
+    vfs_node_t* next = NULL;
     vfs_status_t status =
         current->ops->lookup(current, component, component_len, &next);
     if (status != VFS_STATUS_OK) {
@@ -84,8 +83,8 @@ vfs_status_t vfs_lookup(const char* absolute_path, vnode_t** out) {
 
 vfs_status_t vfs_open(const char* absolute_path,
                       uint32_t flags,
-                      vfile_t** out) {
-  vnode_t* target = NULL;
+                      vfs_file_t** out) {
+  vfs_node_t* target = NULL;
   vfs_status_t lookup_res = vfs_lookup(absolute_path, &target);
   if (lookup_res != VFS_STATUS_OK) {
     *out = NULL;
@@ -94,3 +93,29 @@ vfs_status_t vfs_open(const char* absolute_path,
 
   return target->ops->open(target, flags, out);
 }
+
+vfs_status_t vfs_read(vfs_file_t* file,
+                      void* buffer,
+                      uint64_t len,
+                      uint64_t* out_read) {
+  return file->ops->read(file, buffer, len, out_read);
+}
+
+vfs_status_t vfs_stat(const char* absolute_path, vfs_stat_t** out) {
+  vfs_node_t* vnode = NULL;
+  vfs_status_t status = vfs_lookup(absolute_path, &vnode);
+  if (status != VFS_STATUS_OK) {
+    if (out != NULL) { *out = NULL; }
+    return status;
+  }
+  return vnode->ops->stat(vnode, out);
+}
+
+vfs_status_t vfs_fstat(vfs_file_t* file, vfs_stat_t** out) {
+  if (file == NULL) {
+    if (out != NULL) { *out = NULL; }
+    return VFS_STATUS_NOENT;
+  }
+  return file->vnode->ops->stat(file->vnode, out);
+}
+

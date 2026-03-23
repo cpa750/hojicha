@@ -26,95 +26,6 @@
 
 static process_block_t* kernel_proc;
 
-static semaphore_t* semaphore;
-static bool sleep_awake_1 = false;
-static bool sleep_awake_2 = false;
-
-void test1(void) {
-  while (1) {
-    if (sleep_awake_1) {
-      hlog_add(HLOG_INFO, "1");
-      sleep_awake_1 = false;
-    }
-  }
-  hlog_commit();
-}
-
-void test2(void) {
-  while (1) {
-    if (sleep_awake_2) {
-      hlog_add(HLOG_DEBUG, "2");
-      sleep_awake_2 = false;
-    }
-  }
-  hlog_commit();
-}
-
-void test3(void) {
-  sched_current_sleep(7);
-  hlog_write(HLOG_INFO, "test3, about to die o7");
-}
-
-void test4(void) {
-  sched_current_sleep(7);
-  hlog_write(HLOG_INFO, "test4, about to die o7");
-}
-
-void test5(void) {
-  hlog_write(HLOG_INFO, "locking semaphore...");
-  semaphore_lock(semaphore);
-  hlog_write(HLOG_INFO, "locked semaphore and sleeping 17s");
-  sched_current_sleep(7);
-  hlog_write(HLOG_INFO, "unlocking semaphore and dying o7");
-  semaphore_unlock(semaphore);
-}
-
-void test6(void) {
-  hlog_write(HLOG_INFO, "locking semaphore...");
-  semaphore_lock(semaphore);
-  hlog_write(HLOG_INFO, "locked semaphore, unlocking semaphore and dying o7");
-  semaphore_unlock(semaphore);
-}
-
-void test7(void) {
-  hlog_write(HLOG_INFO, "trying to lock semaphore...");
-  bool success = semaphore_try_lock(semaphore);
-  if (success) {
-    hlog_write(HLOG_ERROR, "uh oh");
-    semaphore_unlock(semaphore);
-  } else {
-    hlog_write(HLOG_ERROR, "failed to acquire semaphore, dying o7");
-  }
-}
-
-void test8(void) {
-  sched_current_sleep(20);
-  hlog_write(HLOG_INFO, "trying to lock semaphore...");
-  bool success = semaphore_try_lock(semaphore);
-  if (!success) {
-    hlog_write(HLOG_ERROR, "uh oh");
-  } else {
-    hlog_write(HLOG_INFO, "acquired semaphore, dying o7");
-    semaphore_unlock(semaphore);
-  }
-}
-void test9(void) {
-  hlog_write(HLOG_DEBUG, "sleeping 15s...");
-  sched_current_sleep(15);
-  hlog_write(HLOG_DEBUG, "page faulting...");
-  *(volatile int*)0 = 0;
-  hlog_write(HLOG_ERROR, "somehow returned from the segfault");
-}
-
-void test_sleep(void) {
-  while (1) {
-    sched_current_sleep(5);
-    hlog_write(HLOG_INFO, "awake!");
-    sleep_awake_1 = true;
-    sleep_awake_2 = true;
-  }
-}
-
 void print_ok(const char* component);
 
 __attribute__((
@@ -197,104 +108,43 @@ void kernel_main() {
 
   kernel_proc = g_kernel.current_process;
 
-  semaphore = semaphore_create(1);
-
-  process_block_t* sleep_proc =
-      sched_kproc_new("sleep_proc", test_sleep, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(sleep_proc);
-
-  process_block_t* test1_proc =
-      sched_kproc_new("test1", test1, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test1_proc);
-
-  process_block_t* test2_proc =
-      sched_kproc_new("test2", test2, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test2_proc);
-
-  process_block_t* test3_proc =
-      sched_kproc_new("test3", test3, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test3_proc);
-
-  process_block_t* test4_proc =
-      sched_kproc_new("test4", test4, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test4_proc);
-
-  process_block_t* test5_proc =
-      sched_kproc_new("test5", test5, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test5_proc);
-
-  process_block_t* test6_proc =
-      sched_kproc_new("test6", test6, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test6_proc);
-
-  process_block_t* test7_proc =
-      sched_kproc_new("test7", test7, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test7_proc);
-
-  process_block_t* test8_proc =
-      sched_kproc_new("test8", test8, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test8_proc);
-
-  process_block_t* test9_proc =
-      sched_kproc_new("test9", test9, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test9_proc);
-
-  bootmodule_t* userspace_mod = bootmodule_get("bigmaths.elf");
-  if (userspace_mod == NULL) {
-    hlog_write(HLOG_ERROR, "Unable to find cached module bigmaths.elf");
-  } else {
-    hlog_write(HLOG_INFO,
-               "Loaded cached module %s at %x (%d bytes)",
-               userspace_mod->name,
-               userspace_mod->address,
-               userspace_mod->size);
-  }
-  elf_t* bigmaths = elf_read(userspace_mod->address, userspace_mod->size);
-  process_block_t* elf_proc = sched_uproc_new("bigmaths", bigmaths);
-  sched_add_proc(elf_proc);
-
-  bootmodule_t* initrd_mod = bootmodule_get("initrd.tar");
-  if (initrd_mod == NULL) {
+  bootmodule_t* initrd_module = bootmodule_get("initrd.tar");
+  if (initrd_module == NULL) {
     hlog_write(HLOG_ERROR, "Unable to find cached module initrd.tar");
   } else {
     hlog_write(HLOG_INFO,
                "Loaded cached module %s at %x (%d bytes)",
-               initrd_mod->name,
-               initrd_mod->address,
-               initrd_mod->size);
+               initrd_module->name,
+               initrd_module->address,
+               initrd_module->size);
   }
   vfs_mount_t* initrd = NULL;
-  initrd_from_ustar(initrd_mod->address, initrd_mod->size, &initrd);
+  initrd_from_ustar(initrd_module->address, initrd_module->size, &initrd);
   vfs_mount_root(initrd);
-  vnode_t* test = NULL;
-  vfs_status_t res = vfs_lookup("/etc/test.txt", &test);
+  vfs_file_t* f = NULL;
+  vfs_open("/usr/bin/bigmaths.elf", VFS_OPEN_READ, &f);
+  vfs_stat_t* bigmaths_stat = NULL;
+  vfs_fstat(f, &bigmaths_stat);
+  unsigned char* bigmath_contents =
+      malloc(sizeof(unsigned char) * bigmaths_stat->size);
+  uint64_t bytes_read = 0;
+  vfs_status_t res =
+      vfs_read(f, bigmath_contents, bigmaths_stat->size, &bytes_read);
   if (res != VFS_STATUS_OK) { hlog_write(HLOG_ERROR, "uh oh..."); }
 
-  // while (1) asm volatile("hlt");
+  elf_t* bigmaths = elf_read(bigmath_contents, bigmaths_stat->size);
+  process_block_t* elf_proc = sched_uproc_new("bigmaths", bigmaths);
+  sched_add_proc(elf_proc);
 
-  uint64_t count = 0;
-  while (1) {
-    sched_current_sleep(1);
+  elf_t* bigmaths2_electric_boogaloo =
+      elf_read(bigmath_contents, bigmaths_stat->size);
+  process_block_t* elf_proc2 = sched_uproc_new("bigmaths2_electric_boogaloo",
+                                               bigmaths2_electric_boogaloo);
+  sched_add_proc(elf_proc2);
 
-    hlog_add(HLOG_DEBUG, "Kernel awake");
-    if (count % 5 == 0) { hlog_commit(); }
-    hlog_commit();
+  sched_yield();
 
-    ++count;
-
-    // It's a known bug that sched_proc_terminate() is called
-    // multiple times on these processes when count wraps around,
-    // causing a page fault in the terminator function. We should
-    // remove these eventually.
-    if (count == 15) {
-      hlog_write(HLOG_WARN, "terminating task 2");
-      sched_proc_terminate(test2_proc);
-    }
-    if (count == 21) {
-      hlog_write(HLOG_WARN, "terminating task 1");
-      sched_proc_terminate(test1_proc);
-    }
-  }
+  while (1) { asm volatile("hlt"); }
 }
 
 void print_ok(const char* component) {

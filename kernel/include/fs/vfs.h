@@ -34,7 +34,7 @@ typedef struct vfs_mount vfs_mount_t;
  * Generic filesystem object, may represent either a
  * file or directory. Is *not* a handle to an open file.
  */
-typedef struct vnode vnode_t;
+typedef struct vfs_node vfs_node_t;
 
 /*
  * One directory entry returned by `vfs_readdir()`.
@@ -44,20 +44,15 @@ typedef struct vfs_dirent vfs_dirent_t;
 /*
  * Generic open object handle.
  */
-typedef struct vfile vfile_t;
+typedef struct vfs_file vfs_file_t;
 
-typedef struct vfile_ops vfile_ops_t;
-typedef struct vnode_ops vnode_ops_t;
+typedef struct vfs_file_ops vfs_file_ops_t;
+typedef struct vfs_node_ops vnode_ops_t;
+
+typedef struct vfs_stat vfs_stat_t;
 
 struct vfs_mount {
-  vnode_t* root;
-  void* fs_data;
-};
-
-struct vnode {
-  const vnode_ops_t* ops;
-  vfs_node_type_t type;
-  uint32_t refcount;
+  vfs_node_t* root;
   void* fs_data;
 };
 
@@ -67,30 +62,43 @@ struct vfs_dirent {
   vfs_node_type_t type;
 };
 
-struct vfile {
-  vnode_t* vnode;
-  const vfile_ops_t* ops;
+struct vfs_file {
+  vfs_node_t* vnode;
+  const vfs_file_ops_t* ops;
   uint32_t flags;
   uint64_t offset;
   void* fs_data;
 };
 
-struct vfile_ops {
-  vfs_status_t (*read)(vfile_t* file,
-                       void* buffer,
-                       uint64_t len,
-                       uint64_t* out_read);
-  vfs_status_t (*readdir)(vfile_t* dir, vfs_dirent_t* out);
-  void (*close)(vfile_t* file);
+struct vfs_node {
+  const vnode_ops_t* ops;
+  vfs_node_type_t type;
+  uint32_t refcount;
+  void* fs_data;
 };
 
-struct vnode_ops {
-  vfs_status_t (*lookup)(vnode_t* dir,
+struct vfs_file_ops {
+  vfs_status_t (*read)(vfs_file_t* file,
+                       void* buffer,
+                       uint64_t len,
+                       uint64_t* bytes_read_out);
+  vfs_status_t (*readdir)(vfs_file_t* dir, vfs_dirent_t* out);
+  void (*close)(vfs_file_t* file);
+};
+
+struct vfs_node_ops {
+  vfs_status_t (*lookup)(vfs_node_t* dir,
                          const char* name,
                          uint32_t name_len,
-                         vnode_t** out);
-  vfs_status_t (*open)(vnode_t* vnode, uint32_t flags, vfile_t** out);
-  void (*release)(vnode_t* vnode);
+                         vfs_node_t** out);
+  vfs_status_t (*open)(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out);
+  void (*release)(vfs_node_t* vnode);
+  vfs_status_t (*stat)(vfs_node_t* vnode, vfs_stat_t** out);
+};
+
+struct vfs_stat {
+  vfs_node_type_t type;
+  uint64_t size;
 };
 
 /*
@@ -101,35 +109,47 @@ vfs_status_t vfs_mount_root(vfs_mount_t* mount);
 /*
  * Resolves an absolute path to a vnode.
  */
-vfs_status_t vfs_lookup(const char* absolute_path, vnode_t** out);
+vfs_status_t vfs_lookup(const char* absolute_path, vfs_node_t** out);
 
 /*
  * Opens a regular file or directory at `absolute_path`. `flags` are currently
  * ignored but included in the API with intent for further expansion.
  */
-vfs_status_t vfs_open(const char* absolute_path, uint32_t flags, vfile_t** out);
+vfs_status_t vfs_open(const char* absolute_path,
+                      uint32_t flags,
+                      vfs_file_t** out);
 
 /*
  * Convenience wrapper that opens a directory handle directly.
  */
-vfs_status_t vfs_opendir(const char* absolute_path, vfile_t** out_dir);
+vfs_status_t vfs_opendir(const char* absolute_path, vfs_file_t** out_dir);
 
 /*
  * Reads up to `len` bytes from a file handle, advancing its current offset.
  */
-vfs_status_t vfs_read(vfile_t* file,
+vfs_status_t vfs_read(vfs_file_t* file,
                       void* buffer,
                       uint64_t len,
                       uint64_t* out_read);
 
 /*
+ * Returns metadata for a file without opening it.
+ */
+vfs_status_t vfs_stat(const char* absolute_path, vfs_stat_t** out);
+
+/*
+ * Returns metadata for an already-open file.
+ */
+vfs_status_t vfs_fstat(vfs_file_t* file, vfs_stat_t** out);
+
+/*
  * Returns the next directory entry from an open directory handle.
  */
-vfs_status_t vfs_readdir(vfile_t* dir, vfs_dirent_t* out);
+vfs_status_t vfs_readdir(vfs_file_t* dir, vfs_dirent_t* out);
 
 /*
  * Closes an open handle.
  */
-vfs_status_t vfs_close(vfile_t* file);
+vfs_status_t vfs_close(vfs_file_t* file);
 
 #endif  // HOJICHA_VFS_H
