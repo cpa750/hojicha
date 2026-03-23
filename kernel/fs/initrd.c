@@ -29,7 +29,10 @@ struct initrd_inode {
 
 typedef struct initrd_file initrd_file_t;
 struct initrd_file {
-  char* buf;
+  union {
+    initrd_inode_t* d_current;
+    char* fbuf;
+  } data;
 };
 
 void add_child(initrd_inode_t* parent, initrd_inode_t* new_child);
@@ -201,7 +204,11 @@ vfs_status_t initrd_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
     return VFS_STATUS_NOMEM;
   }
 
-  file->buf = ((initrd_inode_t*)(vnode->fs_data))->buf;
+  if (vnode->type == VFS_NODE_FILE) {
+    file->data.fbuf = ((initrd_inode_t*)(vnode->fs_data))->buf;
+  } else if (vnode->type == VFS_NODE_DIR) {
+    file->data.d_current = ((initrd_inode_t*)(vnode->fs_data))->first_child;
+  }
 
   vfile->flags = flags;
   vfile->fs_data = NULL;
@@ -226,7 +233,7 @@ vfs_status_t initrd_read(vfs_file_t* vfile,
   uint64_t size_to_copy = node->size - 1 < len + vfile->offset
                               ? node->size - vfile->offset
                               : len - 1;
-  void* src_buffer = ((initrd_file_t*)vfile->fs_data)->buf;
+  void* src_buffer = ((initrd_file_t*)vfile->fs_data)->data.fbuf;
   memcpy(buffer, src_buffer, size_to_copy);
   ((char*)buffer)[size_to_copy] = '\0';
 
@@ -244,20 +251,16 @@ vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
     return VFS_STATUS_NOTDIR;
   }
 
-  initrd_inode_t* inode = (initrd_inode_t*)vdir->vnode->fs_data;
-  if (vdir->offset >= inode->size - 1) {
+  vdir->offset++;
+  initrd_file_t* file = (initrd_file_t*)vdir->fs_data;
+
+  if (file->data.d_current == NULL) {
     SET_OUT_NULL(out);
     return VFS_STATUS_EOF;
   }
 
-  uint64_t count = vdir->offset++;
-  initrd_inode_t* next = inode->first_child;
-  while (count-- > 0 && next != NULL) { next = next->next_sibling; }
-
-  if (next == NULL) {
-    SET_OUT_NULL(out);
-    return VFS_STATUS_EOF;
-  }
+  initrd_inode_t* current = file->data.d_current;
+  file->data.d_current = file->data.d_current->next_sibling;
 
   // TODO don't abuse malloc once we have slab cache
   vfs_dirent_t* ret = (vfs_dirent_t*)malloc(sizeof(vfs_dirent_t));
@@ -266,8 +269,8 @@ vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
     return VFS_STATUS_NOMEM;
   }
 
-  ret->name = next->name;
-  ret->inode_no = next->number;
+  ret->name = current->name;
+  ret->inode_no = current->number;
   SET_OUT(out, ret);
   return VFS_STATUS_OK;
 }
@@ -292,12 +295,14 @@ void add_child(initrd_inode_t* parent, initrd_inode_t* new_child) {
 
   if (parent->first_child == NULL) {
     parent->first_child = new_child;
+    parent->size++;
     return;
   }
 
   initrd_inode_t* target = parent->first_child;
   while (target->next_sibling != NULL) { target = target->next_sibling; }
   target->next_sibling = new_child;
+  parent->size++;
 }
 
 initrd_inode_t* create_dir(char* name,
