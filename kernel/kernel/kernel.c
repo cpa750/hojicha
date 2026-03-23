@@ -24,8 +24,6 @@
 #include "fs/initrd.h"
 #include "fs/vfs.h"
 
-static process_block_t* kernel_proc;
-
 void print_ok(const char* component);
 
 __attribute__((
@@ -105,8 +103,6 @@ void kernel_main() {
   printf("------------------------------------------------------------\n\n");
 
   asm volatile("sti");
-
-  kernel_proc = g_kernel.current_process;
 
   bootmodule_t* initrd_module = bootmodule_get("initrd.tar");
   if (initrd_module == NULL) {

@@ -57,7 +57,6 @@ done
 make -C userspace all HOST=$HOST SYSROOT="$SYSROOT"
 ./build_initrd.sh
 mkdir -p "$SYSROOT/boot"
-find userspace/bin -maxdepth 1 -type f -name '*.elf' -exec cp -f {} "$SYSROOT/boot/" \;
 cp -f initrd/bin/initrd.tar "$SYSROOT/boot/"
 mkdir -p "$SYSROOT/boot/limine"
 cp -f limine.conf "$SYSROOT/boot/limine/limine.conf"
