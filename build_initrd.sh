@@ -22,6 +22,7 @@ cp -R "$INITRD_ROOT"/. "$STAGING_DIR"/
 
 mkdir -p "$STAGING_DIR/etc" "$STAGING_DIR/usr/bin"
 printf '%s' 'Hello from the other side' > "$STAGING_DIR/etc/test.txt"
+printf '%s' 'foo' > "$STAGING_DIR/etc/bar.txt"
 
 if [ -d "$USERSPACE_BIN_DIR" ]; then
   find "$USERSPACE_BIN_DIR" -maxdepth 1 -type f -name '*.elf' \

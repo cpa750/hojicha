@@ -8,8 +8,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define SET_OUT(out, val)                                                      \
+  if (out != NULL) { *out = val; }
+#define SET_OUT_NULL(out) SET_OUT(out, NULL);
+
 typedef struct initrd_inode initrd_inode_t;
 struct initrd_inode {
+  uint64_t number;
   char* name;
   uint64_t name_size;
   void* buf;
@@ -54,7 +59,7 @@ static const vnode_ops_t initrd_vnode_ops = {
 
 static const vfs_file_ops_t initrd_vfile_ops = {
     .read = initrd_read,
-    .readdir = NULL,
+    .readdir = initrd_readdir,
     .close = NULL,
 };
 
@@ -95,6 +100,7 @@ vfs_status_t initrd_from_ustar(void* buffer,
       continue;
     }
 
+    uint64_t inode_count = 0;
     if (h->type == '0' || h->type == '\0') {
       uint64_t name_offset = get_name_start_idx(h->filename, entry_len);
 
@@ -106,6 +112,7 @@ vfs_status_t initrd_from_ustar(void* buffer,
       new->type = VFS_NODE_FILE;
       new->first_child = NULL;
       new->next_sibling = NULL;
+      new->number = inode_count++;
 
       initrd_inode_t* parent;
       if (name_offset == 2) {  // Skip the leading `./`
@@ -177,20 +184,25 @@ vfs_status_t initrd_lookup(vfs_node_t* dir,
 
 vfs_status_t initrd_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
   if ((flags & VFS_OPEN_DIRECTORY) && vnode->type != VFS_NODE_DIR) {
-    if (out != NULL) { *out = NULL; }
+    SET_OUT_NULL(out);
     return VFS_STATUS_NOTDIR;
   }
 
   if ((flags & VFS_OPEN_READ) && vnode->type != VFS_NODE_FILE) {
-    if (out != NULL) { *out = NULL; }
+    SET_OUT_NULL(out);
     return VFS_STATUS_ISDIR;  // TODO: this should really be decided based
                               // on actual filetype
   }
 
   initrd_file_t* file = (initrd_file_t*)malloc(sizeof(initrd_file_t));
+  vfs_file_t* vfile = (vfs_file_t*)malloc(sizeof(vfs_file_t));
+  if (file == NULL || vfile == NULL) {
+    SET_OUT_NULL(out);
+    return VFS_STATUS_NOMEM;
+  }
+
   file->buf = ((initrd_inode_t*)(vnode->fs_data))->buf;
 
-  vfs_file_t* vfile = (vfs_file_t*)malloc(sizeof(vfs_file_t));
   vfile->flags = flags;
   vfile->fs_data = NULL;
   vfile->offset = 0;
@@ -222,13 +234,56 @@ vfs_status_t initrd_read(vfs_file_t* vfile,
   return VFS_STATUS_OK;
 }
 
+vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
+  if (vdir == NULL) {
+    SET_OUT_NULL(out);
+    return VFS_STATUS_NOENT;
+  }
+  if (vdir->vnode->type != VFS_NODE_DIR) {
+    SET_OUT_NULL(out);
+    return VFS_STATUS_NOTDIR;
+  }
+
+  initrd_inode_t* inode = (initrd_inode_t*)vdir->vnode->fs_data;
+  if (vdir->offset >= inode->size - 1) {
+    SET_OUT_NULL(out);
+    return VFS_STATUS_EOF;
+  }
+
+  uint64_t count = vdir->offset++;
+  initrd_inode_t* next = inode->first_child;
+  while (count-- > 0 && next != NULL) { next = next->next_sibling; }
+
+  if (next == NULL) {
+    SET_OUT_NULL(out);
+    return VFS_STATUS_EOF;
+  }
+
+  // TODO don't abuse malloc once we have slab cache
+  vfs_dirent_t* ret = (vfs_dirent_t*)malloc(sizeof(vfs_dirent_t));
+  if (ret == NULL) {
+    SET_OUT_NULL(out);
+    return VFS_STATUS_NOMEM;
+  }
+
+  ret->name = next->name;
+  ret->inode_no = next->number;
+  SET_OUT(out, ret);
+  return VFS_STATUS_OK;
+}
+
 void initrd_release(vfs_node_t* vnode) { free(vnode); }
 
 vfs_status_t initrd_stat(vfs_node_t* vnode, vfs_stat_t** out) {
   vfs_stat_t* ret = (vfs_stat_t*)malloc(sizeof(vfs_stat_t));
+  if (ret == NULL) {
+    SET_OUT_NULL(out);
+    return VFS_STATUS_NOMEM;
+  }
+
   ret->size = ((initrd_inode_t*)vnode->fs_data)->size;
   ret->type = ((initrd_inode_t*)vnode->fs_data)->type;
-  if (out != NULL) { *out = ret; }
+  SET_OUT(out, ret);
   return VFS_STATUS_OK;
 }
 
@@ -250,6 +305,7 @@ initrd_inode_t* create_dir(char* name,
                            initrd_inode_t* parent) {
   initrd_inode_t* dir = (initrd_inode_t*)malloc(sizeof(initrd_inode_t));
   char* dir_name = (char*)malloc(name_len + 1);
+  if (dir == NULL || dir_name == NULL) { return NULL; }
 
   memcpy(dir_name, name, name_len);
   dir_name[name_len] = '\0';
@@ -267,6 +323,7 @@ initrd_inode_t* create_dir(char* name,
 
 initrd_inode_t* create_root() {
   initrd_inode_t* root = (initrd_inode_t*)malloc(sizeof(initrd_inode_t));
+  if (root == NULL) { return NULL; }
   root->name = "";
   root->name_size = 0;
   root->buf = NULL;
@@ -279,6 +336,7 @@ initrd_inode_t* create_root() {
 }
 
 vfs_node_t* create_vnode(initrd_inode_t* inode) {
+  // TODO: stop malloc abuse once we have slab cache
   vfs_node_t* vnode = (vfs_node_t*)malloc(sizeof(vfs_node_t));
   if (vnode == NULL) { return NULL; }
 
@@ -395,3 +453,4 @@ bool is_zero_block(void* block) {
 
   return true;
 }
+

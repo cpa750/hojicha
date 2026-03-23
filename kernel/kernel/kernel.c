@@ -126,6 +126,26 @@ void kernel_main() {
                                                bigmaths2_electric_boogaloo);
   sched_add_proc(elf_proc2);
 
+  vfs_file_t* etc = NULL;
+  vfs_open("/etc/", VFS_OPEN_DIRECTORY, &etc);
+
+  vfs_dirent_t* etc_dirent = NULL;
+  vfs_readdir(etc, &etc_dirent);
+  while (etc_dirent != NULL) {
+    hlog_write(HLOG_INFO, "/etc/%s", etc_dirent->name);
+    vfs_readdir(etc, &etc_dirent);
+  }
+
+  vfs_file_t* usrbin = NULL;
+  vfs_open("/usr/bin", VFS_OPEN_DIRECTORY, &usrbin);
+
+  vfs_dirent_t* usrbin_dirent = NULL;
+  vfs_readdir(usrbin, &usrbin_dirent);
+  while (usrbin_dirent != NULL) {
+    hlog_write(HLOG_INFO, "/usr/bin/%s", usrbin_dirent->name);
+    vfs_readdir(usrbin, &usrbin_dirent);
+  }
+
   sched_yield();
 
   while (1) { asm volatile("hlt"); }

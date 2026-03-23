@@ -101,6 +101,19 @@ vfs_status_t vfs_read(vfs_file_t* file,
   return file->ops->read(file, buffer, len, out_read);
 }
 
+vfs_status_t vfs_readdir(vfs_file_t* dir, vfs_dirent_t** out) {
+  if (dir == NULL) {
+    if (out != NULL) { *out = NULL; }
+    return VFS_STATUS_NOENT;
+  }
+  if (dir->vnode->type != VFS_NODE_DIR) {
+    if (out != NULL) { *out = NULL; }
+    return VFS_STATUS_NOTDIR;
+  }
+
+  return dir->ops->readdir(dir, out);
+}
+
 vfs_status_t vfs_stat(const char* absolute_path, vfs_stat_t** out) {
   vfs_node_t* vnode = NULL;
   vfs_status_t status = vfs_lookup(absolute_path, &vnode);

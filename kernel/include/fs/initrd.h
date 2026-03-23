@@ -17,6 +17,7 @@ vfs_status_t initrd_read(vfs_file_t* vfile,
                          void* buffer,
                          uint64_t len,
                          uint64_t* bytes_read_out);
+vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out);
 void initrd_release(vfs_node_t* vnode);
 vfs_status_t initrd_stat(vfs_node_t* vnode, vfs_stat_t** out);
 

@@ -58,8 +58,7 @@ struct vfs_mount {
 
 struct vfs_dirent {
   const char* name;
-  uint32_t name_len;
-  vfs_node_type_t type;
+  uint64_t inode_no;
 };
 
 struct vfs_file {
@@ -82,7 +81,7 @@ struct vfs_file_ops {
                        void* buffer,
                        uint64_t len,
                        uint64_t* bytes_read_out);
-  vfs_status_t (*readdir)(vfs_file_t* dir, vfs_dirent_t* out);
+  vfs_status_t (*readdir)(vfs_file_t* dir, vfs_dirent_t** out);
   void (*close)(vfs_file_t* file);
 };
 
@@ -120,11 +119,6 @@ vfs_status_t vfs_open(const char* absolute_path,
                       vfs_file_t** out);
 
 /*
- * Convenience wrapper that opens a directory handle directly.
- */
-vfs_status_t vfs_opendir(const char* absolute_path, vfs_file_t** out_dir);
-
-/*
  * Reads up to `len` bytes from a file handle, advancing its current offset.
  */
 vfs_status_t vfs_read(vfs_file_t* file,
@@ -145,7 +139,7 @@ vfs_status_t vfs_fstat(vfs_file_t* file, vfs_stat_t** out);
 /*
  * Returns the next directory entry from an open directory handle.
  */
-vfs_status_t vfs_readdir(vfs_file_t* dir, vfs_dirent_t* out);
+vfs_status_t vfs_readdir(vfs_file_t* dir, vfs_dirent_t** out);
 
 /*
  * Closes an open handle.
