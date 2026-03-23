@@ -37,7 +37,7 @@ struct kernel_state {
 typedef struct kernel_state kernel_state_t;
 
 extern kernel_state_t g_kernel;
-void initialize_g_kernel();
+void g_kernel_initialize();
 void g_kernel_dump();
 
 #endif  // G_KERNEL_H

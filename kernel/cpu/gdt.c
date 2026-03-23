@@ -71,7 +71,7 @@ void create_system_segment(gdt_entry_t* entry,
   *(uint64_t*)&entry[index + 1] = ((base >> 32) & 0xFFFFFFFF);
 }
 
-void initialize_gdt() {
+void gdt_initialize() {
   // Null descriptor
   create_gdt_entry(gdt_entries, 0, 0x0, 0x0, 0x0, 0x0);
   // Kernel code segment

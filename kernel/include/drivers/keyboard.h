@@ -8,7 +8,7 @@ typedef struct {
   bool caps_enabled;
 } KeyboardStatus;
 
-void initialize_keyboard();
+void keyboard_initialize();
 void handle_keyboard();
 
 #endif  // KEYBOARD_H

@@ -83,7 +83,7 @@ haddr_t pmm_page_to_addr_base(haddr_t page) { return page << 12; }
 
 pmm_state_t pmm;
 
-void initialize_pmm() {
+void pmm_initialize() {
   pmm.page_size = PAGE_SIZE;
   pmm.total_mem = 0;
   pmm.total_pages = 0;

@@ -86,7 +86,7 @@ static char* copy_cstring(const char* src) {
   return dst;
 }
 
-bool bootmodule_capture_early() {
+bool bootmodule_initialize() {
   if (module_request.response == NULL) { return false; }
 
   captured_response = module_request.response;
@@ -97,7 +97,7 @@ bool bootmodule_capture_early() {
   return true;
 }
 
-bool bootmodule_finalize_cache() {
+bool bootmodule_cache_finalize() {
   hhdm_offset = vmm_get_kernel_offset(g_kernel.vmm);
   if (!early_capture_ready) { return false; }
 

@@ -6,7 +6,7 @@
 void remap_pics(uint32_t main_offset, uint32_t sub_offset);
 void full_mask_pics();
 
-void initialize_pic() {
+void pic_initialize() {
   remap_pics(0x20, 0x28);
   full_mask_pics();
   // TODO: Shouldn't these be in their respective drivers...?

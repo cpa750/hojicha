@@ -20,7 +20,7 @@ void vmm_dump(vmm_t* v);
 /*
  * Bootstraps the kernel's VMM. Should only be called once, at kernel init.
  */
-void initialize_vmm();
+void vmm_initialize();
 
 /*
  * Creates a new VMM for use in a process. `flags` can optionally be passed,

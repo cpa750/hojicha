@@ -47,7 +47,7 @@ void kernel_main() {
 
   if (LIMINE_BASE_REVISION_SUPPORTED == false) { abort(); }
 
-  initialize_g_kernel();
+  g_kernel_initialize();
   vga_initialize();
   terminal_initialize();
 
@@ -56,29 +56,29 @@ void kernel_main() {
 #endif
 
   printf("[INFO] Starting Hojicha kernel initialization...\n");
-  initialize_serial();
+  serial_initialize();
   print_ok("Serial");
-  initialize_gdt();
+  gdt_initialize();
   print_ok("GDT");
-  initialize_idt();
+  idt_initialize();
   print_ok("IDT");
-  initialize_pic();
+  pic_initialize();
   print_ok("PIC");
-  initialize_pit();
+  pit_initialize();
   print_ok("PIT");
-  initialize_keyboard();
+  keyboard_initialize();
   print_ok("Keyboard");
-  initialize_pmm();
+  pmm_initialize();
   print_ok("PMM");
-  if (!bootmodule_capture_early()) {
+  if (!bootmodule_initialize()) {
     printf("Error: Bootmodule initial capture failed");
     abort();
   }
-  initialize_vmm();
+  vmm_initialize();
   print_ok("VMM");
   kmalloc_initialize();
   print_ok("kmalloc");
-  if (!bootmodule_finalize_cache()) {
+  if (!bootmodule_cache_finalize()) {
     printf("Error: Bootmodule cache finalization failed");
     abort();
   }

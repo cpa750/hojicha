@@ -68,7 +68,7 @@ char shifted_keyboard_characters[] = {
     '\n', 'A',  'S', 'D', 'F', 'G', 'H',  'J', 'K', 'L', '+', '*', '}',
     'Z',  'X',  'C', 'V', 'B', 'N', 'M',  '<', '>', '?', ' '};
 
-void initialize_keyboard() {
+void keyboard_initialize() {
   keyboard_status.shift_held = false;
   keyboard_status.caps_enabled = false;
 }
