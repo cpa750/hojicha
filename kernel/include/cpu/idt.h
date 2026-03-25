@@ -20,6 +20,6 @@ struct idt_pointer {
 } __attribute((packed));
 typedef struct idt_pointer idt_pointer_t;
 
-void initialize_idt();
+void idt_initialize();
 
 #endif  // IDT_H

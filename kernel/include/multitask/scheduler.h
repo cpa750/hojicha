@@ -76,6 +76,11 @@ void sched_add_proc(process_block_t* process);
  */
 void schedule_advance(void);
 
+/*
+ * Voluntarily yields the CPU to another runnable process, if one exists.
+ */
+void sched_yield(void);
+
 void sched_lock(void);
 void sched_unlock(void);
 
@@ -119,4 +124,3 @@ void sched_current_sleep_ns(uint64_t ns);
 void sched_proc_terminate(process_block_t* p);
 
 #endif  // MULTITASK_H
-

@@ -282,6 +282,12 @@ void schedule_advance(void) {
   }
 }
 
+void sched_yield(void) {
+  sched_lock();
+  schedule_advance();
+  sched_unlock();
+}
+
 void multitask_switch(process_block_t* process) {
   asm volatile("cli");
   uint64_t cs = 0;

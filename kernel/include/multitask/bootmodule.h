@@ -12,14 +12,14 @@ struct bootmodule {
 typedef struct bootmodule bootmodule_t;
 
 /* Captures Limine module response pointers before VMM initialization. */
-bool bootmodule_capture_early();
+bool bootmodule_initialize();
 
 /*
  * Maps captured Limine response pages and deep-copies module names and bytes
  * into kernel-owned structures.
  * Must be called after VMM and kmalloc initialization.
  */
-bool bootmodule_finalize_cache();
+bool bootmodule_cache_finalize();
 
 /* Returns a boot module with the specified `name`.
  * Returns the bootmodule, or NULL if not found.

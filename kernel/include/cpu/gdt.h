@@ -19,6 +19,6 @@ struct gdt_entry {
 } __attribute__((packed));
 typedef struct gdt_entry gdt_entry_t;
 
-void initialize_gdt();
+void gdt_initialize();
 
 #endif  // GDT_H

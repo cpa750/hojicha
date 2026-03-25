@@ -22,7 +22,7 @@ haddr_t pmm_state_get_kernel_vend(pmm_state_t*);
 haddr_t pmm_state_get_kernel_page_count(pmm_state_t*);
 void pmm_state_dump(pmm_state_t*);
 
-void initialize_pmm();
+void pmm_initialize();
 void pmm_initialize_bitmap();
 haddr_t pmm_alloc_frame();
 void pmm_free_frame(haddr_t addr);

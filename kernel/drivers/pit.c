@@ -25,7 +25,7 @@ uint64_t pit_state_get_tick_interval_ns(pit_state_t* pit) {
   return pit->tick_interval_ns;
 }
 
-void initialize_pit() {
+void pit_initialize() {
   pit.ticks_per_second = TICKS_PER_SECOND;
   pit.tick_interval_ns = NS_DIVISOR / TICKS_PER_SECOND;
   ticks = 0;

@@ -5,7 +5,7 @@
 #define SERIAL_PORT 0x3f8
 
 // TODO
-int initialize_serial() {
+int serial_initialize() {
   outb(SERIAL_PORT + 1, 0x00);
   outb(SERIAL_PORT + 3, 0x80);
   outb(SERIAL_PORT + 0, 0x03);

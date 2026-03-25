@@ -9,23 +9,13 @@ fi
 
 mkdir -p iso_root/boot/limine
 cp -v sysroot/boot/hojicha.kernel iso_root/boot/hojicha
-USERSPACE_BIN_DIR=sysroot/boot
-USERSPACE_BINS=$(find "$USERSPACE_BIN_DIR" -maxdepth 1 -type f -name '*.elf' -printf '%f\n' | sort)
+cp -v sysroot/boot/initrd.tar iso_root/boot/initrd.tar
 
-for bin in $USERSPACE_BINS; do
-  cp -v "$USERSPACE_BIN_DIR/$bin" "iso_root/boot/$bin"
-done
-
-awk -v bins="$USERSPACE_BINS" '
+awk '
   { print }
   /^[[:space:]]*path:/ && !done {
-    count = split(bins, names, "\n")
-    for (i = 1; i <= count; i++) {
-      if (names[i] != "") {
-        printf "    module_path: boot():/boot/%s\n", names[i]
-        printf "    module_string: %s\n", names[i]
-      }
-    }
+    print "    module_path: boot():/boot/initrd.tar"
+    print "    module_string: initrd.tar"
     done = 1
   }
 ' sysroot/boot/limine/limine.conf > iso_root/boot/limine/limine.conf

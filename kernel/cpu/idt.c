@@ -30,7 +30,7 @@ void create_irq_entries();
 
 __attribute__((aligned(0x10))) idt_entry_t entries[IDT_ENTRIES];
 idt_pointer_t idt_pointer;
-void initialize_idt() {
+void idt_initialize() {
   idt_pointer.limit = (sizeof(idt_entry_t) * IDT_ENTRIES) - 1;
   idt_pointer.base = (haddr_t)&entries;
 

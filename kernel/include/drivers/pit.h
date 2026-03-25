@@ -20,7 +20,7 @@ struct pit_state;
 
 uint64_t pit_state_get_tick_interval_ns(pit_state_t* pit);
 
-void initialize_pit();
+void pit_initialize();
 void pit_handle();
 
 /*

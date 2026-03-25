@@ -6,14 +6,18 @@ set -e
 . ./headers.sh
 
 DEBUG_FLAG=" "
-if [[ "$*" == *"--debug-qemu"* ]]; then
+case "$*" in
+  *--debug-qemu*)
     DEBUG_QEMU="DEBUG_QEMU=1"
-fi
+    ;;
+esac
 
 KMALLOC_TEST=" "
-if [[ "$*" == *"--kmalloc-test"* ]]; then
+case "$*" in
+  *--kmalloc-test*)
     KMALLOC_TEST="KMALLOC_TEST=1"
-fi
+    ;;
+esac
 
 HLOG_LEVEL=" "
 while [ "$#" -gt 0 ]; do
@@ -51,8 +55,9 @@ for PROJECT in $PROJECTS; do
 done
 
 make -C userspace all HOST=$HOST SYSROOT="$SYSROOT"
+./build_initrd.sh
 mkdir -p "$SYSROOT/boot"
-find userspace/bin -maxdepth 1 -type f -name '*.elf' -exec cp -f {} "$SYSROOT/boot/" \;
+cp -f initrd/bin/initrd.tar "$SYSROOT/boot/"
 mkdir -p "$SYSROOT/boot/limine"
 cp -f limine.conf "$SYSROOT/boot/limine/limine.conf"
 

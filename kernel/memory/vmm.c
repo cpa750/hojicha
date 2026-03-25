@@ -97,7 +97,7 @@ static haddr_t low_identity_pde[512] __attribute__((aligned(0x1000)));
 static haddr_t kernel_pde[512] __attribute__((aligned(0x1000)));
 static vmm_t kernel_vmm = {0};
 
-void initialize_vmm() {
+void vmm_initialize() {
   struct limine_hhdm_response* hhdm = hhdm_request.response;
   kernel_vmm.kernel_offset = hhdm->offset;
 

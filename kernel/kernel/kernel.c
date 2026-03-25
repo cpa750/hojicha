@@ -6,6 +6,7 @@
 #include <drivers/serial.h>
 #include <drivers/tty.h>
 #include <drivers/vga.h>
+#include <fs/vfs.h>
 #include <hlog.h>
 #include <kernel/g_kernel.h>
 #include <limine.h>
@@ -21,96 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static process_block_t* kernel_proc;
-
-static semaphore_t* semaphore;
-static bool sleep_awake_1 = false;
-static bool sleep_awake_2 = false;
-
-void test1(void) {
-  while (1) {
-    if (sleep_awake_1) {
-      hlog_add(HLOG_INFO, "1");
-      sleep_awake_1 = false;
-    }
-  }
-  hlog_commit();
-}
-
-void test2(void) {
-  while (1) {
-    if (sleep_awake_2) {
-      hlog_add(HLOG_DEBUG, "2");
-      sleep_awake_2 = false;
-    }
-  }
-  hlog_commit();
-}
-
-void test3(void) {
-  sched_current_sleep(7);
-  hlog_write(HLOG_INFO, "test3, about to die o7");
-}
-
-void test4(void) {
-  sched_current_sleep(7);
-  hlog_write(HLOG_INFO, "test4, about to die o7");
-}
-
-void test5(void) {
-  hlog_write(HLOG_INFO, "locking semaphore...");
-  semaphore_lock(semaphore);
-  hlog_write(HLOG_INFO, "locked semaphore and sleeping 17s");
-  sched_current_sleep(7);
-  hlog_write(HLOG_INFO, "unlocking semaphore and dying o7");
-  semaphore_unlock(semaphore);
-}
-
-void test6(void) {
-  hlog_write(HLOG_INFO, "locking semaphore...");
-  semaphore_lock(semaphore);
-  hlog_write(HLOG_INFO, "locked semaphore, unlocking semaphore and dying o7");
-  semaphore_unlock(semaphore);
-}
-
-void test7(void) {
-  hlog_write(HLOG_INFO, "trying to lock semaphore...");
-  bool success = semaphore_try_lock(semaphore);
-  if (success) {
-    hlog_write(HLOG_ERROR, "uh oh");
-    semaphore_unlock(semaphore);
-  } else {
-    hlog_write(HLOG_ERROR, "failed to acquire semaphore, dying o7");
-  }
-}
-
-void test8(void) {
-  sched_current_sleep(20);
-  hlog_write(HLOG_INFO, "trying to lock semaphore...");
-  bool success = semaphore_try_lock(semaphore);
-  if (!success) {
-    hlog_write(HLOG_ERROR, "uh oh");
-  } else {
-    hlog_write(HLOG_INFO, "acquired semaphore, dying o7");
-    semaphore_unlock(semaphore);
-  }
-}
-void test9(void) {
-  hlog_write(HLOG_DEBUG, "sleeping 15s...");
-  sched_current_sleep(15);
-  hlog_write(HLOG_DEBUG, "page faulting...");
-  *(volatile int*)0 = 0;
-  hlog_write(HLOG_ERROR, "somehow returned from the segfault");
-}
-
-void test_sleep(void) {
-  while (1) {
-    sched_current_sleep(5);
-    hlog_write(HLOG_INFO, "awake!");
-    sleep_awake_1 = true;
-    sleep_awake_2 = true;
-  }
-}
+#include "fs/initrd.h"
 
 void print_ok(const char* component);
 
@@ -135,7 +47,7 @@ void kernel_main() {
 
   if (LIMINE_BASE_REVISION_SUPPORTED == false) { abort(); }
 
-  initialize_g_kernel();
+  g_kernel_initialize();
   vga_initialize();
   terminal_initialize();
 
@@ -144,35 +56,36 @@ void kernel_main() {
 #endif
 
   printf("[INFO] Starting Hojicha kernel initialization...\n");
-  initialize_serial();
+  serial_initialize();
   print_ok("Serial");
-  initialize_gdt();
+  gdt_initialize();
   print_ok("GDT");
-  initialize_idt();
+  idt_initialize();
   print_ok("IDT");
-  initialize_pic();
+  pic_initialize();
   print_ok("PIC");
-  initialize_pit();
+  pit_initialize();
   print_ok("PIT");
-  initialize_keyboard();
+  keyboard_initialize();
   print_ok("Keyboard");
-  initialize_pmm();
+  pmm_initialize();
   print_ok("PMM");
-  if (!bootmodule_capture_early()) {
+  if (!bootmodule_initialize()) {
     printf("Error: Bootmodule initial capture failed");
     abort();
   }
-  initialize_vmm();
+  vmm_initialize();
   print_ok("VMM");
   kmalloc_initialize();
   print_ok("kmalloc");
-  if (!bootmodule_finalize_cache()) {
+  if (!bootmodule_cache_finalize()) {
     printf("Error: Bootmodule cache finalization failed");
     abort();
   }
   print_ok("Bootmodules");
   sched_initialize();
   print_ok("Multitasking");
+  if (initrd_initalize() == 0) { print_ok("Initrd"); }
 
   printf("\n");
 
@@ -192,89 +105,66 @@ void kernel_main() {
 
   asm volatile("sti");
 
-  kernel_proc = g_kernel.current_process;
+  vfs_file_t* f = NULL;
+  vfs_open("/usr/bin/bigmaths.elf", VFS_OPEN_READ, &f);
+  vfs_stat_t* bigmaths_stat = NULL;
+  vfs_fstat(f, &bigmaths_stat);
+  unsigned char* bigmath_contents =
+      malloc(sizeof(unsigned char) * bigmaths_stat->size);
+  uint64_t bytes_read = 0;
+  vfs_status_t res =
+      vfs_read(f, bigmath_contents, bigmaths_stat->size, &bytes_read);
+  if (res != VFS_STATUS_OK) { hlog_write(HLOG_ERROR, "uh oh..."); }
 
-  semaphore = semaphore_create(1);
-
-  process_block_t* sleep_proc =
-      sched_kproc_new("sleep_proc", test_sleep, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(sleep_proc);
-
-  process_block_t* test1_proc =
-      sched_kproc_new("test1", test1, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test1_proc);
-
-  process_block_t* test2_proc =
-      sched_kproc_new("test2", test2, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test2_proc);
-
-  process_block_t* test3_proc =
-      sched_kproc_new("test3", test3, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test3_proc);
-
-  process_block_t* test4_proc =
-      sched_kproc_new("test4", test4, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test4_proc);
-
-  process_block_t* test5_proc =
-      sched_kproc_new("test5", test5, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test5_proc);
-
-  process_block_t* test6_proc =
-      sched_kproc_new("test6", test6, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test6_proc);
-
-  process_block_t* test7_proc =
-      sched_kproc_new("test7", test7, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test7_proc);
-
-  process_block_t* test8_proc =
-      sched_kproc_new("test8", test8, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test8_proc);
-
-  process_block_t* test9_proc =
-      sched_kproc_new("test9", test9, sched_pb_get_cr3(kernel_proc));
-  sched_add_proc(test9_proc);
-
-  bootmodule_t* userspace_mod = bootmodule_get("bigmaths.elf");
-  if (userspace_mod == NULL) {
-    hlog_write(HLOG_ERROR, "Unable to find cached module bigmaths.elf");
-  } else {
-    hlog_write(HLOG_INFO,
-               "Loaded cached module %s at %x (%d bytes)",
-               userspace_mod->name,
-               userspace_mod->address,
-               userspace_mod->size);
-  }
-  elf_t* bigmaths = elf_read(userspace_mod->address, userspace_mod->size);
+  elf_t* bigmaths = elf_read(bigmath_contents, bigmaths_stat->size);
   process_block_t* elf_proc = sched_uproc_new("bigmaths", bigmaths);
   sched_add_proc(elf_proc);
 
-  // while (1) asm volatile("hlt");
+  elf_t* bigmaths2_electric_boogaloo =
+      elf_read(bigmath_contents, bigmaths_stat->size);
+  process_block_t* elf_proc2 = sched_uproc_new("bigmaths2_electric_boogaloo",
+                                               bigmaths2_electric_boogaloo);
+  sched_add_proc(elf_proc2);
 
-  uint64_t count = 0;
-  while (1) {
-    sched_current_sleep(1);
+  vfs_file_t* etc = NULL;
+  vfs_open("/etc/", VFS_OPEN_DIRECTORY, &etc);
 
-    hlog_add(HLOG_DEBUG, "Kernel awake");
-    if (count % 5 == 0) { hlog_commit(); }
-    hlog_commit();
-
-    ++count;
-
-    // It's a known bug that sched_proc_terminate() is called
-    // multiple times on these processes when count wraps around,
-    // causing a page fault in the terminator function. We should
-    // remove these eventually.
-    if (count == 15) {
-      hlog_write(HLOG_WARN, "terminating task 2");
-      sched_proc_terminate(test2_proc);
-    }
-    if (count == 21) {
-      hlog_write(HLOG_WARN, "terminating task 1");
-      sched_proc_terminate(test1_proc);
-    }
+  vfs_dirent_t* etc_dirent = NULL;
+  vfs_readdir(etc, &etc_dirent);
+  while (etc_dirent != NULL) {
+    hlog_write(HLOG_INFO, "/etc/%s", etc_dirent->name);
+    vfs_readdir(etc, &etc_dirent);
   }
+
+  vfs_file_t* usrbin = NULL;
+  vfs_open("/usr/bin", VFS_OPEN_DIRECTORY, &usrbin);
+
+  vfs_dirent_t* usrbin_dirent = NULL;
+  vfs_readdir(usrbin, &usrbin_dirent);
+  while (usrbin_dirent != NULL) {
+    hlog_write(HLOG_INFO, "/usr/bin/%s", usrbin_dirent->name);
+    vfs_readdir(usrbin, &usrbin_dirent);
+  }
+
+  vfs_file_t* test = NULL;
+  vfs_open("/etc/test.txt", VFS_OPEN_READ, &test);
+  char test1[50];
+  vfs_read(test, test1, 50, &bytes_read);
+  hlog_write(HLOG_INFO, "test1: %s (%d B)", test1, bytes_read);
+
+  vfs_seek(test, -500, VFS_SEEK_CUR, NULL);
+  char test2[50];
+  vfs_read(test, test2, 50, &bytes_read);
+  hlog_write(HLOG_INFO, "test2: %s (%d B)", test2, bytes_read);
+
+  vfs_seek(test, -15, VFS_SEEK_END, NULL);
+  char test3[50];
+  vfs_read(test, test3, 50, &bytes_read);
+  hlog_write(HLOG_INFO, "test3: %s (%d B)", test3, bytes_read);
+
+  sched_yield();
+
+  while (1) { asm volatile("hlt"); }
 }
 
 void print_ok(const char* component) {
