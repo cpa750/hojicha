@@ -10,6 +10,7 @@ typedef enum {
   VFS_STATUS_ISDIR,
   VFS_STATUS_NOMEM,
   VFS_STATUS_EOF,
+  VFS_STATUS_INVALID_ARG,
 } vfs_status_t;
 
 typedef enum {
@@ -23,6 +24,8 @@ typedef enum {
   VFS_OPEN_READ = 1,
   VFS_OPEN_DIRECTORY,
 } vfs_open_flags_t;
+
+typedef enum { VFS_SEEK_SET = 0, VFS_SEEK_CUR, VFS_SEEK_END } vfs_seek_whence_t;
 
 /*
  * One mounted filesystem instance. Owns the root vnode for that mount and any
@@ -82,7 +85,11 @@ struct vfs_file_ops {
                        uint64_t len,
                        uint64_t* bytes_read_out);
   vfs_status_t (*readdir)(vfs_file_t* dir, vfs_dirent_t** out);
-  void (*close)(vfs_file_t* file);
+  vfs_status_t (*seek)(vfs_file_t* file,
+                       int64_t offset,
+                       vfs_seek_whence_t whence,
+                       uint64_t* new_pos);
+  vfs_status_t (*close)(vfs_file_t* file);
 };
 
 struct vfs_node_ops {
@@ -127,6 +134,19 @@ vfs_status_t vfs_read(vfs_file_t* file,
                       uint64_t* out_read);
 
 /*
+ * Returns the next directory entry from an open directory handle.
+ */
+vfs_status_t vfs_readdir(vfs_file_t* dir, vfs_dirent_t** out);
+
+/*
+ * Seeks to at most the given `offset` from `whence` in the given `file`.
+ */
+vfs_status_t vfs_seek(vfs_file_t* file,
+                      uint64_t offset,
+                      vfs_seek_whence_t whence,
+                      uint64_t* new_pos);
+
+/*
  * Returns metadata for a file without opening it.
  */
 vfs_status_t vfs_stat(const char* absolute_path, vfs_stat_t** out);
@@ -135,11 +155,6 @@ vfs_status_t vfs_stat(const char* absolute_path, vfs_stat_t** out);
  * Returns metadata for an already-open file.
  */
 vfs_status_t vfs_fstat(vfs_file_t* file, vfs_stat_t** out);
-
-/*
- * Returns the next directory entry from an open directory handle.
- */
-vfs_status_t vfs_readdir(vfs_file_t* dir, vfs_dirent_t** out);
 
 /*
  * Closes an open handle.

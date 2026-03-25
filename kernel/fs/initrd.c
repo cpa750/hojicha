@@ -10,7 +10,7 @@
 
 #define SET_OUT(out, val)                                                      \
   if (out != NULL) { *out = val; }
-#define SET_OUT_NULL(out) SET_OUT(out, NULL);
+#define SET_OUT_NULL(out) SET_OUT(out, NULL)
 
 typedef struct initrd_inode initrd_inode_t;
 struct initrd_inode {
@@ -63,7 +63,8 @@ static const vnode_ops_t initrd_vnode_ops = {
 static const vfs_file_ops_t initrd_vfile_ops = {
     .read = initrd_read,
     .readdir = initrd_readdir,
-    .close = NULL,
+    .seek = initrd_seek,
+    .close = initrd_close,
 };
 
 uint8_t initrd_initalize() {
@@ -187,22 +188,17 @@ vfs_status_t initrd_lookup(vfs_node_t* dir,
 
 vfs_status_t initrd_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
   if ((flags & VFS_OPEN_DIRECTORY) && vnode->type != VFS_NODE_DIR) {
-    SET_OUT_NULL(out);
     return VFS_STATUS_NOTDIR;
   }
 
   if ((flags & VFS_OPEN_READ) && vnode->type != VFS_NODE_FILE) {
-    SET_OUT_NULL(out);
     return VFS_STATUS_ISDIR;  // TODO: this should really be decided based
                               // on actual filetype
   }
 
   initrd_file_t* file = (initrd_file_t*)malloc(sizeof(initrd_file_t));
   vfs_file_t* vfile = (vfs_file_t*)malloc(sizeof(vfs_file_t));
-  if (file == NULL || vfile == NULL) {
-    SET_OUT_NULL(out);
-    return VFS_STATUS_NOMEM;
-  }
+  if (file == NULL || vfile == NULL) { return VFS_STATUS_NOMEM; }
 
   if (vnode->type == VFS_NODE_FILE) {
     file->data.fbuf = ((initrd_inode_t*)(vnode->fs_data))->buf;
@@ -221,6 +217,11 @@ vfs_status_t initrd_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
   return VFS_STATUS_OK;
 }
 
+vfs_status_t initrd_close(vfs_file_t* vfile) {
+  free(vfile);
+  return VFS_STATUS_OK;
+}
+
 vfs_status_t initrd_read(vfs_file_t* vfile,
                          void* buffer,
                          uint64_t len,
@@ -234,24 +235,18 @@ vfs_status_t initrd_read(vfs_file_t* vfile,
                               ? node->size - vfile->offset
                               : len - 1;
   void* src_buffer = ((initrd_file_t*)vfile->fs_data)->data.fbuf;
-  memcpy(buffer, src_buffer, size_to_copy);
+  memcpy(buffer, src_buffer + vfile->offset, size_to_copy);
   ((char*)buffer)[size_to_copy] = '\0';
 
+  vfile->offset += size_to_copy;
   if (bytes_read_out != NULL) { *bytes_read_out = size_to_copy; }
   return VFS_STATUS_OK;
 }
 
 vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
-  if (vdir == NULL) {
-    SET_OUT_NULL(out);
-    return VFS_STATUS_NOENT;
-  }
-  if (vdir->vnode->type != VFS_NODE_DIR) {
-    SET_OUT_NULL(out);
-    return VFS_STATUS_NOTDIR;
-  }
+  if (vdir == NULL) { return VFS_STATUS_NOENT; }
+  if (vdir->vnode->type != VFS_NODE_DIR) { return VFS_STATUS_NOTDIR; }
 
-  vdir->offset++;
   initrd_file_t* file = (initrd_file_t*)vdir->fs_data;
 
   if (file->data.d_current == NULL) {
@@ -261,13 +256,11 @@ vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
 
   initrd_inode_t* current = file->data.d_current;
   file->data.d_current = file->data.d_current->next_sibling;
+  vdir->offset++;
 
   // TODO don't abuse malloc once we have slab cache
   vfs_dirent_t* ret = (vfs_dirent_t*)malloc(sizeof(vfs_dirent_t));
-  if (ret == NULL) {
-    SET_OUT_NULL(out);
-    return VFS_STATUS_NOMEM;
-  }
+  if (ret == NULL) { return VFS_STATUS_NOMEM; }
 
   ret->name = current->name;
   ret->inode_no = current->number;
@@ -277,12 +270,53 @@ vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
 
 void initrd_release(vfs_node_t* vnode) { free(vnode); }
 
+vfs_status_t initrd_seek(vfs_file_t* vfile,
+                         int64_t offset,
+                         vfs_seek_whence_t whence,
+                         uint64_t* new_pos) {
+  if (vfile == NULL) { return VFS_STATUS_INVALID_ARG; }
+
+  uint64_t len = ((initrd_inode_t*)vfile->vnode->fs_data)->size;
+  uint64_t pos;
+  int64_t origin;
+  switch (whence) {
+    case VFS_SEEK_SET:
+      origin = 0;
+      break;
+    case VFS_SEEK_CUR:
+      origin = (int64_t)vfile->offset;
+      break;
+    case VFS_SEEK_END:
+      origin = (int64_t)len - 1;
+      break;
+  }
+
+  if (offset + origin < 0) {
+    pos = 0;
+  } else if (offset + origin > (int64_t)len - 1) {
+    pos = len - 1;
+  } else {
+    pos = offset + origin;
+  }
+
+  if (vfile->vnode->type == VFS_NODE_DIR) {
+    initrd_file_t* file = (initrd_file_t*)vfile->fs_data;
+    file->data.d_current =
+        ((initrd_inode_t*)vfile->vnode->fs_data)->first_child;
+    int i = *new_pos;
+    while (i-- > 0 && file->data.d_current != NULL) {
+      file->data.d_current = file->data.d_current->next_sibling;
+    }
+  }
+
+  vfile->offset = pos;
+  if (new_pos != NULL) { *new_pos = pos; }
+  return VFS_STATUS_OK;
+}
+
 vfs_status_t initrd_stat(vfs_node_t* vnode, vfs_stat_t** out) {
   vfs_stat_t* ret = (vfs_stat_t*)malloc(sizeof(vfs_stat_t));
-  if (ret == NULL) {
-    SET_OUT_NULL(out);
-    return VFS_STATUS_NOMEM;
-  }
+  if (ret == NULL) { return VFS_STATUS_NOMEM; }
 
   ret->size = ((initrd_inode_t*)vnode->fs_data)->size;
   ret->type = ((initrd_inode_t*)vnode->fs_data)->type;

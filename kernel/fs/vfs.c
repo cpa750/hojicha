@@ -114,6 +114,15 @@ vfs_status_t vfs_readdir(vfs_file_t* dir, vfs_dirent_t** out) {
   return dir->ops->readdir(dir, out);
 }
 
+vfs_status_t vfs_seek(vfs_file_t* file,
+                      uint64_t offset,
+                      vfs_seek_whence_t whence,
+                      uint64_t* new_pos) {
+  if (file == NULL) { return VFS_STATUS_INVALID_ARG; }
+
+  return file->ops->seek(file, offset, whence, new_pos);
+}
+
 vfs_status_t vfs_stat(const char* absolute_path, vfs_stat_t** out) {
   vfs_node_t* vnode = NULL;
   vfs_status_t status = vfs_lookup(absolute_path, &vnode);

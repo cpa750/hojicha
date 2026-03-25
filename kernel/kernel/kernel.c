@@ -146,6 +146,22 @@ void kernel_main() {
     vfs_readdir(usrbin, &usrbin_dirent);
   }
 
+  vfs_file_t* test = NULL;
+  vfs_open("/etc/test.txt", VFS_OPEN_READ, &test);
+  char test1[50];
+  vfs_read(test, test1, 50, &bytes_read);
+  hlog_write(HLOG_INFO, "test1: %s (%d B)", test1, bytes_read);
+
+  vfs_seek(test, -500, VFS_SEEK_CUR, NULL);
+  char test2[50];
+  vfs_read(test, test2, 50, &bytes_read);
+  hlog_write(HLOG_INFO, "test2: %s (%d B)", test2, bytes_read);
+
+  vfs_seek(test, -15, VFS_SEEK_END, NULL);
+  char test3[50];
+  vfs_read(test, test3, 50, &bytes_read);
+  hlog_write(HLOG_INFO, "test3: %s (%d B)", test3, bytes_read);
+
   sched_yield();
 
   while (1) { asm volatile("hlt"); }
