@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define MAX_FDS 256
+
 typedef enum {
   VFS_STATUS_OK = 0,
   VFS_STATUS_NOENT,
@@ -11,6 +13,8 @@ typedef enum {
   VFS_STATUS_NOMEM,
   VFS_STATUS_EOF,
   VFS_STATUS_INVALID_ARG,
+  VFS_STATUS_TOO_MANY_OPEN,
+  VFS_STATUS_BAD_FD,
 } vfs_status_t;
 
 typedef enum {
@@ -160,5 +164,13 @@ vfs_status_t vfs_fstat(vfs_file_t* file, vfs_stat_t** out);
  * Closes an open handle.
  */
 vfs_status_t vfs_close(vfs_file_t* file);
+
+/*
+ * Gets the file object associated with the given `fd` in the context of
+ * the current running process.
+ * Returns `VFS_STATUS_OK` and the file object in `out` on success,
+ * on failure returns the relevant error code and does not modify `out`.
+ */
+vfs_status_t vfs_resolve_fd(uint64_t fd, vfs_file_t** out);
 
 #endif  // HOJICHA_VFS_H

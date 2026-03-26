@@ -1,6 +1,11 @@
 #include <fs/vfs.h>
+#include <kernel/g_kernel.h>
+#include <multitask/scheduler.h>
 #include <stdbool.h>
 #include <stddef.h>
+
+#define SET_OUT(out, val)                                                      \
+  if (out != NULL) { *out = val; }
 
 static vfs_mount_t* root_mount = NULL;
 
@@ -84,14 +89,25 @@ vfs_status_t vfs_lookup(const char* absolute_path, vfs_node_t** out) {
 vfs_status_t vfs_open(const char* absolute_path,
                       uint32_t flags,
                       vfs_file_t** out) {
+  uint64_t fd_idx;
+  bool has_fd = sched_pb_fd_find_null(g_kernel.current_process, &fd_idx);
+  if (!has_fd) {
+    if (out != NULL) { *out = NULL; }
+    return VFS_STATUS_TOO_MANY_OPEN;
+  }
+
   vfs_node_t* target = NULL;
   vfs_status_t lookup_res = vfs_lookup(absolute_path, &target);
   if (lookup_res != VFS_STATUS_OK) {
-    *out = NULL;
+    if (out != NULL) { *out = NULL; }
     return lookup_res;
   }
 
-  return target->ops->open(target, flags, out);
+  vfs_status_t open_status = target->ops->open(target, flags, out);
+  if (open_status == VFS_STATUS_OK) {
+    sched_pb_fd_set(g_kernel.current_process, fd_idx, *out);
+  }
+  return open_status;
 }
 
 vfs_status_t vfs_read(vfs_file_t* file,
@@ -139,5 +155,17 @@ vfs_status_t vfs_fstat(vfs_file_t* file, vfs_stat_t** out) {
     return VFS_STATUS_NOENT;
   }
   return file->vnode->ops->stat(file->vnode, out);
+}
+
+vfs_status_t vfs_close(vfs_file_t* file) {
+  if (file != NULL) { file->ops->close(file); }
+  return VFS_STATUS_OK;
+}
+
+vfs_status_t vfs_resolve_fd(uint64_t fd, vfs_file_t** out) {
+  vfs_file_t* ret = sched_pb_fd_get(g_kernel.current_process, fd);
+  if (ret == NULL) { return VFS_STATUS_BAD_FD; }
+  SET_OUT(out, ret);
+  return VFS_STATUS_OK;
 }
 

@@ -1,6 +1,7 @@
 #ifndef MULTITASK_H
 #define MULTITASK_H
 
+#include <fs/vfs.h>
 #include <haddr.h>
 #include <hlog.h>
 #include <memory/vmm.h>
@@ -33,6 +34,23 @@ uint64_t sched_pb_get_pid(process_block_t* p);
 vmm_t* sched_pb_get_vmm(process_block_t* p);
 void sched_pb_set_elf(process_block_t* p, elf_t* elf);
 void* sched_pb_get_cr3(process_block_t* p);
+
+/*
+ * Finds the first free file descriptor in a processe's file descriptor
+ * table. Returns `true` and the index in `idx_out` if there is a free
+ * descriptor, `false` if not.
+ */
+bool sched_pb_fd_find_null(process_block_t* p, uint64_t* idx_out);
+
+/*
+ * Gets the entry in the processe's file descriptor table at `idx`.
+ */
+vfs_file_t* sched_pb_fd_get(process_block_t* p, uint64_t idx);
+
+/*
+ * Sets the entry in the processe's file descriptor table at `idx` to `val`.
+ */
+void sched_pb_fd_set(process_block_t* p, uint64_t idx, vfs_file_t* val);
 
 struct sched_state;
 typedef struct sched_state sched_state_t;

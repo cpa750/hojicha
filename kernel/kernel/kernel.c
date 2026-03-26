@@ -162,6 +162,12 @@ void kernel_main() {
   vfs_read(test, test3, 50, &bytes_read);
   hlog_write(HLOG_INFO, "test3: %s (%d B)", test3, bytes_read);
 
+  vfs_close(usrbin);
+  vfs_close(f);
+  vfs_close(etc);
+  vfs_close(usrbin);
+  vfs_close(test);
+
   sched_yield();
 
   while (1) { asm volatile("hlt"); }
