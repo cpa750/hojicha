@@ -20,6 +20,10 @@ vfs_status_t initrd_read(vfs_file_t* vfile,
                          void* buffer,
                          uint64_t len,
                          uint64_t* bytes_read_out);
+vfs_status_t initrd_write(vfs_file_t* file,
+                          void* buffer,
+                          uint64_t len,
+                          uint64_t* bytes_written_out);
 vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out);
 vfs_status_t initrd_seek(vfs_file_t* vfile,
                          int64_t offset,

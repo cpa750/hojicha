@@ -162,6 +162,13 @@ void kernel_main() {
   vfs_read(test, test3, 50, &bytes_read);
   hlog_write(HLOG_INFO, "test3: %s (%d B)", test3, bytes_read);
 
+  char append_test[] = " append test";
+  vfs_write(test, append_test, 12, NULL);
+  char test4[50];
+  vfs_seek(test, 0, VFS_SEEK_SET, NULL);
+  vfs_read(test, test4, 50, &bytes_read);
+  hlog_write(HLOG_INFO, "test4: %s (%d B)", test4, bytes_read);
+
   vfs_close(usrbin);
   vfs_close(f);
   vfs_close(etc);

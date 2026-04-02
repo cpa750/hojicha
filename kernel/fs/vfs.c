@@ -117,6 +117,18 @@ vfs_status_t vfs_read(vfs_file_t* file,
   return file->ops->read(file, buffer, len, out_read);
 }
 
+vfs_status_t vfs_write(vfs_file_t* file,
+                       void* buffer,
+                       uint64_t len,
+                       uint64_t* bytes_written_out) {
+  if (file == NULL || buffer == NULL) {
+    SET_OUT(bytes_written_out, 0);
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  return file->ops->write(file, buffer, len, bytes_written_out);
+}
+
 vfs_status_t vfs_readdir(vfs_file_t* dir, vfs_dirent_t** out) {
   if (dir == NULL) {
     if (out != NULL) { *out = NULL; }

@@ -62,6 +62,7 @@ static const vnode_ops_t initrd_vnode_ops = {
 
 static const vfs_file_ops_t initrd_vfile_ops = {
     .read = initrd_read,
+    .write = initrd_write,
     .readdir = initrd_readdir,
     .seek = initrd_seek,
     .close = initrd_close,
@@ -241,6 +242,34 @@ vfs_status_t initrd_read(vfs_file_t* vfile,
   vfile->offset += size_to_copy;
   if (bytes_read_out != NULL) { *bytes_read_out = size_to_copy; }
   return VFS_STATUS_OK;
+}
+
+vfs_status_t initrd_write(vfs_file_t* file,
+                          void* buffer,
+                          uint64_t len,
+                          uint64_t* bytes_written_out) {
+  if (file == NULL || buffer == NULL) { return VFS_STATUS_INVALID_ARG; }
+
+  uint64_t fsize = ((initrd_inode_t*)file->vnode->fs_data)->size;
+  void* fbuf = ((initrd_file_t*)file->fs_data)->data.fbuf;
+  if (len + file->offset < fsize - 1) {
+    memcpy(fbuf + file->offset, buffer, len);
+    file->offset += len;
+    if (bytes_written_out != NULL) { *bytes_written_out = len; }
+    return VFS_STATUS_OK;
+  }
+
+  uint64_t content_size = fsize + len;
+  uint64_t new_size = content_size + (content_size >> 1);
+  void* new_buf = malloc(sizeof(char) * new_size);
+  if (new_buf == NULL) { return VFS_STATUS_NOMEM; }
+  memcpy(new_buf, fbuf, fsize);
+  memcpy(new_buf + fsize, buffer, len);
+  ((initrd_file_t*)file->fs_data)->data.fbuf = new_buf;
+  file->offset = fsize + len - 1;
+  ((initrd_inode_t*)file->vnode->fs_data)->size = fsize + len;
+  if (bytes_written_out != NULL) { *bytes_written_out = len; }
+  return VFS_STATUS_NOMEM;
 }
 
 vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {

@@ -88,6 +88,10 @@ struct vfs_file_ops {
                        void* buffer,
                        uint64_t len,
                        uint64_t* bytes_read_out);
+  vfs_status_t (*write)(vfs_file_t* file,
+                        void* buffer,
+                        uint64_t len,
+                        uint64_t* bytes_written_out);
   vfs_status_t (*readdir)(vfs_file_t* dir, vfs_dirent_t** out);
   vfs_status_t (*seek)(vfs_file_t* file,
                        int64_t offset,
@@ -136,6 +140,14 @@ vfs_status_t vfs_read(vfs_file_t* file,
                       void* buffer,
                       uint64_t len,
                       uint64_t* out_read);
+
+/*
+ * Writes up to `len` bytes from `buffer` into `file`.
+ */
+vfs_status_t vfs_write(vfs_file_t* file,
+                       void* buffer,
+                       uint64_t len,
+                       uint64_t* bytes_written_out);
 
 /*
  * Returns the next directory entry from an open directory handle.
