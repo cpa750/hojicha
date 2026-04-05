@@ -15,6 +15,7 @@ typedef enum {
   VFS_STATUS_INVALID_ARG,
   VFS_STATUS_TOO_MANY_OPEN,
   VFS_STATUS_BAD_FD,
+  VFS_STATUS_NOT_IMPLEMENTED,
 } vfs_status_t;
 
 typedef enum {
@@ -106,6 +107,17 @@ struct vfs_node_ops {
                          uint32_t name_len,
                          vfs_node_t** out);
   vfs_status_t (*open)(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out);
+  vfs_status_t (*create)(vfs_node_t* dir,
+                         const char* name,
+                         uint32_t name_len,
+                         uint32_t open_flags,
+                         vfs_node_t** out);
+  vfs_status_t (*mkdir)(vfs_node_t* dir,
+                        const char* name,
+                        uint32_t name_len,
+                        vfs_node_t** out);
+  vfs_status_t (*unlink)(vfs_node_t* dir, const char* name, uint32_t name_len);
+  vfs_status_t (*rmdir)(vfs_node_t* dir, const char* name, uint32_t name_len);
   void (*release)(vfs_node_t* vnode);
   vfs_status_t (*stat)(vfs_node_t* vnode, vfs_stat_t** out);
 };
@@ -132,6 +144,33 @@ vfs_status_t vfs_lookup(const char* absolute_path, vfs_node_t** out);
 vfs_status_t vfs_open(const char* absolute_path,
                       uint32_t flags,
                       vfs_file_t** out);
+
+/*
+ * Creates a file in a given `dir`.
+ */
+vfs_status_t vfs_create(vfs_node_t* dir,
+                        const char* name,
+                        uint32_t name_len,
+                        uint32_t open_flags,
+                        vfs_node_t** out);
+
+/*
+ * Creates a subdirectory in the given `dir`.
+ */
+vfs_status_t vfs_mkdir(vfs_node_t* dir,
+                       const char* name,
+                       uint32_t name_len,
+                       vfs_node_t** out);
+
+/*
+ * Unlinks a file given by `name` in `dir`.
+ */
+vfs_status_t vfs_unlink(vfs_node_t* dir, const char* name, uint32_t name_len);
+
+/*
+ * Removes a directory given by `name` from the parent `dir`.
+ */
+vfs_status_t vfs_rmdir(vfs_node_t* dir, const char* name, uint32_t name_len);
 
 /*
  * Reads up to `len` bytes from a file handle, advancing its current offset.

@@ -110,6 +110,29 @@ vfs_status_t vfs_open(const char* absolute_path,
   return open_status;
 }
 
+vfs_status_t vfs_create(vfs_node_t* dir,
+                        const char* name,
+                        uint32_t name_len,
+                        uint32_t open_flags,
+                        vfs_node_t** out) {
+  return VFS_STATUS_NOT_IMPLEMENTED;
+}
+
+vfs_status_t vfs_mkdir(vfs_node_t* dir,
+                       const char* name,
+                       uint32_t name_len,
+                       vfs_node_t** out) {
+  return VFS_STATUS_NOT_IMPLEMENTED;
+}
+
+vfs_status_t vfs_unlink(vfs_node_t* dir, const char* name, uint32_t name_len) {
+  return VFS_STATUS_NOT_IMPLEMENTED;
+}
+
+vfs_status_t vfs_rmdir(vfs_node_t* dir, const char* name, uint32_t name_len) {
+  return VFS_STATUS_NOT_IMPLEMENTED;
+}
+
 vfs_status_t vfs_read(vfs_file_t* file,
                       void* buffer,
                       uint64_t len,
