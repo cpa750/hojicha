@@ -147,7 +147,7 @@ void kernel_main() {
   }
 
   vfs_file_t* test = NULL;
-  vfs_open("/etc/test.txt", VFS_OPEN_READ, &test);
+  vfs_open("/etc/test.txt", VFS_OPEN_READ | VFS_OPEN_WRITE, &test);
   char test1[50];
   vfs_read(test, test1, 50, &bytes_read);
   hlog_write(HLOG_INFO, "test1: %s (%d B)", test1, bytes_read);

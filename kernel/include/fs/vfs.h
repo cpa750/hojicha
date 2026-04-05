@@ -16,6 +16,7 @@ typedef enum {
   VFS_STATUS_TOO_MANY_OPEN,
   VFS_STATUS_BAD_FD,
   VFS_STATUS_NOT_IMPLEMENTED,
+  VFS_STATUS_FLAGS,
 } vfs_status_t;
 
 typedef enum {
@@ -27,7 +28,8 @@ typedef enum {
 
 typedef enum {
   VFS_OPEN_READ = 1,
-  VFS_OPEN_DIRECTORY,
+  VFS_OPEN_WRITE = 2,
+  VFS_OPEN_DIRECTORY = 4,
 } vfs_open_flags_t;
 
 typedef enum { VFS_SEEK_SET = 0, VFS_SEEK_CUR, VFS_SEEK_END } vfs_seek_whence_t;
@@ -110,7 +112,6 @@ struct vfs_node_ops {
   vfs_status_t (*create)(vfs_node_t* dir,
                          const char* name,
                          uint32_t name_len,
-                         uint32_t open_flags,
                          vfs_node_t** out);
   vfs_status_t (*mkdir)(vfs_node_t* dir,
                         const char* name,
@@ -151,7 +152,6 @@ vfs_status_t vfs_open(const char* absolute_path,
 vfs_status_t vfs_create(vfs_node_t* dir,
                         const char* name,
                         uint32_t name_len,
-                        uint32_t open_flags,
                         vfs_node_t** out);
 
 /*

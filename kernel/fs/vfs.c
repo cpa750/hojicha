@@ -113,7 +113,6 @@ vfs_status_t vfs_open(const char* absolute_path,
 vfs_status_t vfs_create(vfs_node_t* dir,
                         const char* name,
                         uint32_t name_len,
-                        uint32_t open_flags,
                         vfs_node_t** out) {
   return VFS_STATUS_NOT_IMPLEMENTED;
 }
@@ -137,6 +136,7 @@ vfs_status_t vfs_read(vfs_file_t* file,
                       void* buffer,
                       uint64_t len,
                       uint64_t* out_read) {
+  if (!(file->flags & VFS_OPEN_READ)) { return VFS_STATUS_FLAGS; }
   return file->ops->read(file, buffer, len, out_read);
 }
 
@@ -144,6 +144,7 @@ vfs_status_t vfs_write(vfs_file_t* file,
                        void* buffer,
                        uint64_t len,
                        uint64_t* bytes_written_out) {
+  if (!(file->flags & VFS_OPEN_WRITE)) { return VFS_STATUS_FLAGS; }
   if (file == NULL || buffer == NULL) {
     SET_OUT(bytes_written_out, 0);
     return VFS_STATUS_INVALID_ARG;
