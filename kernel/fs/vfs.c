@@ -89,6 +89,8 @@ vfs_status_t vfs_lookup(const char* absolute_path, vfs_node_t** out) {
 vfs_status_t vfs_open(const char* absolute_path,
                       uint32_t flags,
                       vfs_file_t** out) {
+  // TODO: proper open and create flags!
+
   uint64_t fd_idx;
   bool has_fd = sched_pb_fd_find_null(g_kernel.current_process, &fd_idx);
   if (!has_fd) {
@@ -114,7 +116,8 @@ vfs_status_t vfs_create(vfs_node_t* dir,
                         const char* name,
                         uint32_t name_len,
                         vfs_node_t** out) {
-  return VFS_STATUS_NOT_IMPLEMENTED;
+  if (dir == NULL) { return VFS_STATUS_INVALID_ARG; }
+  return dir->ops->create_file(dir, name, name_len, out);
 }
 
 vfs_status_t vfs_mkdir(vfs_node_t* dir,

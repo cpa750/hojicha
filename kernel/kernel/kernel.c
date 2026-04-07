@@ -129,6 +129,12 @@ void kernel_main() {
   vfs_file_t* etc = NULL;
   vfs_open("/etc/", VFS_OPEN_DIRECTORY, &etc);
 
+  vfs_create(etc->vnode, "test_create.txt", 15, NULL);
+  vfs_file_t* testcreate = NULL;
+  vfs_open("/etc/test_create.txt", VFS_OPEN_READ | VFS_OPEN_WRITE, &testcreate);
+  char write_test[] = "write test";
+  vfs_write(testcreate, write_test, 10, NULL);
+
   vfs_dirent_t* etc_dirent = NULL;
   vfs_readdir(etc, &etc_dirent);
   while (etc_dirent != NULL) {
@@ -169,8 +175,14 @@ void kernel_main() {
   vfs_read(test, test4, 50, &bytes_read);
   hlog_write(HLOG_INFO, "test4: %s (%d B)", test4, bytes_read);
 
+  vfs_seek(testcreate, 0, VFS_SEEK_SET, NULL);
+  char test5[50];
+  vfs_read(testcreate, test5, 50, &bytes_read);
+  hlog_write(HLOG_INFO, "test5: %s (%d B)", test5, bytes_read);
+
   vfs_close(usrbin);
   vfs_close(f);
+  vfs_close(testcreate);
   vfs_close(etc);
   vfs_close(usrbin);
   vfs_close(test);

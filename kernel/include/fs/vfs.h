@@ -109,14 +109,14 @@ struct vfs_node_ops {
                          uint32_t name_len,
                          vfs_node_t** out);
   vfs_status_t (*open)(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out);
-  vfs_status_t (*create)(vfs_node_t* dir,
-                         const char* name,
-                         uint32_t name_len,
-                         vfs_node_t** out);
-  vfs_status_t (*mkdir)(vfs_node_t* dir,
-                        const char* name,
-                        uint32_t name_len,
-                        vfs_node_t** out);
+  vfs_status_t (*create_file)(vfs_node_t* dir,
+                              const char* name,
+                              uint32_t name_len,
+                              vfs_node_t** out);
+  vfs_status_t (*create_dir)(vfs_node_t* dir,
+                             const char* name,
+                             uint32_t name_len,
+                             vfs_node_t** out);
   vfs_status_t (*unlink)(vfs_node_t* dir, const char* name, uint32_t name_len);
   vfs_status_t (*rmdir)(vfs_node_t* dir, const char* name, uint32_t name_len);
   void (*release)(vfs_node_t* vnode);
