@@ -129,11 +129,12 @@ void kernel_main() {
   vfs_file_t* etc = NULL;
   vfs_open("/etc/", VFS_OPEN_DIRECTORY, &etc);
 
-  vfs_create(etc->vnode, "test_create.txt", 15, NULL);
   vfs_file_t* testcreate = NULL;
-  vfs_open("/etc/test_create.txt", VFS_OPEN_READ | VFS_OPEN_WRITE, &testcreate);
-  char write_test[] = "write test";
-  vfs_write(testcreate, write_test, 10, NULL);
+  vfs_open("/etc/test_open_create.txt",
+           VFS_OPEN_READ | VFS_OPEN_WRITE | VFS_OPEN_CREATE,
+           &testcreate);
+  char write_test[] = "open create write test";
+  vfs_write(testcreate, write_test, 22, NULL);
 
   vfs_dirent_t* etc_dirent = NULL;
   vfs_readdir(etc, &etc_dirent);

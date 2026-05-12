@@ -9,15 +9,12 @@
 
 static vfs_mount_t* root_mount = NULL;
 
-static vfs_status_t validate_root_mount(vfs_mount_t* mount) {
-  if (mount == NULL || mount->root == NULL) { return VFS_STATUS_NOMEM; }
-  if (mount->root->type != VFS_NODE_DIR) { return VFS_STATUS_NOTDIR; }
-  if (mount->root->ops == NULL || mount->root->ops->lookup == NULL) {
-    return VFS_STATUS_NOTDIR;
-  }
-
-  return VFS_STATUS_OK;
-}
+static vfs_status_t walk_path(const char* absolute_path,
+                              bool stop_at_parent,
+                              vfs_node_t** out,
+                              const char** name_out,
+                              uint32_t* name_len_out);
+static vfs_status_t validate_root_mount(vfs_mount_t* mount);
 
 vfs_status_t vfs_mount_root(vfs_mount_t* mount) {
   vfs_status_t status = validate_root_mount(mount);
@@ -28,62 +25,19 @@ vfs_status_t vfs_mount_root(vfs_mount_t* mount) {
 }
 
 vfs_status_t vfs_lookup(const char* absolute_path, vfs_node_t** out) {
-  if (absolute_path == NULL || out == NULL || root_mount == NULL ||
-      root_mount->root == NULL || absolute_path[0] != '/') {
-    return VFS_STATUS_NOENT;
+  if (out == NULL) { return VFS_STATUS_NOENT; }
+  return walk_path(absolute_path, false, out, NULL, NULL);
+}
+
+vfs_status_t vfs_lookup_parent(const char* absolute_path,
+                               vfs_node_t** parent_out,
+                               const char** name_out,
+                               uint32_t* name_len_out) {
+  if (parent_out == NULL || name_out == NULL || name_len_out == NULL) {
+    return VFS_STATUS_INVALID_ARG;
   }
 
-  vfs_node_t* current = root_mount->root;
-  bool current_is_root = true;
-  const char* cursor = absolute_path;
-
-  while (*cursor == '/') { cursor++; }
-  if (*cursor == '\0') {
-    *out = current;
-    return VFS_STATUS_OK;
-  }
-
-  while (*cursor != '\0') {
-    if (current->type != VFS_NODE_DIR || current->ops == NULL ||
-        current->ops->lookup == NULL) {
-      if (!current_is_root && current->ops != NULL &&
-          current->ops->release != NULL) {
-        current->ops->release(current);
-      }
-      return VFS_STATUS_NOTDIR;
-    }
-
-    const char* component = cursor;
-    uint32_t component_len = 0;
-
-    while (*cursor != '\0' && *cursor != '/') {
-      cursor++;
-      component_len++;
-    }
-
-    vfs_node_t* next = NULL;
-    vfs_status_t status =
-        current->ops->lookup(current, component, component_len, &next);
-    if (status != VFS_STATUS_OK) {
-      if (!current_is_root && current->ops != NULL &&
-          current->ops->release != NULL) {
-        current->ops->release(current);
-      }
-      return status;
-    }
-
-    if (!current_is_root && current->ops != NULL &&
-        current->ops->release != NULL) {
-      current->ops->release(current);
-    }
-    current = next;
-    current_is_root = false;
-
-    while (*cursor == '/') { cursor++; }
-  }
-
-  *out = current;
-  return VFS_STATUS_OK;
+  return walk_path(absolute_path, true, parent_out, name_out, name_len_out);
 }
 
 vfs_status_t vfs_open(const char* absolute_path,
@@ -100,12 +54,30 @@ vfs_status_t vfs_open(const char* absolute_path,
 
   vfs_node_t* target = NULL;
   vfs_status_t lookup_res = vfs_lookup(absolute_path, &target);
-  if (lookup_res != VFS_STATUS_OK) {
+  if (lookup_res == VFS_STATUS_NOENT && !(flags & VFS_OPEN_CREATE) &&
+      !(flags & VFS_OPEN_DIRECTORY)) {
     if (out != NULL) { *out = NULL; }
     return lookup_res;
   }
 
-  vfs_status_t open_status = target->ops->open(target, flags, out);
+  if (lookup_res == VFS_STATUS_NOENT) {
+    vfs_node_t* dir = NULL;
+    const char* name = NULL;
+    uint32_t name_len = 0;
+    vfs_status_t dir_status =
+        vfs_lookup_parent(absolute_path, &dir, &name, &name_len);
+
+    if (dir_status != VFS_STATUS_OK) { return dir_status; }
+
+    vfs_status_t create_status = vfs_create(dir, name, name_len, &target);
+    if (create_status != VFS_STATUS_OK) {
+      SET_OUT(out, NULL);
+      return create_status;
+    }
+  }
+
+  uint32_t open_flags = flags & ~VFS_OPEN_CREATE;
+  vfs_status_t open_status = target->ops->open(target, open_flags, out);
   if (open_status == VFS_STATUS_OK) {
     sched_pb_fd_set(g_kernel.current_process, fd_idx, *out);
   }
@@ -208,3 +180,84 @@ vfs_status_t vfs_resolve_fd(uint64_t fd, vfs_file_t** out) {
   return VFS_STATUS_OK;
 }
 
+static vfs_status_t walk_path(const char* absolute_path,
+                              bool stop_at_parent,
+                              vfs_node_t** out,
+                              const char** name_out,
+                              uint32_t* name_len_out) {
+  if (absolute_path == NULL || out == NULL || root_mount == NULL ||
+      root_mount->root == NULL || absolute_path[0] != '/') {
+    return VFS_STATUS_NOENT;
+  }
+
+  SET_OUT(name_out, NULL);
+  SET_OUT(name_len_out, 0);
+
+  vfs_node_t* current = root_mount->root;
+  bool current_is_root = true;
+  const char* cursor = absolute_path;
+
+  while (*cursor == '/') { cursor++; }
+  if (*cursor == '\0') {
+    if (stop_at_parent) { return VFS_STATUS_NOENT; }
+    *out = current;
+    return VFS_STATUS_OK;
+  }
+
+  while (*cursor != '\0') {
+    if (current->type != VFS_NODE_DIR || current->ops == NULL ||
+        current->ops->lookup == NULL) {
+      if (!current_is_root && current->ops != NULL &&
+          current->ops->release != NULL) {
+        current->ops->release(current);
+      }
+      return VFS_STATUS_NOTDIR;
+    }
+
+    const char* component = cursor;
+    uint32_t component_len = 0;
+    while (*cursor != '\0' && *cursor != '/') {
+      cursor++;
+      component_len++;
+    }
+
+    while (*cursor == '/') { cursor++; }
+    if (stop_at_parent && *cursor == '\0') {
+      *out = current;
+      SET_OUT(name_out, component);
+      SET_OUT(name_len_out, component_len);
+      return VFS_STATUS_OK;
+    }
+
+    vfs_node_t* next = NULL;
+    vfs_status_t status =
+        current->ops->lookup(current, component, component_len, &next);
+    if (status != VFS_STATUS_OK) {
+      if (!current_is_root && current->ops != NULL &&
+          current->ops->release != NULL) {
+        current->ops->release(current);
+      }
+      return status;
+    }
+
+    if (!current_is_root && current->ops != NULL &&
+        current->ops->release != NULL) {
+      current->ops->release(current);
+    }
+    current = next;
+    current_is_root = false;
+  }
+
+  *out = current;
+  return VFS_STATUS_OK;
+}
+
+static vfs_status_t validate_root_mount(vfs_mount_t* mount) {
+  if (mount == NULL || mount->root == NULL) { return VFS_STATUS_NOMEM; }
+  if (mount->root->type != VFS_NODE_DIR) { return VFS_STATUS_NOTDIR; }
+  if (mount->root->ops == NULL || mount->root->ops->lookup == NULL) {
+    return VFS_STATUS_NOTDIR;
+  }
+
+  return VFS_STATUS_OK;
+}

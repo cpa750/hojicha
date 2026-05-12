@@ -30,6 +30,7 @@ typedef enum {
   VFS_OPEN_READ = 1,
   VFS_OPEN_WRITE = 2,
   VFS_OPEN_DIRECTORY = 4,
+  VFS_OPEN_CREATE = 8,
 } vfs_open_flags_t;
 
 typedef enum { VFS_SEEK_SET = 0, VFS_SEEK_CUR, VFS_SEEK_END } vfs_seek_whence_t;
@@ -137,6 +138,15 @@ vfs_status_t vfs_mount_root(vfs_mount_t* mount);
  * Resolves an absolute path to a vnode.
  */
 vfs_status_t vfs_lookup(const char* absolute_path, vfs_node_t** out);
+
+/*
+ * Resolves the parent directory of an absolute path and returns the final path
+ * component as a view into `absolute_path`.
+ */
+vfs_status_t vfs_lookup_parent(const char* absolute_path,
+                               vfs_node_t** parent_out,
+                               const char** name_out,
+                               uint32_t* name_len_out);
 
 /*
  * Opens a regular file or directory at `absolute_path`. `flags` are currently
