@@ -43,7 +43,10 @@ vfs_status_t vfs_lookup_parent(const char* absolute_path,
 vfs_status_t vfs_open(const char* absolute_path,
                       uint32_t flags,
                       vfs_file_t** out) {
-  // TODO: proper open and create flags!
+  if (flags & VFS_OPEN_CREATE & VFS_OPEN_DIRECTORY) {
+    SET_OUT(out, NULL);
+    return VFS_STATUS_INVALID_ARG;
+  }
 
   uint64_t fd_idx;
   bool has_fd = sched_pb_fd_find_null(g_kernel.current_process, &fd_idx);
@@ -88,7 +91,7 @@ vfs_status_t vfs_create(vfs_node_t* dir,
                         const char* name,
                         uint32_t name_len,
                         vfs_node_t** out) {
-  if (dir == NULL) { return VFS_STATUS_INVALID_ARG; }
+  if (dir == NULL || name == NULL) { return VFS_STATUS_INVALID_ARG; }
   return dir->ops->create_file(dir, name, name_len, out);
 }
 
@@ -96,7 +99,19 @@ vfs_status_t vfs_mkdir(vfs_node_t* dir,
                        const char* name,
                        uint32_t name_len,
                        vfs_node_t** out) {
-  return VFS_STATUS_NOT_IMPLEMENTED;
+  if (dir == NULL || name == NULL) {
+    SET_OUT(out, NULL);
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  while (name_len > 0 && name[name_len - 1] == '/') { --name_len; }
+  if (name_len == 0) {
+    SET_OUT(out, NULL);
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  vfs_status_t status = dir->ops->create_dir(dir, name, name_len, out);
+  return status;
 }
 
 vfs_status_t vfs_unlink(vfs_node_t* dir, const char* name, uint32_t name_len) {

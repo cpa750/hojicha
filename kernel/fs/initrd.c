@@ -35,30 +35,34 @@ struct initrd_file {
 };
 
 void add_child(initrd_inode_t* parent, initrd_inode_t* new_child);
-initrd_inode_t* create_dir(char* name,
+initrd_inode_t* create_dir(const char* name,
                            uint64_t name_len,
                            initrd_inode_t* parent);
 initrd_inode_t* create_root();
 vfs_node_t* create_vnode(initrd_inode_t* inode);
-initrd_inode_t* dir_lookup(char* path, uint64_t path_len, initrd_inode_t* root);
+initrd_inode_t* dir_lookup(const char* path,
+                           uint64_t path_len,
+                           initrd_inode_t* root);
 initrd_inode_t* find_child(initrd_inode_t* first_child,
-                           char* name,
+                           const char* name,
                            uint64_t name_len);
 uint64_t get_entry_len(char* filename);
 uint64_t get_header_size(ustar_header_t* header);
 uint64_t get_name_start_idx(char* filename, uint64_t len);
-initrd_inode_t* get_or_create_prefix(char* path,
+initrd_inode_t* get_or_create_prefix(const char* path,
                                      uint64_t path_len,
                                      initrd_inode_t* root);
 bool is_zero_block(void* block);
 vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out);
 bool validate_name(const char* name, uint64_t name_len);
+char* clone_name(const char* name, uint64_t name_len, bool trailing_slash);
 
 static const vnode_ops_t initrd_vnode_ops = {
     .lookup = initrd_lookup,
     .open = initrd_open,
     .release = initrd_release,
     .create_file = initrd_create_file,
+    .create_dir = initrd_create_dir,
     .stat = initrd_stat,
 };
 
@@ -233,7 +237,13 @@ vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
   vfs_dirent_t* ret = (vfs_dirent_t*)malloc(sizeof(vfs_dirent_t));
   if (ret == NULL) { return VFS_STATUS_NOMEM; }
 
-  ret->name = current->name;
+  ret->name = clone_name(current->name,
+                         current->name_size,
+                         current->type == VFS_NODE_DIR);
+  if (ret->name == NULL) {
+    free(ret);
+    return VFS_STATUS_NOMEM;
+  }
   ret->inode_no = current->number;
   SET_OUT(out, ret);
   return VFS_STATUS_OK;
@@ -299,8 +309,15 @@ vfs_status_t initrd_create_file(vfs_node_t* dir,
     return VFS_STATUS_NOMEM;
   }
 
+  char* file_name = clone_name(name, name_len, false);
+  if (file_name == NULL) {
+    free(inode);
+    SET_OUT_NULL(out);
+    return VFS_STATUS_NOMEM;
+  }
+
   inode->type = VFS_NODE_FILE;
-  inode->name = name;
+  inode->name = file_name;
   inode->name_size = name_len;
   inode->number = inode_count++;
   inode->buf = NULL;
@@ -315,6 +332,40 @@ vfs_status_t initrd_create_file(vfs_node_t* dir,
   }
 
   add_child((initrd_inode_t*)dir->fs_data, inode);
+
+  SET_OUT(out, vnode);
+  return VFS_STATUS_OK;
+}
+
+vfs_status_t initrd_create_dir(vfs_node_t* dir,
+                               const char* name,
+                               uint32_t name_len,
+                               vfs_node_t** out) {
+  if (dir == NULL || dir->type != VFS_NODE_DIR || name == NULL) {
+    SET_OUT_NULL(out);
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  while (name_len > 0 && name[name_len - 1] == '/') { --name_len; }
+  if (!validate_name(name, name_len)) {
+    SET_OUT_NULL(out);
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  initrd_inode_t* inode =
+      create_dir(name, name_len, (initrd_inode_t*)dir->fs_data);
+  if (inode == NULL) {
+    SET_OUT_NULL(out);
+    return VFS_STATUS_NOMEM;
+  }
+
+  add_child((initrd_inode_t*)dir->fs_data, inode);
+
+  vfs_node_t* vnode = create_vnode(inode);
+  if (vnode == NULL) {
+    SET_OUT_NULL(out);
+    return VFS_STATUS_NOMEM;
+  }
 
   SET_OUT(out, vnode);
   return VFS_STATUS_OK;
@@ -345,21 +396,23 @@ void add_child(initrd_inode_t* parent, initrd_inode_t* new_child) {
   parent->len++;
 }
 
-initrd_inode_t* create_dir(char* name,
+initrd_inode_t* create_dir(const char* name,
                            uint64_t name_len,
                            initrd_inode_t* parent) {
   initrd_inode_t* dir = (initrd_inode_t*)malloc(sizeof(initrd_inode_t));
-  char* dir_name = (char*)malloc(name_len + 1);
-  if (dir == NULL || dir_name == NULL) { return NULL; }
-
-  memcpy(dir_name, name, name_len);
-  dir_name[name_len] = '\0';
+  char* dir_name = clone_name(name, name_len, false);
+  if (dir == NULL || dir_name == NULL) {
+    free(dir);
+    free(dir_name);
+    return NULL;
+  }
 
   dir->name = dir_name;
   dir->name_size = name_len;
   dir->buf = NULL;
   dir->len = 0;
   dir->type = VFS_NODE_DIR;
+  dir->number = inode_count++;
   dir->parent = parent;
   dir->first_child = NULL;
   dir->next_sibling = NULL;
@@ -392,7 +445,7 @@ vfs_node_t* create_vnode(initrd_inode_t* inode) {
   return vnode;
 }
 
-initrd_inode_t* dir_lookup(char* path,
+initrd_inode_t* dir_lookup(const char* path,
                            uint64_t path_len,
                            initrd_inode_t* root) {
   if (root == NULL) { return NULL; }
@@ -422,7 +475,7 @@ initrd_inode_t* dir_lookup(char* path,
 }
 
 initrd_inode_t* find_child(initrd_inode_t* first_child,
-                           char* name,
+                           const char* name,
                            uint64_t name_len) {
   for (initrd_inode_t* n = first_child; n != NULL; n = n->next_sibling) {
     if (n->name_size == name_len && memcmp(name, n->name, name_len) == 0) {
@@ -454,7 +507,7 @@ uint64_t get_name_start_idx(char* filename, uint64_t len) {
  * Ensures a directory path (prefix) exists from the given `root`.
  * Returns the inode to the last directory entry in the path.
  */
-initrd_inode_t* get_or_create_prefix(char* path,
+initrd_inode_t* get_or_create_prefix(const char* path,
                                      uint64_t path_len,
                                      initrd_inode_t* root) {
   uint64_t path_start = 0;
@@ -501,6 +554,7 @@ bool is_zero_block(void* block) {
 
 bool validate_name(const char* name, uint64_t name_len) {
   // TODO: More thorough validation
+  if (name == NULL || name_len == 0) { return false; }
 
   for (uint64_t i = 0; i < name_len; ++i) {
     if (name[i] == '/' || (name[i] == '\0' && i < name_len - 1)) {
@@ -509,6 +563,17 @@ bool validate_name(const char* name, uint64_t name_len) {
   }
 
   return true;
+}
+
+char* clone_name(const char* name, uint64_t name_len, bool trailing_slash) {
+  uint64_t alloc_len = name_len + (trailing_slash ? 1 : 0);
+  char* cloned = (char*)malloc(alloc_len + 1);
+  if (cloned == NULL) { return NULL; }
+
+  memcpy(cloned, name, name_len);
+  if (trailing_slash) { cloned[name_len++] = '/'; }
+  cloned[name_len] = '\0';
+  return cloned;
 }
 
 vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out) {
@@ -527,7 +592,6 @@ vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out) {
       continue;
     }
 
-    inode_count = 0;
     if (h->type == '0' || h->type == '\0') {
       uint64_t name_offset = get_name_start_idx(h->filename, entry_len);
 
@@ -591,4 +655,3 @@ vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out) {
   if (mount_out != NULL) { *mount_out = m; }
   return VFS_STATUS_OK;
 }
-

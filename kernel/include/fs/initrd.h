@@ -31,10 +31,13 @@ vfs_status_t initrd_create_file(vfs_node_t* dir,
                                 const char* name,
                                 uint32_t name_len,
                                 vfs_node_t** out);
+vfs_status_t initrd_create_dir(vfs_node_t* dir,
+                               const char* name,
+                               uint32_t name_len,
+                               vfs_node_t** out);
 
 vfs_status_t initrd_stat(vfs_node_t* vnode, vfs_stat_t** out);
 
 void initrd_release(vfs_node_t* vnode);
 
 #endif  // HOJICHA_INITRD_H
-

@@ -129,6 +129,7 @@ void kernel_main() {
   vfs_file_t* etc = NULL;
   vfs_open("/etc/", VFS_OPEN_DIRECTORY, &etc);
 
+  vfs_mkdir(etc->vnode, "test_mkdir/", 11, NULL);
   vfs_file_t* testcreate = NULL;
   vfs_open("/etc/test_open_create.txt",
            VFS_OPEN_READ | VFS_OPEN_WRITE | VFS_OPEN_CREATE,
@@ -136,11 +137,27 @@ void kernel_main() {
   char write_test[] = "open create write test";
   vfs_write(testcreate, write_test, 22, NULL);
 
+  vfs_file_t* mkdir_test = NULL;
+  vfs_open("/etc/test_mkdir/mkdir_test.txt",
+           VFS_OPEN_READ | VFS_OPEN_WRITE | VFS_OPEN_CREATE,
+           &mkdir_test);
+  char mkdir_write_test[] = "mkdir write test";
+  vfs_write(mkdir_test, mkdir_write_test, 16, NULL);
+
   vfs_dirent_t* etc_dirent = NULL;
   vfs_readdir(etc, &etc_dirent);
   while (etc_dirent != NULL) {
     hlog_write(HLOG_INFO, "/etc/%s", etc_dirent->name);
     vfs_readdir(etc, &etc_dirent);
+  }
+
+  vfs_file_t* testmkdir = NULL;
+  vfs_open("/etc/test_mkdir/", VFS_OPEN_DIRECTORY, &testmkdir);
+  vfs_dirent_t* testmkdir_dirent = NULL;
+  vfs_readdir(testmkdir, &testmkdir_dirent);
+  while (testmkdir_dirent != NULL) {
+    hlog_write(HLOG_INFO, "/etc/test_mkdir/%s", testmkdir_dirent->name);
+    vfs_readdir(testmkdir, &testmkdir_dirent);
   }
 
   vfs_file_t* usrbin = NULL;
@@ -181,8 +198,15 @@ void kernel_main() {
   vfs_read(testcreate, test5, 50, &bytes_read);
   hlog_write(HLOG_INFO, "test5: %s (%d B)", test5, bytes_read);
 
+  vfs_seek(mkdir_test, 0, VFS_SEEK_SET, NULL);
+  char test6[50];
+  vfs_read(mkdir_test, test6, 50, &bytes_read);
+  hlog_write(HLOG_INFO, "test6: %s (%d B)", test6, bytes_read);
+
   vfs_close(usrbin);
   vfs_close(f);
+  vfs_close(testmkdir);
+  vfs_close(mkdir_test);
   vfs_close(testcreate);
   vfs_close(etc);
   vfs_close(usrbin);
