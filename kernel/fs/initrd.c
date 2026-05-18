@@ -57,14 +57,14 @@ vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out);
 bool validate_name(const char* name, uint64_t name_len);
 char* clone_name(const char* name, uint64_t name_len, bool trailing_slash);
 
-static const vnode_ops_t initrd_vnode_ops = {
-    .lookup = initrd_lookup,
-    .open = initrd_open,
-    .release = initrd_release,
-    .create_file = initrd_create_file,
-    .create_dir = initrd_create_dir,
-    .stat = initrd_stat,
-};
+static const vnode_ops_t initrd_vnode_ops = {.lookup = initrd_lookup,
+                                             .open = initrd_open,
+                                             .release = initrd_release,
+                                             .create_file = initrd_create_file,
+                                             .create_dir = initrd_create_dir,
+                                             .stat = initrd_stat,
+                                             .unlink = initrd_delete_file,
+                                             .rmdir = initrd_delete_dir};
 
 static const vfs_file_ops_t initrd_vfile_ops = {
     .read = initrd_read,
@@ -237,9 +237,8 @@ vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
   vfs_dirent_t* ret = (vfs_dirent_t*)malloc(sizeof(vfs_dirent_t));
   if (ret == NULL) { return VFS_STATUS_NOMEM; }
 
-  ret->name = clone_name(current->name,
-                         current->name_size,
-                         current->type == VFS_NODE_DIR);
+  ret->name = clone_name(
+      current->name, current->name_size, current->type == VFS_NODE_DIR);
   if (ret->name == NULL) {
     free(ret);
     return VFS_STATUS_NOMEM;
@@ -369,6 +368,51 @@ vfs_status_t initrd_create_dir(vfs_node_t* dir,
 
   SET_OUT(out, vnode);
   return VFS_STATUS_OK;
+}
+
+vfs_status_t initrd_delete_file(vfs_node_t* dir,
+                                const char* name,
+                                uint32_t name_len,
+                                uint32_t flags) {
+  if (dir == NULL || name == NULL || name_len == 0) {
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  initrd_inode_t* idir = (initrd_inode_t*)dir->fs_data;
+  initrd_inode_t* first_child = idir->first_child;
+  if (first_child == NULL) {
+    return VFS_STATUS_NOENT;
+  } else if (first_child->name_size == name_len &&
+             memcmp(name, first_child->name, name_len) == 0) {
+    if (first_child->type == VFS_NODE_DIR) { return VFS_STATUS_ISDIR; }
+    idir->first_child = first_child->next_sibling;
+    // TODO: deallocate the file's contents and metadata
+    return VFS_STATUS_OK;
+  } else {
+    initrd_inode_t* prev = NULL;
+    for (initrd_inode_t* n = first_child; n != NULL; n = n->next_sibling) {
+      if (n->name_size == name_len && memcmp(name, n->name, name_len) == 0) {
+        if (n->type == VFS_NODE_DIR) { return VFS_STATUS_ISDIR; }
+        // TODO: deallocate the file's contents and metadata
+        prev->next_sibling = n->next_sibling;
+        return VFS_STATUS_OK;
+      } else {
+        prev = n;
+      }
+    }
+    return VFS_STATUS_NOENT;
+  }
+}
+
+vfs_status_t initrd_delete_dir(vfs_node_t* dir,
+                               const char* name,
+                               uint32_t name_len,
+                               uint32_t flags) {
+  if (dir == NULL || name == NULL || name_len == 0) {
+    return VFS_STATUS_INVALID_ARG;
+  }
+  (void)flags;
+  return VFS_STATUS_NOT_IMPLEMENTED;
 }
 
 vfs_status_t initrd_stat(vfs_node_t* vnode, vfs_stat_t** out) {

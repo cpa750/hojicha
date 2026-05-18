@@ -144,6 +144,12 @@ void kernel_main() {
   char mkdir_write_test[] = "mkdir write test";
   vfs_write(mkdir_test, mkdir_write_test, 16, NULL);
 
+  vfs_file_t* unlink_test = NULL;
+  vfs_open("/etc/test_mkdir/unlink_test.txt",
+           VFS_OPEN_READ | VFS_OPEN_WRITE | VFS_OPEN_CREATE,
+           &unlink_test);
+  vfs_close(unlink_test);
+
   vfs_dirent_t* etc_dirent = NULL;
   vfs_readdir(etc, &etc_dirent);
   while (etc_dirent != NULL) {
@@ -153,6 +159,15 @@ void kernel_main() {
 
   vfs_file_t* testmkdir = NULL;
   vfs_open("/etc/test_mkdir/", VFS_OPEN_DIRECTORY, &testmkdir);
+  vfs_unlink(testmkdir->vnode, "unlink_test.txt", 15, 0);
+  vfs_status_t unlink_open_status =
+      vfs_open("/etc/test_mkdir/unlink_test.txt", VFS_OPEN_READ, &unlink_test);
+  hlog_write(HLOG_INFO, "unlink test: %d", unlink_open_status);
+  vfs_status_t unlink_dir_status = vfs_unlink(etc->vnode, "test_mkdir", 10, 0);
+  hlog_write(HLOG_INFO, "unlink dir test: %d", unlink_dir_status);
+  vfs_status_t unlink_missing_status =
+      vfs_unlink(testmkdir->vnode, "missing.txt", 11, 0);
+  hlog_write(HLOG_INFO, "unlink missing test: %d", unlink_missing_status);
   vfs_dirent_t* testmkdir_dirent = NULL;
   vfs_readdir(testmkdir, &testmkdir_dirent);
   while (testmkdir_dirent != NULL) {

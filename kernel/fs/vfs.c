@@ -114,12 +114,27 @@ vfs_status_t vfs_mkdir(vfs_node_t* dir,
   return status;
 }
 
-vfs_status_t vfs_unlink(vfs_node_t* dir, const char* name, uint32_t name_len) {
-  return VFS_STATUS_NOT_IMPLEMENTED;
+vfs_status_t vfs_unlink(vfs_node_t* dir,
+                        const char* name,
+                        uint32_t name_len,
+                        uint32_t flags) {
+  if (dir == NULL || name == NULL || name_len == 0) {
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  // TODO: -r and -f flags (so we can delete directories with contents)
+  return dir->ops->unlink(dir, name, name_len, flags);
 }
 
-vfs_status_t vfs_rmdir(vfs_node_t* dir, const char* name, uint32_t name_len) {
-  return VFS_STATUS_NOT_IMPLEMENTED;
+vfs_status_t vfs_rmdir(vfs_node_t* dir,
+                       const char* name,
+                       uint32_t name_len,
+                       uint32_t flags) {
+  if (dir == NULL || name == NULL || name_len == 0) {
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  return dir->ops->rmdir(dir, name, name_len, flags);
 }
 
 vfs_status_t vfs_read(vfs_file_t* file,

@@ -118,8 +118,14 @@ struct vfs_node_ops {
                              const char* name,
                              uint32_t name_len,
                              vfs_node_t** out);
-  vfs_status_t (*unlink)(vfs_node_t* dir, const char* name, uint32_t name_len);
-  vfs_status_t (*rmdir)(vfs_node_t* dir, const char* name, uint32_t name_len);
+  vfs_status_t (*unlink)(vfs_node_t* dir,
+                         const char* name,
+                         uint32_t name_len,
+                         uint32_t flags);
+  vfs_status_t (*rmdir)(vfs_node_t* dir,
+                        const char* name,
+                        uint32_t name_len,
+                        uint32_t flags);
   void (*release)(vfs_node_t* vnode);
   vfs_status_t (*stat)(vfs_node_t* vnode, vfs_stat_t** out);
 };
@@ -175,12 +181,18 @@ vfs_status_t vfs_mkdir(vfs_node_t* dir,
 /*
  * Unlinks a file given by `name` in `dir`.
  */
-vfs_status_t vfs_unlink(vfs_node_t* dir, const char* name, uint32_t name_len);
+vfs_status_t vfs_unlink(vfs_node_t* dir,
+                        const char* name,
+                        uint32_t name_len,
+                        uint32_t flags);
 
 /*
  * Removes a directory given by `name` from the parent `dir`.
  */
-vfs_status_t vfs_rmdir(vfs_node_t* dir, const char* name, uint32_t name_len);
+vfs_status_t vfs_rmdir(vfs_node_t* dir,
+                       const char* name,
+                       uint32_t name_len,
+                       uint32_t flags);
 
 /*
  * Reads up to `len` bytes from a file handle, advancing its current offset.
