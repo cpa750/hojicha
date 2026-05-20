@@ -17,6 +17,7 @@ typedef enum {
   VFS_STATUS_BAD_FD,
   VFS_STATUS_NOT_IMPLEMENTED,
   VFS_STATUS_FLAGS,
+  VFS_STATUS_NOTEMPTY,
 } vfs_status_t;
 
 typedef enum {
@@ -84,6 +85,7 @@ struct vfs_node {
   const vnode_ops_t* ops;
   vfs_node_type_t type;
   uint32_t refcount;
+  uint32_t link_count;
   void* fs_data;
 };
 
@@ -126,7 +128,7 @@ struct vfs_node_ops {
                         const char* name,
                         uint32_t name_len,
                         uint32_t flags);
-  void (*release)(vfs_node_t* vnode);
+  void (*free)(vfs_node_t* vnode);
   vfs_status_t (*stat)(vfs_node_t* vnode, vfs_stat_t** out);
 };
 

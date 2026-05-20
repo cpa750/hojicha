@@ -47,6 +47,6 @@ vfs_status_t initrd_delete_dir(vfs_node_t* dir,
 
 vfs_status_t initrd_stat(vfs_node_t* vnode, vfs_stat_t** out);
 
-void initrd_release(vfs_node_t* vnode);
+void initrd_free(vfs_node_t* vnode);
 
 #endif  // HOJICHA_INITRD_H

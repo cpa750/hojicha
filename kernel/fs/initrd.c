@@ -15,13 +15,15 @@
 
 typedef struct initrd_inode initrd_inode_t;
 struct initrd_inode {
+  vfs_node_t vnode;
   uint64_t number;
   const char* name;
   uint64_t name_size;
+  bool name_owned;
   void* buf;
   uint64_t bufsize;
+  bool buf_owned;
   uint64_t len;
-  vfs_node_type_t type;
   initrd_inode_t* parent;
   initrd_inode_t* first_child;
   // TODO: currently we have to walk a linked list to get to target,
@@ -39,7 +41,8 @@ initrd_inode_t* create_dir(const char* name,
                            uint64_t name_len,
                            initrd_inode_t* parent);
 initrd_inode_t* create_root();
-vfs_node_t* create_vnode(initrd_inode_t* inode);
+void init_vnode(initrd_inode_t* inode, vfs_node_type_t type);
+vfs_node_t* retain_vnode(initrd_inode_t* inode);
 initrd_inode_t* dir_lookup(const char* path,
                            uint64_t path_len,
                            initrd_inode_t* root);
@@ -52,6 +55,9 @@ uint64_t get_name_start_idx(char* filename, uint64_t len);
 initrd_inode_t* get_or_create_prefix(const char* path,
                                      uint64_t path_len,
                                      initrd_inode_t* root);
+initrd_inode_t* detach_child(initrd_inode_t* parent,
+                             const char* name,
+                             uint64_t name_len);
 bool is_zero_block(void* block);
 vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out);
 bool validate_name(const char* name, uint64_t name_len);
@@ -59,7 +65,7 @@ char* clone_name(const char* name, uint64_t name_len, bool trailing_slash);
 
 static const vnode_ops_t initrd_vnode_ops = {.lookup = initrd_lookup,
                                              .open = initrd_open,
-                                             .release = initrd_release,
+                                             .free = initrd_free,
                                              .create_file = initrd_create_file,
                                              .create_dir = initrd_create_dir,
                                              .stat = initrd_stat,
@@ -102,18 +108,16 @@ vfs_status_t initrd_lookup(vfs_node_t* dir,
   if (dir == NULL || dir->type != VFS_NODE_DIR) { return VFS_STATUS_NOTDIR; }
 
   initrd_inode_t* dir_inode = (initrd_inode_t*)dir->fs_data;
-  initrd_inode_t* child =
-      find_child(dir_inode->first_child, (char*)name, name_len);
+  initrd_inode_t* child = find_child(dir_inode->first_child, name, name_len);
   if (child == NULL) { return VFS_STATUS_NOENT; }
 
-  vfs_node_t* child_vnode = create_vnode(child);
-  if (child_vnode == NULL) { return VFS_STATUS_NOMEM; }
-
-  if (out != NULL) { *out = child_vnode; }
+  if (out != NULL) { *out = retain_vnode(child); }
   return VFS_STATUS_OK;
 }
 
 vfs_status_t initrd_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
+  if (vnode == NULL || out == NULL) { return VFS_STATUS_INVALID_ARG; }
+  *out = NULL;
   if ((flags & VFS_OPEN_DIRECTORY) && vnode->type != VFS_NODE_DIR) {
     return VFS_STATUS_NOTDIR;
   }
@@ -125,7 +129,11 @@ vfs_status_t initrd_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
 
   initrd_file_t* file = (initrd_file_t*)malloc(sizeof(initrd_file_t));
   vfs_file_t* vfile = (vfs_file_t*)malloc(sizeof(vfs_file_t));
-  if (file == NULL || vfile == NULL) { return VFS_STATUS_NOMEM; }
+  if (file == NULL || vfile == NULL) {
+    free(file);
+    free(vfile);
+    return VFS_STATUS_NOMEM;
+  }
 
   if (vnode->type == VFS_NODE_DIR) {
     file->d_current = ((initrd_inode_t*)(vnode->fs_data))->first_child;
@@ -143,6 +151,7 @@ vfs_status_t initrd_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
 }
 
 vfs_status_t initrd_close(vfs_file_t* vfile) {
+  free(vfile->fs_data);
   free(vfile);
   return VFS_STATUS_OK;
 }
@@ -151,17 +160,19 @@ vfs_status_t initrd_read(vfs_file_t* vfile,
                          void* buffer,
                          uint64_t len,
                          uint64_t* bytes_read_out) {
-  if (vfile == NULL || buffer == NULL) { return VFS_STATUS_EOF; }
+  if (vfile == NULL || buffer == NULL) { return VFS_STATUS_INVALID_ARG; }
 
   initrd_inode_t* node = (initrd_inode_t*)((vfs_node_t*)vfile->vnode)->fs_data;
-  if (vfile->offset >= node->len - 1) { return VFS_STATUS_NOENT; }
+  if (vfile->offset >= node->len) {
+    SET_OUT(bytes_read_out, 0);
+    return VFS_STATUS_EOF;
+  }
 
-  uint64_t size_to_copy =
-      node->len - 1 < len + vfile->offset ? node->len - vfile->offset : len - 1;
+  uint64_t remaining = node->len - vfile->offset;
+  uint64_t size_to_copy = remaining < len ? remaining : len;
 
   sched_postpone();
   memcpy(buffer, node->buf + vfile->offset, size_to_copy);
-  ((char*)buffer)[size_to_copy] = '\0';
   vfile->offset += size_to_copy;
   sched_resume();
 
@@ -182,10 +193,14 @@ vfs_status_t initrd_write(vfs_file_t* file,
   uint64_t new_size = content_size + (content_size >> 1);
   if (inode->buf == NULL || bufsize == 0) {
     sched_postpone();
-    inode->buf = malloc(new_size);
+    void* new_buf = malloc(new_size);
     sched_resume();
 
-    if (inode->buf == NULL) { return VFS_STATUS_NOMEM; }
+    if (new_buf == NULL) { return VFS_STATUS_NOMEM; }
+    inode->buf = new_buf;
+    inode->bufsize = new_size;
+    inode->buf_owned = true;
+    bufsize = new_size;
   }
 
   if (len + file->offset < bufsize - 1) {
@@ -207,15 +222,17 @@ vfs_status_t initrd_write(vfs_file_t* file,
   memcpy(new_buf, inode->buf, fsize);
   memcpy(new_buf + fsize, buffer, len);
   old = inode->buf;
+  bool old_buf_owned = inode->buf_owned;
   inode->buf = new_buf;
   inode->bufsize = new_size;
+  inode->buf_owned = true;
   file->offset = fsize + len - 1;
   inode->len = fsize + len;
-  free(old);
+  if (old_buf_owned) { free(old); }
   sched_resume();
 
   if (bytes_written_out != NULL) { *bytes_written_out = len; }
-  return VFS_STATUS_NOMEM;
+  return VFS_STATUS_OK;
 }
 
 vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
@@ -238,7 +255,7 @@ vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
   if (ret == NULL) { return VFS_STATUS_NOMEM; }
 
   ret->name = clone_name(
-      current->name, current->name_size, current->type == VFS_NODE_DIR);
+      current->name, current->name_size, current->vnode.type == VFS_NODE_DIR);
   if (ret->name == NULL) {
     free(ret);
     return VFS_STATUS_NOMEM;
@@ -248,7 +265,16 @@ vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
   return VFS_STATUS_OK;
 }
 
-void initrd_release(vfs_node_t* vnode) { free(vnode); }
+void initrd_free(vfs_node_t* vnode) {
+  if (vnode == NULL) { return; }
+
+  initrd_inode_t* inode = (initrd_inode_t*)vnode->fs_data;
+  if (inode != NULL) {
+    if (inode->name_owned) { free((void*)inode->name); }
+    if (inode->buf_owned) { free(inode->buf); }
+    free(inode);
+  }
+}
 
 vfs_status_t initrd_seek(vfs_file_t* vfile,
                          int64_t offset,
@@ -315,24 +341,20 @@ vfs_status_t initrd_create_file(vfs_node_t* dir,
     return VFS_STATUS_NOMEM;
   }
 
-  inode->type = VFS_NODE_FILE;
+  init_vnode(inode, VFS_NODE_FILE);
   inode->name = file_name;
   inode->name_size = name_len;
+  inode->name_owned = true;
   inode->number = inode_count++;
   inode->buf = NULL;
   inode->bufsize = 0;
+  inode->buf_owned = false;
   inode->len = 0;
   inode->parent = (initrd_inode_t*)dir->fs_data;
 
-  vfs_node_t* vnode = create_vnode(inode);
-  if (vnode == NULL) {
-    SET_OUT_NULL(out);
-    return VFS_STATUS_NOMEM;
-  }
-
   add_child((initrd_inode_t*)dir->fs_data, inode);
 
-  SET_OUT(out, vnode);
+  SET_OUT(out, retain_vnode(inode));
   return VFS_STATUS_OK;
 }
 
@@ -360,13 +382,7 @@ vfs_status_t initrd_create_dir(vfs_node_t* dir,
 
   add_child((initrd_inode_t*)dir->fs_data, inode);
 
-  vfs_node_t* vnode = create_vnode(inode);
-  if (vnode == NULL) {
-    SET_OUT_NULL(out);
-    return VFS_STATUS_NOMEM;
-  }
-
-  SET_OUT(out, vnode);
+  SET_OUT(out, retain_vnode(inode));
   return VFS_STATUS_OK;
 }
 
@@ -374,45 +390,37 @@ vfs_status_t initrd_delete_file(vfs_node_t* dir,
                                 const char* name,
                                 uint32_t name_len,
                                 uint32_t flags) {
-  if (dir == NULL || name == NULL || name_len == 0) {
+  if (dir == NULL || dir->type != VFS_NODE_DIR || name == NULL ||
+      name_len == 0) {
     return VFS_STATUS_INVALID_ARG;
   }
 
   initrd_inode_t* idir = (initrd_inode_t*)dir->fs_data;
-  initrd_inode_t* first_child = idir->first_child;
-  if (first_child == NULL) {
-    return VFS_STATUS_NOENT;
-  } else if (first_child->name_size == name_len &&
-             memcmp(name, first_child->name, name_len) == 0) {
-    if (first_child->type == VFS_NODE_DIR) { return VFS_STATUS_ISDIR; }
-    idir->first_child = first_child->next_sibling;
-    // TODO: deallocate the file's contents and metadata
-    return VFS_STATUS_OK;
-  } else {
-    initrd_inode_t* prev = NULL;
-    for (initrd_inode_t* n = first_child; n != NULL; n = n->next_sibling) {
-      if (n->name_size == name_len && memcmp(name, n->name, name_len) == 0) {
-        if (n->type == VFS_NODE_DIR) { return VFS_STATUS_ISDIR; }
-        // TODO: deallocate the file's contents and metadata
-        prev->next_sibling = n->next_sibling;
-        return VFS_STATUS_OK;
-      } else {
-        prev = n;
-      }
-    }
-    return VFS_STATUS_NOENT;
-  }
+  initrd_inode_t* child = find_child(idir->first_child, name, name_len);
+  if (child == NULL) { return VFS_STATUS_NOENT; }
+  if (child->vnode.type == VFS_NODE_DIR) { return VFS_STATUS_ISDIR; }
+
+  return detach_child(idir, name, name_len) == NULL ? VFS_STATUS_NOENT
+                                                    : VFS_STATUS_OK;
 }
 
 vfs_status_t initrd_delete_dir(vfs_node_t* dir,
                                const char* name,
                                uint32_t name_len,
                                uint32_t flags) {
-  if (dir == NULL || name == NULL || name_len == 0) {
+  if (dir == NULL || dir->type != VFS_NODE_DIR || name == NULL ||
+      name_len == 0) {
     return VFS_STATUS_INVALID_ARG;
   }
-  (void)flags;
-  return VFS_STATUS_NOT_IMPLEMENTED;
+
+  initrd_inode_t* idir = (initrd_inode_t*)dir->fs_data;
+  initrd_inode_t* child = find_child(idir->first_child, name, name_len);
+  if (child == NULL) { return VFS_STATUS_NOENT; }
+  if (child->vnode.type != VFS_NODE_DIR) { return VFS_STATUS_NOTDIR; }
+  if (child->first_child != NULL) { return VFS_STATUS_NOTEMPTY; }
+
+  return detach_child(idir, name, name_len) == NULL ? VFS_STATUS_NOENT
+                                                    : VFS_STATUS_OK;
 }
 
 vfs_status_t initrd_stat(vfs_node_t* vnode, vfs_stat_t** out) {
@@ -420,7 +428,7 @@ vfs_status_t initrd_stat(vfs_node_t* vnode, vfs_stat_t** out) {
   if (ret == NULL) { return VFS_STATUS_NOMEM; }
 
   ret->size = ((initrd_inode_t*)vnode->fs_data)->len;
-  ret->type = ((initrd_inode_t*)vnode->fs_data)->type;
+  ret->type = vnode->type;
   SET_OUT(out, ret);
   return VFS_STATUS_OK;
 }
@@ -453,13 +461,16 @@ initrd_inode_t* create_dir(const char* name,
 
   dir->name = dir_name;
   dir->name_size = name_len;
+  dir->name_owned = true;
   dir->buf = NULL;
+  dir->bufsize = 0;
+  dir->buf_owned = false;
   dir->len = 0;
-  dir->type = VFS_NODE_DIR;
   dir->number = inode_count++;
   dir->parent = parent;
   dir->first_child = NULL;
   dir->next_sibling = NULL;
+  init_vnode(dir, VFS_NODE_DIR);
   return dir;
 }
 
@@ -468,25 +479,29 @@ initrd_inode_t* create_root() {
   if (root == NULL) { return NULL; }
   root->name = "";
   root->name_size = 0;
+  root->name_owned = false;
   root->buf = NULL;
+  root->bufsize = 0;
+  root->buf_owned = false;
   root->len = 0;
-  root->type = VFS_NODE_DIR;
   root->parent = NULL;
   root->first_child = NULL;
   root->next_sibling = NULL;
+  init_vnode(root, VFS_NODE_DIR);
   return root;
 }
 
-vfs_node_t* create_vnode(initrd_inode_t* inode) {
-  // TODO: stop malloc abuse once we have slab cache
-  vfs_node_t* vnode = (vfs_node_t*)malloc(sizeof(vfs_node_t));
-  if (vnode == NULL) { return NULL; }
+void init_vnode(initrd_inode_t* inode, vfs_node_type_t type) {
+  inode->vnode.fs_data = inode;
+  inode->vnode.ops = &initrd_vnode_ops;
+  inode->vnode.refcount = 0;
+  inode->vnode.link_count = 1;
+  inode->vnode.type = type;
+}
 
-  vnode->fs_data = inode;
-  vnode->ops = &initrd_vnode_ops;
-  vnode->refcount = 1;
-  vnode->type = inode->type;
-  return vnode;
+vfs_node_t* retain_vnode(initrd_inode_t* inode) {
+  inode->vnode.refcount++;
+  return &inode->vnode;
 }
 
 initrd_inode_t* dir_lookup(const char* path,
@@ -509,7 +524,7 @@ initrd_inode_t* dir_lookup(const char* path,
     uint64_t name_len = path_end - path_start;
     initrd_inode_t* next =
         find_child(ret->first_child, path + path_start, name_len);
-    if (next == NULL || next->type != VFS_NODE_DIR) { return NULL; }
+    if (next == NULL || next->vnode.type != VFS_NODE_DIR) { return NULL; }
 
     ret = next;
     path_start = path_end + 1;
@@ -576,7 +591,7 @@ initrd_inode_t* get_or_create_prefix(const char* path,
     if (next == NULL) {
       next = create_dir(path + path_start, name_len, ret);
       add_child(ret, next);
-    } else if (next->type != VFS_NODE_DIR) {
+    } else if (next->vnode.type != VFS_NODE_DIR) {
       return NULL;
     }
 
@@ -584,6 +599,27 @@ initrd_inode_t* get_or_create_prefix(const char* path,
     path_start = path_end + 1;
   }
   return ret;
+}
+
+initrd_inode_t* detach_child(initrd_inode_t* parent,
+                             const char* name,
+                             uint64_t name_len) {
+  initrd_inode_t* prev = NULL;
+  for (initrd_inode_t* n = parent->first_child; n != NULL;
+       n = n->next_sibling) {
+    if (n->name_size == name_len && memcmp(name, n->name, name_len) == 0) {
+      if (prev == NULL) {
+        parent->first_child = n->next_sibling;
+      } else {
+        prev->next_sibling = n->next_sibling;
+      }
+      n->next_sibling = NULL;
+      if (parent->len > 0) { parent->len--; }
+      return n;
+    }
+    prev = n;
+  }
+  return NULL;
 }
 
 bool is_zero_block(void* block) {
@@ -642,13 +678,15 @@ vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out) {
       initrd_inode_t* new = (initrd_inode_t*)malloc(sizeof(initrd_inode_t));
       new->len = ustar_oct2dec(h->filesize_bytes_oct, 12);
       new->bufsize = new->len;
+      new->buf_owned = false;
       new->name = h->filename + name_offset;  // Skip leading './'
       new->name_size = entry_len - name_offset;
+      new->name_owned = false;
       new->buf = buffer + buf_pos + HOJICHA_USTAR_HEADER_LEN_BYTES;
-      new->type = VFS_NODE_FILE;
       new->first_child = NULL;
       new->next_sibling = NULL;
       new->number = inode_count++;
+      init_vnode(new, VFS_NODE_FILE);
 
       initrd_inode_t* parent;
       if (name_offset == 2) {  // Skip the leading `./`
@@ -690,11 +728,9 @@ vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out) {
     }
   }
 
-  vfs_node_t* root_vnode = create_vnode(root);
-  if (root_vnode == NULL) { return VFS_STATUS_NOMEM; }
-
   vfs_mount_t* m = (vfs_mount_t*)malloc(sizeof(vfs_mount_t));
-  m->root = root_vnode;
+  if (m == NULL) { return VFS_STATUS_NOMEM; }
+  m->root = &root->vnode;
   m->fs_data = NULL;
   if (mount_out != NULL) { *mount_out = m; }
   return VFS_STATUS_OK;
