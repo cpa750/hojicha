@@ -1,4 +1,5 @@
 #include <drivers/pit.h>
+#include <fs/vfs.h>
 #include <haddr.h>
 #include <hlog.h>
 #include <kernel/g_kernel.h>
@@ -65,6 +66,8 @@ struct process_block {
 
   vmm_t* vmm;
   elf_t* elf;
+
+  vfs_file_t** fds;
 };
 
 process_block_t* sched_pb_get_next(process_block_t* p) { return p->next; }
@@ -107,6 +110,25 @@ void multitask_pb_dump(process_block_t* p, hlog_level_t log_level) {
              (haddr_t)p->vmm,
              vmm_cr3,
              (haddr_t)p->elf);
+}
+
+bool sched_pb_fd_find_null(process_block_t* p, uint64_t* idx_out) {
+  for (uint16_t i = 0; i < MAX_FDS; ++i) {
+    if (p->fds[i] == NULL) {
+      if (idx_out != NULL) { *idx_out = i; }
+      return true;
+    }
+  }
+  return false;
+}
+
+vfs_file_t* sched_pb_fd_get(process_block_t* p, uint64_t idx) {
+  if (idx >= MAX_FDS) { return NULL; }
+  return p->fds[idx];
+}
+
+void sched_pb_fd_set(process_block_t* p, uint64_t idx, vfs_file_t* val) {
+  if (idx < MAX_FDS) { p->fds[idx] = val; }
 }
 
 static sched_state_t mt = {0};
@@ -152,6 +174,7 @@ void sched_initialize(void) {
   kernel_process->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
   kernel_process->pid = UINT64_MAX;
   kernel_process->vmm = g_kernel.vmm;
+  kernel_process->fds = (vfs_file_t**)malloc(sizeof(vfs_file_t*) * MAX_FDS);
   mt.kernel_pid = kernel_process->pid;
 
   mt.first_ready_to_run = NULL;
@@ -176,6 +199,8 @@ void sched_initialize(void) {
 
 process_block_t* sched_kproc_new(char* name, proc_entry_t entry, void* cr3) {
   process_block_t* new_proc = new_proc_shared(name, cr3);
+  if (new_proc == NULL) { return NULL; }
+
   new_proc->is_kernel_proc = true;
   new_proc->entry = entry;
   new_proc->vmm = g_kernel.vmm;
@@ -185,6 +210,7 @@ process_block_t* sched_kproc_new(char* name, proc_entry_t entry, void* cr3) {
 process_block_t* sched_uproc_new(char* name, elf_t* elf) {
   vmm_t* vmm = vmm_new(PAGE_USER_ACCESIBLE);
   process_block_t* new_proc = new_proc_shared(name, vmm_get_cr3(vmm));
+  if (vmm == NULL || new_proc == NULL) { return NULL; }
   new_proc->is_kernel_proc = false;
   new_proc->elf = elf;
   new_proc->vmm = vmm;
@@ -429,12 +455,21 @@ void insert_process_after(process_block_t* process, process_block_t* after) {
 }
 
 process_block_t* new_proc_shared(char* name, void* cr3) {
+  process_block_t* new_proc = (process_block_t*)malloc(sizeof(process_block_t));
+  vfs_file_t** fds = (vfs_file_t**)malloc(sizeof(vfs_file_t*) * MAX_FDS);
+  uint8_t* stack_end = (uint8_t*)malloc(STACK_SIZE);
+  hlogger_t* logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
+  if (new_proc == NULL || fds == NULL || stack_end == NULL || logger == NULL) {
+    hlog_write(HLOG_ERROR, "Could not create new process %s: out of memory.");
+    return NULL;
+  }
+  memset(new_proc, 0, sizeof(process_block_t));
+  memset(fds, 0, sizeof(vfs_file_t*) * MAX_FDS);
+  memset(stack_end, 0, STACK_SIZE);
+
   ++(g_kernel.sched->total_processes_added);
   ++(g_kernel.sched->process_count);
-  process_block_t* new_proc = (process_block_t*)malloc(sizeof(process_block_t));
-  memset(new_proc, 0, sizeof(process_block_t));
   new_proc->cr3 = cr3;
-  uint8_t* stack_end = (uint8_t*)malloc(STACK_SIZE);
   new_proc->stack_end = stack_end;
   haddr_t stack_base = (haddr_t)(stack_end + STACK_SIZE);
   new_proc->rsp0 = (void*)stack_base;
@@ -443,6 +478,7 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
   *(haddr_t*)stack_base = (haddr_t)proc_prelude;
   stack_base -= 8 * 6;
   *(haddr_t*)stack_base = (haddr_t)new_proc;
+  new_proc->fds = fds;
 
   new_proc->pid = g_kernel.sched->total_processes_added;
   if (name != NULL) {
@@ -450,6 +486,7 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
   } else {
     itoa(new_proc->pid, new_proc->name, 10);
   }
+
   new_proc->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
 
   // Because we pop 15 registers from the newly allocated stack

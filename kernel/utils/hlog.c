@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "drivers/tty.h"
 
@@ -29,6 +30,9 @@ uint64_t print_level(hlog_level_t level);
 
 hlogger_t* hlog_new(hlog_level_t level, uint64_t bufsize) {
   hlogger_t* logger = (hlogger_t*)malloc(sizeof(hlogger_t));
+  if (logger == NULL) { return NULL; }
+  memset(logger, 0, sizeof(hlogger_t));
+
   logger->max_level = level;
   logger->bufsize = bufsize;
   logger->pending_logs_head = NULL;

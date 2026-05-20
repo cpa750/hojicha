@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define MAX_FDS 256
+
 typedef enum {
   VFS_STATUS_OK = 0,
   VFS_STATUS_NOENT,
@@ -11,6 +13,11 @@ typedef enum {
   VFS_STATUS_NOMEM,
   VFS_STATUS_EOF,
   VFS_STATUS_INVALID_ARG,
+  VFS_STATUS_TOO_MANY_OPEN,
+  VFS_STATUS_BAD_FD,
+  VFS_STATUS_NOT_IMPLEMENTED,
+  VFS_STATUS_FLAGS,
+  VFS_STATUS_NOTEMPTY,
 } vfs_status_t;
 
 typedef enum {
@@ -22,7 +29,9 @@ typedef enum {
 
 typedef enum {
   VFS_OPEN_READ = 1,
-  VFS_OPEN_DIRECTORY,
+  VFS_OPEN_WRITE = 2,
+  VFS_OPEN_DIRECTORY = 4,
+  VFS_OPEN_CREATE = 8,
 } vfs_open_flags_t;
 
 typedef enum { VFS_SEEK_SET = 0, VFS_SEEK_CUR, VFS_SEEK_END } vfs_seek_whence_t;
@@ -76,6 +85,7 @@ struct vfs_node {
   const vnode_ops_t* ops;
   vfs_node_type_t type;
   uint32_t refcount;
+  uint32_t link_count;
   void* fs_data;
 };
 
@@ -84,6 +94,10 @@ struct vfs_file_ops {
                        void* buffer,
                        uint64_t len,
                        uint64_t* bytes_read_out);
+  vfs_status_t (*write)(vfs_file_t* file,
+                        void* buffer,
+                        uint64_t len,
+                        uint64_t* bytes_written_out);
   vfs_status_t (*readdir)(vfs_file_t* dir, vfs_dirent_t** out);
   vfs_status_t (*seek)(vfs_file_t* file,
                        int64_t offset,
@@ -98,7 +112,23 @@ struct vfs_node_ops {
                          uint32_t name_len,
                          vfs_node_t** out);
   vfs_status_t (*open)(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out);
-  void (*release)(vfs_node_t* vnode);
+  vfs_status_t (*create_file)(vfs_node_t* dir,
+                              const char* name,
+                              uint32_t name_len,
+                              vfs_node_t** out);
+  vfs_status_t (*create_dir)(vfs_node_t* dir,
+                             const char* name,
+                             uint32_t name_len,
+                             vfs_node_t** out);
+  vfs_status_t (*unlink)(vfs_node_t* dir,
+                         const char* name,
+                         uint32_t name_len,
+                         uint32_t flags);
+  vfs_status_t (*rmdir)(vfs_node_t* dir,
+                        const char* name,
+                        uint32_t name_len,
+                        uint32_t flags);
+  void (*free)(vfs_node_t* vnode);
   vfs_status_t (*stat)(vfs_node_t* vnode, vfs_stat_t** out);
 };
 
@@ -118,6 +148,15 @@ vfs_status_t vfs_mount_root(vfs_mount_t* mount);
 vfs_status_t vfs_lookup(const char* absolute_path, vfs_node_t** out);
 
 /*
+ * Resolves the parent directory of an absolute path and returns the final path
+ * component as a view into `absolute_path`.
+ */
+vfs_status_t vfs_lookup_parent(const char* absolute_path,
+                               vfs_node_t** parent_out,
+                               const char** name_out,
+                               uint32_t* name_len_out);
+
+/*
  * Opens a regular file or directory at `absolute_path`. `flags` are currently
  * ignored but included in the API with intent for further expansion.
  */
@@ -126,12 +165,52 @@ vfs_status_t vfs_open(const char* absolute_path,
                       vfs_file_t** out);
 
 /*
+ * Creates a file in a given `dir`.
+ */
+vfs_status_t vfs_create(vfs_node_t* dir,
+                        const char* name,
+                        uint32_t name_len,
+                        vfs_node_t** out);
+
+/*
+ * Creates a subdirectory in the given `dir`.
+ */
+vfs_status_t vfs_mkdir(vfs_node_t* dir,
+                       const char* name,
+                       uint32_t name_len,
+                       vfs_node_t** out);
+
+/*
+ * Unlinks a file given by `name` in `dir`.
+ */
+vfs_status_t vfs_unlink(vfs_node_t* dir,
+                        const char* name,
+                        uint32_t name_len,
+                        uint32_t flags);
+
+/*
+ * Removes a directory given by `name` from the parent `dir`.
+ */
+vfs_status_t vfs_rmdir(vfs_node_t* dir,
+                       const char* name,
+                       uint32_t name_len,
+                       uint32_t flags);
+
+/*
  * Reads up to `len` bytes from a file handle, advancing its current offset.
  */
 vfs_status_t vfs_read(vfs_file_t* file,
                       void* buffer,
                       uint64_t len,
                       uint64_t* out_read);
+
+/*
+ * Writes up to `len` bytes from `buffer` into `file`.
+ */
+vfs_status_t vfs_write(vfs_file_t* file,
+                       void* buffer,
+                       uint64_t len,
+                       uint64_t* bytes_written_out);
 
 /*
  * Returns the next directory entry from an open directory handle.
@@ -160,5 +239,13 @@ vfs_status_t vfs_fstat(vfs_file_t* file, vfs_stat_t** out);
  * Closes an open handle.
  */
 vfs_status_t vfs_close(vfs_file_t* file);
+
+/*
+ * Gets the file object associated with the given `fd` in the context of
+ * the current running process.
+ * Returns `VFS_STATUS_OK` and the file object in `out` on success,
+ * on failure returns the relevant error code and does not modify `out`.
+ */
+vfs_status_t vfs_resolve_fd(uint64_t fd, vfs_file_t** out);
 
 #endif  // HOJICHA_VFS_H
