@@ -6,6 +6,10 @@
 
 #define SET_OUT(out, val)                                                      \
   if (out != NULL) { *out = val; }
+#define HVFS_VOP_MISSING(vnode, op)                                            \
+  ((vnode) == NULL || (vnode)->ops == NULL || (vnode)->ops->op == NULL)
+#define HVFS_FOP_MISSING(file, op)                                             \
+  ((file) == NULL || (file)->ops == NULL || (file)->ops->op == NULL)
 
 static vfs_mount_t* root_mount = NULL;
 
@@ -91,6 +95,11 @@ vfs_status_t vfs_open(const char* absolute_path,
     if (create_status != VFS_STATUS_OK) { return create_status; }
   }
 
+  if (HVFS_VOP_MISSING(target, open)) {
+    release_vnode(target);
+    return VFS_STATUS_NOT_IMPLEMENTED;
+  }
+
   uint32_t open_flags = flags & ~VFS_OPEN_CREATE;
   vfs_status_t open_status = target->ops->open(target, open_flags, out);
   if (open_status == VFS_STATUS_OK) {
@@ -106,7 +115,7 @@ vfs_status_t vfs_create(vfs_node_t* dir,
                         uint32_t name_len,
                         vfs_node_t** out) {
   if (dir == NULL || name == NULL) { return VFS_STATUS_INVALID_ARG; }
-  if (dir->ops == NULL || dir->ops->create_file == NULL) {
+  if (HVFS_VOP_MISSING(dir, create_file)) {
     SET_OUT(out, NULL);
     return VFS_STATUS_NOT_IMPLEMENTED;
   }
@@ -140,7 +149,7 @@ vfs_status_t vfs_mkdir(vfs_node_t* dir,
     SET_OUT(out, NULL);
     return VFS_STATUS_INVALID_ARG;
   }
-  if (dir->ops == NULL || dir->ops->create_dir == NULL) {
+  if (HVFS_VOP_MISSING(dir, create_dir)) {
     SET_OUT(out, NULL);
     return VFS_STATUS_NOT_IMPLEMENTED;
   }
@@ -188,6 +197,7 @@ vfs_status_t vfs_read(vfs_file_t* file,
                       uint64_t* out_read) {
   if (file == NULL) { return VFS_STATUS_INVALID_ARG; }
   if (!(file->flags & VFS_OPEN_READ)) { return VFS_STATUS_FLAGS; }
+  if (HVFS_FOP_MISSING(file, read)) { return VFS_STATUS_NOT_IMPLEMENTED; }
   return file->ops->read(file, buffer, len, out_read);
 }
 
@@ -204,6 +214,10 @@ vfs_status_t vfs_write(vfs_file_t* file,
     SET_OUT(bytes_written_out, 0);
     return VFS_STATUS_INVALID_ARG;
   }
+  if (HVFS_FOP_MISSING(file, write)) {
+    SET_OUT(bytes_written_out, 0);
+    return VFS_STATUS_NOT_IMPLEMENTED;
+  }
 
   return file->ops->write(file, buffer, len, bytes_written_out);
 }
@@ -217,6 +231,10 @@ vfs_status_t vfs_readdir(vfs_file_t* dir, vfs_dirent_t** out) {
     SET_OUT(out, NULL);
     return VFS_STATUS_NOTDIR;
   }
+  if (HVFS_FOP_MISSING(dir, readdir)) {
+    SET_OUT(out, NULL);
+    return VFS_STATUS_NOT_IMPLEMENTED;
+  }
 
   return dir->ops->readdir(dir, out);
 }
@@ -226,6 +244,7 @@ vfs_status_t vfs_seek(vfs_file_t* file,
                       vfs_seek_whence_t whence,
                       uint64_t* new_pos) {
   if (file == NULL) { return VFS_STATUS_INVALID_ARG; }
+  if (HVFS_FOP_MISSING(file, seek)) { return VFS_STATUS_NOT_IMPLEMENTED; }
 
   return file->ops->seek(file, offset, whence, new_pos);
 }
@@ -236,6 +255,11 @@ vfs_status_t vfs_stat(const char* absolute_path, vfs_stat_t** out) {
   if (status != VFS_STATUS_OK) {
     SET_OUT(out, NULL);
     return status;
+  }
+  if (HVFS_VOP_MISSING(vnode, stat)) {
+    release_vnode(vnode);
+    SET_OUT(out, NULL);
+    return VFS_STATUS_NOT_IMPLEMENTED;
   }
 
   status = vnode->ops->stat(vnode, out);
@@ -248,11 +272,16 @@ vfs_status_t vfs_fstat(vfs_file_t* file, vfs_stat_t** out) {
     SET_OUT(out, NULL);
     return VFS_STATUS_NOENT;
   }
+  if (HVFS_VOP_MISSING(file->vnode, stat)) {
+    SET_OUT(out, NULL);
+    return VFS_STATUS_NOT_IMPLEMENTED;
+  }
   return file->vnode->ops->stat(file->vnode, out);
 }
 
 vfs_status_t vfs_close(vfs_file_t* file) {
   if (file == NULL) { return VFS_STATUS_OK; }
+  if (HVFS_FOP_MISSING(file, close)) { return VFS_STATUS_NOT_IMPLEMENTED; }
 
   vfs_node_t* vnode = file->vnode;
   clear_process_fd(file);
@@ -276,8 +305,8 @@ static void release_vnode(vfs_node_t* vnode) {
   if (vnode == NULL || vnode->refcount == 0) { return; }
 
   vnode->refcount--;
-  if (vnode->refcount == 0 && vnode->link_count == 0 && vnode->ops != NULL &&
-      vnode->ops->free != NULL) {
+  if (vnode->refcount == 0 && vnode->link_count == 0 &&
+      !HVFS_VOP_MISSING(vnode, free)) {
     vnode->ops->free(vnode);
   }
 }
@@ -318,8 +347,7 @@ static vfs_status_t walk_path(const char* absolute_path,
   }
 
   while (*cursor != '\0') {
-    if (current->type != VFS_NODE_DIR || current->ops == NULL ||
-        current->ops->lookup == NULL) {
+    if (current->type != VFS_NODE_DIR || HVFS_VOP_MISSING(current, lookup)) {
       if (!current_is_root) { release_vnode(current); }
       return VFS_STATUS_NOTDIR;
     }
@@ -363,12 +391,11 @@ static vfs_status_t remove_child(vfs_node_t* dir,
                                  uint32_t name_len,
                                  uint32_t flags,
                                  bool expect_dir) {
-  if (dir->type != VFS_NODE_DIR || dir->ops == NULL ||
-      dir->ops->lookup == NULL) {
+  if (dir->type != VFS_NODE_DIR || HVFS_VOP_MISSING(dir, lookup)) {
     return VFS_STATUS_NOTDIR;
   }
-  if ((expect_dir && dir->ops->rmdir == NULL) ||
-      (!expect_dir && dir->ops->unlink == NULL)) {
+  if ((expect_dir && HVFS_VOP_MISSING(dir, rmdir)) ||
+      (!expect_dir && HVFS_VOP_MISSING(dir, unlink))) {
     return VFS_STATUS_NOT_IMPLEMENTED;
   }
 
@@ -403,9 +430,7 @@ static vfs_status_t remove_child(vfs_node_t* dir,
 static vfs_status_t validate_root_mount(vfs_mount_t* mount) {
   if (mount == NULL || mount->root == NULL) { return VFS_STATUS_NOMEM; }
   if (mount->root->type != VFS_NODE_DIR) { return VFS_STATUS_NOTDIR; }
-  if (mount->root->ops == NULL || mount->root->ops->lookup == NULL) {
-    return VFS_STATUS_NOTDIR;
-  }
+  if (HVFS_VOP_MISSING(mount->root, lookup)) { return VFS_STATUS_NOTDIR; }
 
   return VFS_STATUS_OK;
 }

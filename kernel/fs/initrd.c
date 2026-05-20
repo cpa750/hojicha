@@ -42,7 +42,7 @@ initrd_inode_t* create_dir(const char* name,
                            initrd_inode_t* parent);
 initrd_inode_t* create_root();
 void init_vnode(initrd_inode_t* inode, vfs_node_type_t type);
-vfs_node_t* retain_vnode(initrd_inode_t* inode);
+vfs_node_t* borrow_vnode(initrd_inode_t* inode);
 initrd_inode_t* dir_lookup(const char* path,
                            uint64_t path_len,
                            initrd_inode_t* root);
@@ -111,7 +111,7 @@ vfs_status_t initrd_lookup(vfs_node_t* dir,
   initrd_inode_t* child = find_child(dir_inode->first_child, name, name_len);
   if (child == NULL) { return VFS_STATUS_NOENT; }
 
-  if (out != NULL) { *out = retain_vnode(child); }
+  if (out != NULL) { *out = borrow_vnode(child); }
   return VFS_STATUS_OK;
 }
 
@@ -354,7 +354,7 @@ vfs_status_t initrd_create_file(vfs_node_t* dir,
 
   add_child((initrd_inode_t*)dir->fs_data, inode);
 
-  SET_OUT(out, retain_vnode(inode));
+  SET_OUT(out, borrow_vnode(inode));
   return VFS_STATUS_OK;
 }
 
@@ -382,7 +382,7 @@ vfs_status_t initrd_create_dir(vfs_node_t* dir,
 
   add_child((initrd_inode_t*)dir->fs_data, inode);
 
-  SET_OUT(out, retain_vnode(inode));
+  SET_OUT(out, borrow_vnode(inode));
   return VFS_STATUS_OK;
 }
 
@@ -499,7 +499,7 @@ void init_vnode(initrd_inode_t* inode, vfs_node_type_t type) {
   inode->vnode.type = type;
 }
 
-vfs_node_t* retain_vnode(initrd_inode_t* inode) {
+vfs_node_t* borrow_vnode(initrd_inode_t* inode) {
   inode->vnode.refcount++;
   return &inode->vnode;
 }
