@@ -188,8 +188,8 @@ vfs_status_t initrd_write(vfs_file_t* file,
   initrd_inode_t* inode = (initrd_inode_t*)file->vnode->fs_data;
   uint64_t fsize = inode->len;
   uint64_t bufsize = inode->bufsize;
-
-  uint64_t content_size = fsize + len;
+  uint64_t content_size = file->offset + len;
+  if (content_size < fsize) { content_size = fsize; }
   uint64_t new_size = content_size + (content_size >> 1);
   if (inode->buf == NULL || bufsize == 0) {
     sched_postpone();
@@ -197,17 +197,18 @@ vfs_status_t initrd_write(vfs_file_t* file,
     sched_resume();
 
     if (new_buf == NULL) { return VFS_STATUS_NOMEM; }
+    memset(new_buf, 0, new_size);
     inode->buf = new_buf;
     inode->bufsize = new_size;
     inode->buf_owned = true;
     bufsize = new_size;
   }
 
-  if (len + file->offset < bufsize - 1) {
+  if (file->offset + len <= bufsize) {
     sched_postpone();
     memcpy(inode->buf + file->offset, buffer, len);
     file->offset += len;
-    inode->len += len;
+    if (file->offset > inode->len) { inode->len = file->offset; }
     sched_resume();
 
     if (bytes_written_out != NULL) { *bytes_written_out = len; }
@@ -219,15 +220,16 @@ vfs_status_t initrd_write(vfs_file_t* file,
 
   void* old;
   sched_postpone();
-  memcpy(new_buf, inode->buf, fsize);
-  memcpy(new_buf + fsize, buffer, len);
+  memset(new_buf, 0, new_size);
+  if (inode->buf != NULL && fsize > 0) { memcpy(new_buf, inode->buf, fsize); }
+  memcpy(new_buf + file->offset, buffer, len);
   old = inode->buf;
   bool old_buf_owned = inode->buf_owned;
   inode->buf = new_buf;
   inode->bufsize = new_size;
   inode->buf_owned = true;
-  file->offset = fsize + len - 1;
-  inode->len = fsize + len;
+  file->offset += len;
+  if (file->offset > inode->len) { inode->len = file->offset; }
   if (old_buf_owned) { free(old); }
   sched_resume();
 
@@ -293,14 +295,14 @@ vfs_status_t initrd_seek(vfs_file_t* vfile,
       origin = (int64_t)vfile->offset;
       break;
     case VFS_SEEK_END:
-      origin = (int64_t)len - 1;
+      origin = (int64_t)len;
       break;
   }
 
   if (offset + origin < 0) {
     pos = 0;
-  } else if (offset + origin > (int64_t)len - 1) {
-    pos = len - 1;
+  } else if (offset + origin > (int64_t)len) {
+    pos = len;
   } else {
     pos = offset + origin;
   }
@@ -308,7 +310,7 @@ vfs_status_t initrd_seek(vfs_file_t* vfile,
   if (vfile->vnode->type == VFS_NODE_DIR) {
     initrd_file_t* file = (initrd_file_t*)vfile->fs_data;
     file->d_current = ((initrd_inode_t*)vfile->vnode->fs_data)->first_child;
-    int i = *new_pos;
+    uint64_t i = pos;
     while (i-- > 0 && file->d_current != NULL) {
       file->d_current = file->d_current->next_sibling;
     }

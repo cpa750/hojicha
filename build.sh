@@ -19,6 +19,13 @@ case "$*" in
     ;;
 esac
 
+VFS_TEST=" "
+case "$*" in
+  *--vfs-test*)
+    VFS_TEST="VFS_TEST=1"
+    ;;
+esac
+
 HLOG_LEVEL=" "
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -51,7 +58,7 @@ if [ -n "$HLOG_LEVEL_VALUE" ]; then
 fi
 
 for PROJECT in $PROJECTS; do
-  (cd $PROJECT && DESTDIR="$SYSROOT" bear --append -- $MAKE $DEBUG_QEMU $KMALLOC_TEST $HLOG_LEVEL HOST=$HOST install)
+  (cd $PROJECT && DESTDIR="$SYSROOT" bear --append -- $MAKE $DEBUG_QEMU $KMALLOC_TEST $VFS_TEST $HLOG_LEVEL HOST=$HOST install)
 done
 
 make -C userspace all HOST=$HOST SYSROOT="$SYSROOT"

@@ -35,6 +35,10 @@ ifeq ($(KMALLOC_TEST),1)
 	CFLAGS :=$(CFLAGS) -D__kmalloc_test
 endif
 
+ifeq ($(VFS_TEST),1)
+	CFLAGS :=$(CFLAGS) -D__vfs_test
+endif
+
 ifneq ($(HLOG_LEVEL),)
 	CPPFLAGS :=$(CPPFLAGS) -DDEFAULT_HLOG_LEVEL=$(HLOG_LEVEL)
 endif
@@ -92,6 +96,7 @@ drivers/serial.c \
 fonts/inconsolata.c \
 fs/initrd.c \
 fs/vfs.c \
+fs/vfs_test.c \
 kernel/kernel.c \
 kernel/g_kernel.c \
 memory/kmalloc.c \
