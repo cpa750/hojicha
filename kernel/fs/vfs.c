@@ -13,9 +13,10 @@
 
 static vfs_mount_t* root_mount = NULL;
 
-static void claim_vnode(vfs_node_t* vnode);
+static void borrow_vnode(vfs_node_t* vnode);
 static void release_vnode(vfs_node_t* vnode);
 static void clear_process_fd(vfs_file_t* file);
+static vfs_node_t* traverse_mount(vfs_node_t* vnode);
 static vfs_status_t walk_path(const char* absolute_path,
                               bool stop_at_parent,
                               vfs_node_t** out,
@@ -31,9 +32,30 @@ static vfs_status_t validate_root_mount(vfs_mount_t* mount);
 vfs_status_t vfs_mount_root(vfs_mount_t* mount) {
   vfs_status_t status = validate_root_mount(mount);
   if (status != VFS_STATUS_OK) { return status; }
+  if (root_mount != NULL) { return VFS_STATUS_INVALID_ARG; }
 
+  mount->point = NULL;
+  mount->parent = NULL;
   root_mount = mount;
-  claim_vnode(mount->root);
+  borrow_vnode(mount->root);
+  return VFS_STATUS_OK;
+}
+
+vfs_status_t vfs_mount(vfs_node_t* mountpoint, vfs_mount_t* mount) {
+  vfs_status_t status = validate_root_mount(mount);
+  if (status != VFS_STATUS_OK) { return status; }
+  if (root_mount == NULL || mountpoint == NULL) {
+    return VFS_STATUS_INVALID_ARG;
+  }
+  if (mountpoint->type != VFS_NODE_DIR) { return VFS_STATUS_NOTDIR; }
+  if (mountpoint->mount != NULL) { return VFS_STATUS_INVALID_ARG; }
+
+  mount->point = mountpoint;
+  mount->parent = NULL;
+  mountpoint->mount = mount;
+
+  borrow_vnode(mountpoint);
+  borrow_vnode(mount->root);
   return VFS_STATUS_OK;
 }
 
@@ -297,7 +319,7 @@ vfs_status_t vfs_resolve_fd(uint64_t fd, vfs_file_t** out) {
   return VFS_STATUS_OK;
 }
 
-static void claim_vnode(vfs_node_t* vnode) {
+static void borrow_vnode(vfs_node_t* vnode) {
   if (vnode != NULL) { vnode->refcount++; }
 }
 
@@ -322,6 +344,17 @@ static void clear_process_fd(vfs_file_t* file) {
   }
 }
 
+static vfs_node_t* traverse_mount(vfs_node_t* vnode) {
+  if (vnode == NULL) { return NULL; }
+
+  vfs_mount_t* mount = vnode->mount;
+  if (mount == NULL || mount->root == NULL) { return vnode; }
+
+  borrow_vnode(mount->root);
+  release_vnode(vnode);
+  return mount->root;
+}
+
 static vfs_status_t walk_path(const char* absolute_path,
                               bool stop_at_parent,
                               vfs_node_t** out,
@@ -341,7 +374,7 @@ static vfs_status_t walk_path(const char* absolute_path,
 
   while (*cursor == '/') { cursor++; }
   if (*cursor == '\0') {
-    claim_vnode(current);
+    borrow_vnode(current);
     *out = current;
     return VFS_STATUS_OK;
   }
@@ -361,7 +394,7 @@ static vfs_status_t walk_path(const char* absolute_path,
 
     while (*cursor == '/') { cursor++; }
     if (stop_at_parent && *cursor == '\0') {
-      if (current_is_root) { claim_vnode(current); }
+      if (current_is_root) { borrow_vnode(current); }
       *out = current;
       SET_OUT(name_out, component);
       SET_OUT(name_len_out, component_len);
@@ -375,13 +408,14 @@ static vfs_status_t walk_path(const char* absolute_path,
       if (!current_is_root) { release_vnode(current); }
       return status;
     }
+    next = traverse_mount(next);
 
     if (!current_is_root) { release_vnode(current); }
     current = next;
     current_is_root = false;
   }
 
-  if (current_is_root) { claim_vnode(current); }
+  if (current_is_root) { borrow_vnode(current); }
   *out = current;
   return VFS_STATUS_OK;
 }

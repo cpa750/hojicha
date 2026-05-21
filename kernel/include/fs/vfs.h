@@ -64,7 +64,9 @@ typedef struct vfs_node_ops vnode_ops_t;
 typedef struct vfs_stat vfs_stat_t;
 
 struct vfs_mount {
+  vfs_node_t* point;
   vfs_node_t* root;
+  vfs_mount_t* parent;
   void* fs_data;
 };
 
@@ -86,6 +88,7 @@ struct vfs_node {
   vfs_node_type_t type;
   uint32_t refcount;
   uint32_t link_count;
+  vfs_mount_t* mount;
   void* fs_data;
 };
 
@@ -141,6 +144,11 @@ struct vfs_stat {
  * Mounts the root filesystem at `/`.
  */
 vfs_status_t vfs_mount_root(vfs_mount_t* mount);
+
+/*
+ * Mounts a filesystem on an existing directory vnode.
+ */
+vfs_status_t vfs_mount(vfs_node_t* mountpoint, vfs_mount_t* mount);
 
 /*
  * Resolves an absolute path to a vnode.

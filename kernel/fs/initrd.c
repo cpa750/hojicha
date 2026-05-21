@@ -496,6 +496,7 @@ void init_vnode(initrd_inode_t* inode, vfs_node_type_t type) {
   inode->vnode.ops = &initrd_vnode_ops;
   inode->vnode.refcount = 0;
   inode->vnode.link_count = 1;
+  inode->vnode.mount = NULL;
   inode->vnode.type = type;
 }
 
