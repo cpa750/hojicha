@@ -94,6 +94,7 @@ drivers/pit.c \
 drivers/tty.c \
 drivers/serial.c \
 fonts/inconsolata.c \
+fs/devfs.c \
 fs/initrd.c \
 fs/vfs.c \
 fs/vfs_test.c \

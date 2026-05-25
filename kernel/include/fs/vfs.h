@@ -59,7 +59,7 @@ typedef struct vfs_dirent vfs_dirent_t;
 typedef struct vfs_file vfs_file_t;
 
 typedef struct vfs_file_ops vfs_file_ops_t;
-typedef struct vfs_node_ops vnode_ops_t;
+typedef struct vfs_node_ops vfs_node_ops_t;
 
 typedef struct vfs_stat vfs_stat_t;
 
@@ -84,7 +84,7 @@ struct vfs_file {
 };
 
 struct vfs_node {
-  const vnode_ops_t* ops;
+  const vfs_node_ops_t* ops;
   vfs_node_type_t type;
   uint32_t refcount;
   uint32_t link_count;
@@ -148,7 +148,9 @@ vfs_status_t vfs_mount_root(vfs_mount_t* mount);
 /*
  * Mounts a filesystem on an existing directory vnode.
  */
-vfs_status_t vfs_mount(vfs_node_t* mountpoint, vfs_mount_t* mount);
+vfs_status_t vfs_mount(vfs_node_t* mountpoint,
+                       vfs_mount_t* mount,
+                       vfs_mount_t* parent);
 
 /*
  * Resolves an absolute path to a vnode.
@@ -255,5 +257,8 @@ vfs_status_t vfs_close(vfs_file_t* file);
  * on failure returns the relevant error code and does not modify `out`.
  */
 vfs_status_t vfs_resolve_fd(uint64_t fd, vfs_file_t** out);
+
+void vfs_vnode_borrow(vfs_node_t* vnode);
+void vfs_vnode_release(vfs_node_t* vnode);
 
 #endif  // HOJICHA_VFS_H

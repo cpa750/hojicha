@@ -6,6 +6,8 @@
 #include <drivers/serial.h>
 #include <drivers/tty.h>
 #include <drivers/vga.h>
+#include <fs/devfs.h>
+#include <fs/initrd.h>
 #include <fs/vfs.h>
 #include <hlog.h>
 #include <kernel/g_kernel.h>
@@ -22,9 +24,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "fs/initrd.h"
 #if defined(__vfs_test)
-#include "fs/vfs_test.h"
+#include <fs/vfs_test.h>
 #endif
 
 void print_ok(const char* component);
@@ -89,6 +90,7 @@ void kernel_main() {
   sched_initialize();
   print_ok("Multitasking");
   if (initrd_initalize() == 0) { print_ok("Initrd"); }
+  if (devfs_initialize() == 0) { print_ok("Devfs"); }
 
   printf("\n");
 

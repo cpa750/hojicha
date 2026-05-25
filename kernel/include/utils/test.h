@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <hlog.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 typedef struct htest_ctx htest_ctx_t;

@@ -13,8 +13,6 @@
 
 static vfs_mount_t* root_mount = NULL;
 
-static void borrow_vnode(vfs_node_t* vnode);
-static void release_vnode(vfs_node_t* vnode);
 static void clear_process_fd(vfs_file_t* file);
 static vfs_node_t* traverse_mount(vfs_node_t* vnode);
 static vfs_status_t walk_path(const char* absolute_path,
@@ -37,11 +35,13 @@ vfs_status_t vfs_mount_root(vfs_mount_t* mount) {
   mount->point = NULL;
   mount->parent = NULL;
   root_mount = mount;
-  borrow_vnode(mount->root);
+  vfs_vnode_borrow(mount->root);
   return VFS_STATUS_OK;
 }
 
-vfs_status_t vfs_mount(vfs_node_t* mountpoint, vfs_mount_t* mount) {
+vfs_status_t vfs_mount(vfs_node_t* mountpoint,
+                       vfs_mount_t* mount,
+                       vfs_mount_t* parent) {
   vfs_status_t status = validate_root_mount(mount);
   if (status != VFS_STATUS_OK) { return status; }
   if (root_mount == NULL || mountpoint == NULL) {
@@ -51,11 +51,11 @@ vfs_status_t vfs_mount(vfs_node_t* mountpoint, vfs_mount_t* mount) {
   if (mountpoint->mount != NULL) { return VFS_STATUS_INVALID_ARG; }
 
   mount->point = mountpoint;
-  mount->parent = NULL;
+  mount->parent = parent;
   mountpoint->mount = mount;
 
-  borrow_vnode(mountpoint);
-  borrow_vnode(mount->root);
+  vfs_vnode_borrow(mountpoint);
+  vfs_vnode_borrow(mount->root);
   return VFS_STATUS_OK;
 }
 
@@ -113,12 +113,12 @@ vfs_status_t vfs_open(const char* absolute_path,
     if (dir_status != VFS_STATUS_OK) { return dir_status; }
 
     vfs_status_t create_status = vfs_create(dir, name, name_len, &target);
-    release_vnode(dir);
+    vfs_vnode_release(dir);
     if (create_status != VFS_STATUS_OK) { return create_status; }
   }
 
   if (HVFS_VOP_MISSING(target, open)) {
-    release_vnode(target);
+    vfs_vnode_release(target);
     return VFS_STATUS_NOT_IMPLEMENTED;
   }
 
@@ -127,7 +127,7 @@ vfs_status_t vfs_open(const char* absolute_path,
   if (open_status == VFS_STATUS_OK) {
     sched_pb_fd_set(g_kernel.current_process, fd_idx, *out);
   } else {
-    release_vnode(target);
+    vfs_vnode_release(target);
   }
   return open_status;
 }
@@ -150,7 +150,7 @@ vfs_status_t vfs_create(vfs_node_t* dir,
   }
 
   if (out == NULL) {
-    release_vnode(created);
+    vfs_vnode_release(created);
   } else {
     *out = created;
   }
@@ -184,7 +184,7 @@ vfs_status_t vfs_mkdir(vfs_node_t* dir,
   }
 
   if (out == NULL) {
-    release_vnode(created);
+    vfs_vnode_release(created);
   } else {
     *out = created;
   }
@@ -279,13 +279,13 @@ vfs_status_t vfs_stat(const char* absolute_path, vfs_stat_t** out) {
     return status;
   }
   if (HVFS_VOP_MISSING(vnode, stat)) {
-    release_vnode(vnode);
+    vfs_vnode_release(vnode);
     SET_OUT(out, NULL);
     return VFS_STATUS_NOT_IMPLEMENTED;
   }
 
   status = vnode->ops->stat(vnode, out);
-  release_vnode(vnode);
+  vfs_vnode_release(vnode);
   return status;
 }
 
@@ -308,7 +308,7 @@ vfs_status_t vfs_close(vfs_file_t* file) {
   vfs_node_t* vnode = file->vnode;
   clear_process_fd(file);
   vfs_status_t status = file->ops->close(file);
-  release_vnode(vnode);
+  vfs_vnode_release(vnode);
   return status;
 }
 
@@ -319,11 +319,11 @@ vfs_status_t vfs_resolve_fd(uint64_t fd, vfs_file_t** out) {
   return VFS_STATUS_OK;
 }
 
-static void borrow_vnode(vfs_node_t* vnode) {
+void vfs_vnode_borrow(vfs_node_t* vnode) {
   if (vnode != NULL) { vnode->refcount++; }
 }
 
-static void release_vnode(vfs_node_t* vnode) {
+void vfs_vnode_release(vfs_node_t* vnode) {
   if (vnode == NULL || vnode->refcount == 0) { return; }
 
   vnode->refcount--;
@@ -350,8 +350,8 @@ static vfs_node_t* traverse_mount(vfs_node_t* vnode) {
   vfs_mount_t* mount = vnode->mount;
   if (mount == NULL || mount->root == NULL) { return vnode; }
 
-  borrow_vnode(mount->root);
-  release_vnode(vnode);
+  vfs_vnode_borrow(mount->root);
+  vfs_vnode_release(vnode);
   return mount->root;
 }
 
@@ -374,14 +374,14 @@ static vfs_status_t walk_path(const char* absolute_path,
 
   while (*cursor == '/') { cursor++; }
   if (*cursor == '\0') {
-    borrow_vnode(current);
+    vfs_vnode_borrow(current);
     *out = current;
     return VFS_STATUS_OK;
   }
 
   while (*cursor != '\0') {
     if (current->type != VFS_NODE_DIR || HVFS_VOP_MISSING(current, lookup)) {
-      if (!current_is_root) { release_vnode(current); }
+      if (!current_is_root) { vfs_vnode_release(current); }
       return VFS_STATUS_NOTDIR;
     }
 
@@ -394,7 +394,7 @@ static vfs_status_t walk_path(const char* absolute_path,
 
     while (*cursor == '/') { cursor++; }
     if (stop_at_parent && *cursor == '\0') {
-      if (current_is_root) { borrow_vnode(current); }
+      if (current_is_root) { vfs_vnode_borrow(current); }
       *out = current;
       SET_OUT(name_out, component);
       SET_OUT(name_len_out, component_len);
@@ -405,17 +405,17 @@ static vfs_status_t walk_path(const char* absolute_path,
     vfs_status_t status =
         current->ops->lookup(current, component, component_len, &next);
     if (status != VFS_STATUS_OK) {
-      if (!current_is_root) { release_vnode(current); }
+      if (!current_is_root) { vfs_vnode_release(current); }
       return status;
     }
     next = traverse_mount(next);
 
-    if (!current_is_root) { release_vnode(current); }
+    if (!current_is_root) { vfs_vnode_release(current); }
     current = next;
     current_is_root = false;
   }
 
-  if (current_is_root) { borrow_vnode(current); }
+  if (current_is_root) { vfs_vnode_borrow(current); }
   *out = current;
   return VFS_STATUS_OK;
 }
@@ -438,11 +438,11 @@ static vfs_status_t remove_child(vfs_node_t* dir,
   if (status != VFS_STATUS_OK) { return status; }
 
   if (expect_dir && target->type != VFS_NODE_DIR) {
-    release_vnode(target);
+    vfs_vnode_release(target);
     return VFS_STATUS_NOTDIR;
   }
   if (!expect_dir && target->type == VFS_NODE_DIR) {
-    release_vnode(target);
+    vfs_vnode_release(target);
     return VFS_STATUS_ISDIR;
   }
 
@@ -452,12 +452,12 @@ static vfs_status_t remove_child(vfs_node_t* dir,
     status = dir->ops->unlink(dir, name, name_len, flags);
   }
   if (status != VFS_STATUS_OK) {
-    release_vnode(target);
+    vfs_vnode_release(target);
     return status;
   }
 
   if (target->link_count > 0) { target->link_count--; }
-  release_vnode(target);
+  vfs_vnode_release(target);
   return VFS_STATUS_OK;
 }
 
