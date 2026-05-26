@@ -1,5 +1,4 @@
 #include <fs/devfs.h>
-#include <fs/initrd.h>
 #include <fs/vfs.h>
 #include <hlog.h>
 #include <stdbool.h>
@@ -25,6 +24,7 @@ struct devfs_node {
   uint64_t minor;
   char* name;
   uint64_t name_len;
+  uint64_t len;
 };
 
 typedef struct devfs_open_dir devfs_open_dir_t;
@@ -32,8 +32,17 @@ struct devfs_open_dir {
   devfs_node_t* current;
 };
 
+static vfs_status_t dir_seek(vfs_file_t* vfile,
+                             int64_t offset,
+                             vfs_seek_whence_t whence,
+                             uint64_t* new_pos);
+static void init_vnode(vfs_node_t* vnode,
+                       vfs_node_type_t type,
+                       devfs_node_t* node);
+
 static vfs_node_t* devfs_root;
-static devfs_device_t** dev_table;
+static devfs_node_t* devfs_root_node;
+static devfs_device_t*** dev_table;
 
 static const vfs_node_ops_t devfs_node_ops = {.lookup = devfs_lookup,
                                               .open = devfs_open,
@@ -53,12 +62,14 @@ static const vfs_file_ops_t devfs_file_ops = {
 };
 
 static devfs_node_t* create_child(devfs_node_t* parent,
-                                  vfs_node_t* vnode,
+                                  vfs_node_type_t type,
                                   devfs_major_t major,
                                   uint64_t minor,
                                   const char* name,
                                   uint64_t name_len);
-static bool delete_child(devfs_node_t* parent, devfs_node_t* child);
+static devfs_node_t* detach_child(devfs_node_t* parent,
+                                  const char* name,
+                                  uint64_t name_len);
 static devfs_node_t* find_child(devfs_node_t* first_child,
                                 const char* name,
                                 uint64_t name_len);
@@ -84,23 +95,31 @@ bool devfs_initialize() {
 
   vfs_mount_t* mount = (vfs_mount_t*)calloc(1, sizeof(vfs_mount_t));
   devfs_root = (vfs_node_t*)calloc(1, sizeof(vfs_node_t));
-  dev_table = (devfs_device_t**)calloc(
+  devfs_root_node = (devfs_node_t*)calloc(1, sizeof(devfs_node_t));
+  dev_table = (devfs_device_t***)calloc(
       HOJICHA_MINOR_MAX, sizeof(devfs_device_t*) * HOJICHA_MAJOR_MAX);
-  if (mount == NULL || devfs_root == NULL || dev_table == NULL) {
+  if (mount == NULL || devfs_root == NULL || devfs_root_node == NULL ||
+      dev_table == NULL) {
     free(mount);
     free(devfs_root);
+    free(devfs_root_node);
     free(dev_table);
     hlog_write(HLOG_ERROR, "Error initializing devfs, OOM");
     vfs_vnode_release(root);
     vfs_vnode_release(dev);
     return false;
   }
-  devfs_root->type = VFS_NODE_DIR;
+  init_vnode(devfs_root, VFS_NODE_DIR, devfs_root_node);
+  devfs_root_node->vnode = devfs_root;
 
   mount->root = devfs_root;
   mount->fs_data = NULL;
   vfs_status_t mount_st = vfs_mount(dev, mount, root->mount);
   if (mount_st != VFS_STATUS_OK) {
+    free(mount);
+    free(devfs_root_node);
+    free(devfs_root);
+    free(dev_table);
     hlog_write(HLOG_ERROR,
                "Error initializing devfs, could not mount filesystem: %d",
                mkdir_status);
@@ -142,63 +161,124 @@ vfs_status_t devfs_lookup(vfs_node_t* dir,
 
 vfs_status_t devfs_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
   if (vnode == NULL || out == NULL) { return VFS_STATUS_INVALID_ARG; }
-  *out = NULL;
+  SET_OUT(out, NULL);
   if ((flags & VFS_OPEN_DIRECTORY) && vnode->type != VFS_NODE_DIR) {
     return VFS_STATUS_NOTDIR;
   }
 
-  if ((flags & VFS_OPEN_READ) && vnode->type != VFS_NODE_FILE) {
-    return VFS_STATUS_ISDIR;  // TODO: this should really be decided based
-                              // on actual filetype
-  }
-
-  devfs_open_dir_t* dir = (devfs_open_dir_t*)malloc(sizeof(devfs_open_dir_t));
-  vfs_file_t* vfile = (vfs_file_t*)malloc(sizeof(vfs_file_t));
-  if (dir == NULL || vfile == NULL) {
-    free(dir);
-    free(vfile);
-    return VFS_STATUS_NOMEM;
+  if ((flags & VFS_OPEN_READ) && vnode->type != VFS_NODE_DEVICE) {
+    return VFS_STATUS_ISDIR;
   }
 
   if (vnode->type == VFS_NODE_DIR) {
+    devfs_open_dir_t* dir = (devfs_open_dir_t*)malloc(sizeof(devfs_open_dir_t));
+    vfs_file_t* vfile = (vfs_file_t*)malloc(sizeof(vfs_file_t));
+    if (dir == NULL || vfile == NULL) {
+      free(dir);
+      free(vfile);
+      return VFS_STATUS_NOMEM;
+    }
+
     dir->current = ((devfs_node_t*)(vnode->fs_data))->first_child;
+    vfile->flags = flags;
+    vfile->fs_data = (void*)dir;
+    vfile->offset = 0;
+    vfile->vnode = vnode;
+    vfile->ops = &devfs_file_ops;
+    *out = vfile;
+    return VFS_STATUS_OK;
   }
 
-  vfile->flags = flags;
-  vfile->fs_data = NULL;
-  vfile->offset = 0;
-  vfile->vnode = vnode;
-  vfile->fs_data = (void*)dir;
-  vfile->ops = &devfs_file_ops;
+  devfs_node_t* dev_node = (devfs_node_t*)vnode->fs_data;
+  devfs_device_t* dev = dev_table[dev_node->major][dev_node->minor];
+  if (dev != NULL && dev->node_ops != NULL && dev->node_ops->open != NULL) {
+    return dev->node_ops->open(vnode, flags, out);
+  }
 
-  if (out != NULL) { *out = vfile; }
-  return VFS_STATUS_OK;
+  return VFS_STATUS_NOT_IMPLEMENTED;
 }
 
 vfs_status_t devfs_close(vfs_file_t* vfile) {
-  return VFS_STATUS_NOT_IMPLEMENTED;
+  if (vfile->vnode->type == VFS_NODE_DIR) {
+    free(vfile->fs_data);
+    free(vfile);
+    return VFS_STATUS_OK;
+  }
+  devfs_node_t* dev_node = (devfs_node_t*)vfile->vnode->fs_data;
+  devfs_device_t* dev = dev_table[dev_node->major][dev_node->minor];
+  if (dev == NULL || dev->file_ops == NULL || dev->file_ops->close == NULL) {
+    return VFS_STATUS_NOT_IMPLEMENTED;
+  }
+  return dev->file_ops->close(vfile);
 }
 
 vfs_status_t devfs_read(vfs_file_t* vfile,
                         void* buffer,
                         uint64_t len,
                         uint64_t* bytes_read_out) {
-  return VFS_STATUS_NOT_IMPLEMENTED;
+  devfs_node_t* dev_node = (devfs_node_t*)vfile->vnode->fs_data;
+  devfs_device_t* dev = dev_table[dev_node->major][dev_node->minor];
+  if (dev == NULL || dev->file_ops == NULL || dev->file_ops->read == NULL) {
+    return VFS_STATUS_NOT_IMPLEMENTED;
+  }
+  return dev->file_ops->read(vfile, buffer, len, bytes_read_out);
 }
+
 vfs_status_t devfs_write(vfs_file_t* file,
                          void* buffer,
                          uint64_t len,
                          uint64_t* bytes_written_out) {
-  return VFS_STATUS_NOT_IMPLEMENTED;
+  devfs_node_t* dev_node = (devfs_node_t*)file->vnode->fs_data;
+  devfs_device_t* dev = dev_table[dev_node->major][dev_node->minor];
+  if (dev == NULL || dev->file_ops == NULL || dev->file_ops->write == NULL) {
+    return VFS_STATUS_NOT_IMPLEMENTED;
+  }
+  return dev->file_ops->write(file, buffer, len, bytes_written_out);
 }
+
 vfs_status_t devfs_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
-  return VFS_STATUS_NOT_IMPLEMENTED;
+  if (vdir == NULL) { return VFS_STATUS_NOENT; }
+  if (vdir->vnode->type != VFS_NODE_DIR) { return VFS_STATUS_NOTDIR; }
+
+  devfs_open_dir_t* file = (devfs_open_dir_t*)vdir->fs_data;
+
+  if (file->current == NULL) {
+    SET_OUT(out, NULL);
+    return VFS_STATUS_EOF;
+  }
+
+  devfs_node_t* current = file->current;
+  file->current = file->current->next;
+  vdir->offset++;
+
+  vfs_dirent_t* ret = (vfs_dirent_t*)malloc(sizeof(vfs_dirent_t));
+  if (ret == NULL) { return VFS_STATUS_NOMEM; }
+
+  ret->name = vfs_clone_name(
+      current->name, current->name_len, current->vnode->type == VFS_NODE_DIR);
+  if (ret->name == NULL) {
+    free(ret);
+    return VFS_STATUS_NOMEM;
+  }
+  ret->inode_no = 0;
+  SET_OUT(out, ret);
+  return VFS_STATUS_OK;
 }
+
 vfs_status_t devfs_seek(vfs_file_t* vfile,
                         int64_t offset,
                         vfs_seek_whence_t whence,
                         uint64_t* new_pos) {
-  return VFS_STATUS_NOT_IMPLEMENTED;
+  if (vfile->vnode->type == VFS_NODE_DIR) {
+    return dir_seek(vfile, offset, whence, new_pos);
+  }
+
+  devfs_node_t* dev_node = (devfs_node_t*)vfile->vnode->fs_data;
+  devfs_device_t* dev = dev_table[dev_node->major][dev_node->minor];
+  if (dev == NULL || dev->file_ops == NULL || dev->file_ops->seek == NULL) {
+    return VFS_STATUS_NOT_IMPLEMENTED;
+  }
+  return dev->file_ops->seek(vfile, offset, whence, new_pos);
 }
 
 vfs_status_t devfs_create_file(vfs_node_t* dir,
@@ -207,11 +287,33 @@ vfs_status_t devfs_create_file(vfs_node_t* dir,
                                vfs_node_t** out) {
   return VFS_STATUS_NOT_IMPLEMENTED;
 }
+
 vfs_status_t devfs_create_dir(vfs_node_t* dir,
                               const char* name,
                               uint32_t name_len,
                               vfs_node_t** out) {
-  return VFS_STATUS_NOT_IMPLEMENTED;
+  if (dir == NULL || dir->type != VFS_NODE_DIR || name == NULL) {
+    SET_OUT(out, NULL);
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  while (name_len > 0 && name[name_len - 1] == '/') { --name_len; }
+  if (!vfs_validate_name(name, name_len)) {
+    SET_OUT(out, NULL);
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  devfs_node_t* dir_node = (devfs_node_t*)dir->fs_data;
+  devfs_node_t* child =
+      create_child(dir_node, VFS_NODE_DIR, 0, 0, name, name_len);
+  if (child == NULL) {
+    SET_OUT(out, NULL);
+    return VFS_STATUS_NOMEM;
+  }
+
+  vfs_vnode_borrow(child->vnode);
+  SET_OUT(out, child->vnode);
+  return VFS_STATUS_OK;
 }
 
 vfs_status_t devfs_delete_file(vfs_node_t* dir,
@@ -224,34 +326,76 @@ vfs_status_t devfs_delete_dir(vfs_node_t* dir,
                               const char* name,
                               uint32_t name_len,
                               uint32_t flags) {
-  return VFS_STATUS_NOT_IMPLEMENTED;
+  if (dir == NULL || dir->type != VFS_NODE_DIR || name == NULL ||
+      name_len == 0) {
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  devfs_node_t* dir_node = (devfs_node_t*)dir->fs_data;
+  devfs_node_t* child = find_child(dir_node->first_child, name, name_len);
+  if (child == NULL) { return VFS_STATUS_NOENT; }
+  if (child->vnode->type != VFS_NODE_DIR) { return VFS_STATUS_NOTDIR; }
+  if (child->first_child != NULL) { return VFS_STATUS_NOTEMPTY; }
+
+  return detach_child(dir_node, name, name_len) == NULL ? VFS_STATUS_NOENT
+                                                        : VFS_STATUS_OK;
 }
 
 vfs_status_t devfs_stat(vfs_node_t* vnode, vfs_stat_t** out) {
-  return VFS_STATUS_NOT_IMPLEMENTED;
+  if (vnode->type == VFS_NODE_DIR) {
+    vfs_stat_t* ret = (vfs_stat_t*)malloc(sizeof(vfs_stat_t));
+    if (ret == NULL) { return VFS_STATUS_NOMEM; }
+
+    ret->size = ((devfs_node_t*)vnode->fs_data)->len;
+    ret->type = vnode->type;
+    SET_OUT(out, ret);
+    return VFS_STATUS_OK;
+  }
+
+  devfs_node_t* dev_node = (devfs_node_t*)vnode->fs_data;
+  devfs_device_t* dev = dev_table[dev_node->major][dev_node->minor];
+  if (dev == NULL || dev->file_ops == NULL || dev->node_ops->stat == NULL) {
+    return VFS_STATUS_NOT_IMPLEMENTED;
+  }
+  return dev->node_ops->stat(vnode, out);
 }
 
-void devfs_free(vfs_node_t* vnode) {}
+void devfs_free(vfs_node_t* vnode) {
+  if (vnode == NULL) { return; }
+
+  if (vnode->type != VFS_NODE_DIR) {
+    devfs_node_t* dev_node = (devfs_node_t*)vnode->fs_data;
+    devfs_device_t* dev = dev_table[dev_node->major][dev_node->minor];
+    if (dev != NULL && dev->file_ops != NULL && dev->node_ops->free != NULL) {
+      dev->node_ops->free(vnode);
+    }
+  }
+
+  devfs_node_t* node = (devfs_node_t*)vnode->fs_data;
+  if (node != NULL) {
+    free(node->name);
+    free(node);
+  }
+  free(vnode);
+}
 
 static devfs_node_t* create_child(devfs_node_t* parent,
-                                  vfs_node_t* vnode,
+                                  vfs_node_type_t type,
                                   devfs_major_t major,
                                   uint64_t minor,
                                   const char* name,
                                   uint64_t name_len) {
-  if (parent == NULL || name == NULL || name_len == 0) { return NULL; }
+  if (parent == NULL || !vfs_validate_name(name, name_len)) { return NULL; }
 
   devfs_node_t* child = (devfs_node_t*)malloc(sizeof(devfs_node_t));
-  if (child == NULL) { return NULL; }
-
-  char* owned_name = (char*)malloc(name_len + 1);
-  if (owned_name == NULL) {
+  vfs_node_t* vnode = (vfs_node_t*)malloc(sizeof(vfs_node_t));
+  char* owned_name = vfs_clone_name(name, name_len, false);
+  if (child == NULL || vnode == NULL || owned_name == NULL) {
     free(child);
+    free(vnode);
+    free(owned_name);
     return NULL;
   }
-
-  memcpy(owned_name, name, name_len);
-  owned_name[name_len] = '\0';
 
   child->vnode = vnode;
   child->first_child = NULL;
@@ -260,36 +404,82 @@ static devfs_node_t* create_child(devfs_node_t* parent,
   child->minor = minor;
   child->name = owned_name;
   child->name_len = name_len;
+  child->len = 0;
+  init_vnode(vnode, type, child);
 
   parent->first_child = child;
+  parent->len++;
   return child;
 }
 
-static bool delete_child(devfs_node_t* parent, devfs_node_t* child) {
-  if (parent == NULL || child == NULL || child->first_child != NULL) {
-    return false;
-  }
-
+static devfs_node_t* detach_child(devfs_node_t* parent,
+                                  const char* name,
+                                  uint64_t name_len) {
   devfs_node_t* prev = NULL;
-  devfs_node_t* cur = parent->first_child;
-  while (cur != NULL) {
-    if (cur == child) {
+  for (devfs_node_t* cur = parent->first_child; cur != NULL; cur = cur->next) {
+    if (cur->name_len == name_len && memcmp(name, cur->name, name_len) == 0) {
       if (prev == NULL) {
         parent->first_child = cur->next;
       } else {
         prev->next = cur->next;
       }
-
-      free(cur->name);
-      free(cur);
-      return true;
+      cur->next = NULL;
+      if (parent->len > 0) { parent->len--; }
+      return cur;
     }
 
     prev = cur;
-    cur = cur->next;
   }
 
-  return false;
+  return NULL;
+}
+
+static vfs_status_t dir_seek(vfs_file_t* vfile,
+                             int64_t offset,
+                             vfs_seek_whence_t whence,
+                             uint64_t* new_pos) {
+  uint64_t len = ((devfs_node_t*)vfile->vnode->fs_data)->len;
+  uint64_t pos;
+  int64_t origin;
+  switch (whence) {
+    case VFS_SEEK_SET:
+      origin = 0;
+      break;
+    case VFS_SEEK_CUR:
+      origin = (int64_t)vfile->offset;
+      break;
+    case VFS_SEEK_END:
+      origin = (int64_t)len;
+      break;
+  }
+
+  if (offset + origin < 0) {
+    pos = 0;
+  } else if (offset + origin > (int64_t)len) {
+    pos = len;
+  } else {
+    pos = offset + origin;
+  }
+
+  devfs_open_dir_t* dir = (devfs_open_dir_t*)vfile->fs_data;
+  dir->current = ((devfs_node_t*)vfile->vnode->fs_data)->first_child;
+  uint64_t i = pos;
+  while (i-- > 0 && dir->current != NULL) { dir->current = dir->current->next; }
+
+  vfile->offset = pos;
+  SET_OUT(new_pos, pos);
+  return VFS_STATUS_OK;
+}
+
+static void init_vnode(vfs_node_t* vnode,
+                       vfs_node_type_t type,
+                       devfs_node_t* node) {
+  vnode->fs_data = node;
+  vnode->ops = &devfs_node_ops;
+  vnode->refcount = 0;
+  vnode->link_count = 1;
+  vnode->mount = NULL;
+  vnode->type = type;
 }
 
 static devfs_node_t* find_child(devfs_node_t* first_child,
@@ -302,4 +492,3 @@ static devfs_node_t* find_child(devfs_node_t* first_child,
   }
   return NULL;
 }
-

@@ -59,8 +59,6 @@ initrd_inode_t* detach_child(initrd_inode_t* parent,
                              uint64_t name_len);
 bool is_zero_block(void* block);
 vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out);
-bool validate_name(const char* name, uint64_t name_len);
-char* clone_name(const char* name, uint64_t name_len, bool trailing_slash);
 
 static const vfs_node_ops_t initrd_vnode_ops = {
     .lookup = initrd_lookup,
@@ -257,7 +255,7 @@ vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
   vfs_dirent_t* ret = (vfs_dirent_t*)malloc(sizeof(vfs_dirent_t));
   if (ret == NULL) { return VFS_STATUS_NOMEM; }
 
-  ret->name = clone_name(
+  ret->name = vfs_clone_name(
       current->name, current->name_size, current->vnode.type == VFS_NODE_DIR);
   if (ret->name == NULL) {
     free(ret);
@@ -327,7 +325,7 @@ vfs_status_t initrd_create_file(vfs_node_t* dir,
                                 uint32_t name_len,
                                 vfs_node_t** out) {
   if (dir == NULL || dir->type != VFS_NODE_DIR ||
-      !validate_name(name, name_len)) {
+      !vfs_validate_name(name, name_len)) {
     return VFS_STATUS_INVALID_ARG;
   }
 
@@ -337,7 +335,7 @@ vfs_status_t initrd_create_file(vfs_node_t* dir,
     return VFS_STATUS_NOMEM;
   }
 
-  char* file_name = clone_name(name, name_len, false);
+  char* file_name = vfs_clone_name(name, name_len, false);
   if (file_name == NULL) {
     free(inode);
     SET_OUT_NULL(out);
@@ -372,7 +370,7 @@ vfs_status_t initrd_create_dir(vfs_node_t* dir,
   }
 
   while (name_len > 0 && name[name_len - 1] == '/') { --name_len; }
-  if (!validate_name(name, name_len)) {
+  if (!vfs_validate_name(name, name_len)) {
     SET_OUT_NULL(out);
     return VFS_STATUS_INVALID_ARG;
   }
@@ -457,7 +455,7 @@ initrd_inode_t* create_dir(const char* name,
                            uint64_t name_len,
                            initrd_inode_t* parent) {
   initrd_inode_t* dir = (initrd_inode_t*)malloc(sizeof(initrd_inode_t));
-  char* dir_name = clone_name(name, name_len, false);
+  char* dir_name = vfs_clone_name(name, name_len, false);
   if (dir == NULL || dir_name == NULL) {
     free(dir);
     free(dir_name);
@@ -631,30 +629,6 @@ bool is_zero_block(void* block) {
   }
 
   return true;
-}
-
-bool validate_name(const char* name, uint64_t name_len) {
-  // TODO: More thorough validation
-  if (name == NULL || name_len == 0) { return false; }
-
-  for (uint64_t i = 0; i < name_len; ++i) {
-    if (name[i] == '/' || (name[i] == '\0' && i < name_len - 1)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-char* clone_name(const char* name, uint64_t name_len, bool trailing_slash) {
-  uint64_t alloc_len = name_len + (trailing_slash ? 1 : 0);
-  char* cloned = (char*)malloc(alloc_len + 1);
-  if (cloned == NULL) { return NULL; }
-
-  memcpy(cloned, name, name_len);
-  if (trailing_slash) { cloned[name_len++] = '/'; }
-  cloned[name_len] = '\0';
-  return cloned;
 }
 
 vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out) {

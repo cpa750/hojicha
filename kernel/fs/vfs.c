@@ -3,6 +3,8 @@
 #include <multitask/scheduler.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define SET_OUT(out, val)                                                      \
   if (out != NULL) { *out = val; }
@@ -331,6 +333,29 @@ void vfs_vnode_release(vfs_node_t* vnode) {
       !HVFS_VOP_MISSING(vnode, free)) {
     vnode->ops->free(vnode);
   }
+}
+
+bool vfs_validate_name(const char* name, uint64_t name_len) {
+  if (name == NULL || name_len == 0) { return false; }
+
+  for (uint64_t i = 0; i < name_len; ++i) {
+    if (name[i] == '/' || (name[i] == '\0' && i < name_len - 1)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+char* vfs_clone_name(const char* name, uint64_t name_len, bool trailing_slash) {
+  uint64_t alloc_len = name_len + (trailing_slash ? 1 : 0);
+  char* cloned = (char*)malloc(alloc_len + 1);
+  if (cloned == NULL) { return NULL; }
+
+  memcpy(cloned, name, name_len);
+  if (trailing_slash) { cloned[name_len++] = '/'; }
+  cloned[name_len] = '\0';
+  return cloned;
 }
 
 static void clear_process_fd(vfs_file_t* file) {

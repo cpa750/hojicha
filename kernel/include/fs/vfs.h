@@ -1,6 +1,7 @@
 #ifndef HOJICHA_VFS_H
 #define HOJICHA_VFS_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #define MAX_FDS 256
@@ -260,5 +261,7 @@ vfs_status_t vfs_resolve_fd(uint64_t fd, vfs_file_t** out);
 
 void vfs_vnode_borrow(vfs_node_t* vnode);
 void vfs_vnode_release(vfs_node_t* vnode);
+bool vfs_validate_name(const char* name, uint64_t name_len);
+char* vfs_clone_name(const char* name, uint64_t name_len, bool trailing_slash);
 
 #endif  // HOJICHA_VFS_H
