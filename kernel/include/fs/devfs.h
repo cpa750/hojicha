@@ -18,8 +18,9 @@ bool devfs_initialize();
 
 vfs_status_t devfs_register(devfs_major_t major,
                             uint64_t minor,
-                            vfs_node_ops_t* node_ops,
-                            vfs_file_ops_t* file_ops);
+                            devfs_device_t* dev,
+                            const char* name,
+                            uint64_t name_len);
 vfs_status_t devfs_unregister(devfs_major_t major, uint64_t minor);
 
 vfs_status_t devfs_lookup(vfs_node_t* dir,

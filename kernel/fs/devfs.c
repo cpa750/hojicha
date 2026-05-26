@@ -9,15 +9,10 @@
 #define SET_OUT(out, val)                                                      \
   if (out != NULL) { *out = val; }
 
-typedef struct devfs_device devfs_device_t;
-struct devfs_device {
-  vfs_file_ops_t* file_ops;
-  vfs_node_ops_t* node_ops;
-};
-
 typedef struct devfs_node devfs_node_t;
 struct devfs_node {
   vfs_node_t* vnode;
+  devfs_node_t* parent;
   devfs_node_t* first_child;
   devfs_node_t* next;
   devfs_major_t major;
@@ -25,6 +20,13 @@ struct devfs_node {
   char* name;
   uint64_t name_len;
   uint64_t len;
+};
+
+typedef struct devfs_device devfs_device_t;
+struct devfs_device {
+  vfs_file_ops_t* file_ops;
+  vfs_node_ops_t* node_ops;
+  devfs_node_t* node;
 };
 
 typedef struct devfs_open_dir devfs_open_dir_t;
@@ -67,9 +69,7 @@ static devfs_node_t* create_child(devfs_node_t* parent,
                                   uint64_t minor,
                                   const char* name,
                                   uint64_t name_len);
-static devfs_node_t* detach_child(devfs_node_t* parent,
-                                  const char* name,
-                                  uint64_t name_len);
+static devfs_node_t* detach_child(devfs_node_t* target);
 static devfs_node_t* find_child(devfs_node_t* first_child,
                                 const char* name,
                                 uint64_t name_len);
@@ -111,6 +111,7 @@ bool devfs_initialize() {
   }
   init_vnode(devfs_root, VFS_NODE_DIR, devfs_root_node);
   devfs_root_node->vnode = devfs_root;
+  devfs_root_node->parent = NULL;
 
   mount->root = devfs_root;
   mount->fs_data = NULL;
@@ -135,12 +136,20 @@ bool devfs_initialize() {
 
 vfs_status_t devfs_register(devfs_major_t major,
                             uint64_t minor,
-                            vfs_node_ops_t* node_ops,
-                            vfs_file_ops_t* file_ops) {
+                            devfs_device_t* dev,
+                            const char* name,
+                            uint64_t name_len) {
+  if (dev_table[major][minor] != NULL) { return VFS_STATUS_EXISTS; }
+  if (dev == NULL) { return VFS_STATUS_INVALID_ARG; }
+  dev->node = create_child(
+      devfs_root_node, VFS_NODE_DEVICE, major, minor, name, name_len);
+  dev_table[major][minor] = dev;
   return VFS_STATUS_OK;
 }
 
 vfs_status_t devfs_unregister(devfs_major_t major, uint64_t minor) {
+  if (dev_table[major][minor] == NULL) { return VFS_STATUS_NOENT; }
+  detach_child(dev_table[major][minor]->node);
   return VFS_STATUS_OK;
 }
 
@@ -337,8 +346,7 @@ vfs_status_t devfs_delete_dir(vfs_node_t* dir,
   if (child->vnode->type != VFS_NODE_DIR) { return VFS_STATUS_NOTDIR; }
   if (child->first_child != NULL) { return VFS_STATUS_NOTEMPTY; }
 
-  return detach_child(dir_node, name, name_len) == NULL ? VFS_STATUS_NOENT
-                                                        : VFS_STATUS_OK;
+  return detach_child(child) == NULL ? VFS_STATUS_NOENT : VFS_STATUS_OK;
 }
 
 vfs_status_t devfs_stat(vfs_node_t* vnode, vfs_stat_t** out) {
@@ -398,6 +406,7 @@ static devfs_node_t* create_child(devfs_node_t* parent,
   }
 
   child->vnode = vnode;
+  child->parent = parent;
   child->first_child = NULL;
   child->next = parent->first_child;
   child->major = major;
@@ -412,18 +421,20 @@ static devfs_node_t* create_child(devfs_node_t* parent,
   return child;
 }
 
-static devfs_node_t* detach_child(devfs_node_t* parent,
-                                  const char* name,
-                                  uint64_t name_len) {
+static devfs_node_t* detach_child(devfs_node_t* target) {
+  if (target == NULL || target->parent == NULL) { return NULL; }
+
+  devfs_node_t* parent = target->parent;
   devfs_node_t* prev = NULL;
   for (devfs_node_t* cur = parent->first_child; cur != NULL; cur = cur->next) {
-    if (cur->name_len == name_len && memcmp(name, cur->name, name_len) == 0) {
+    if (cur == target) {
       if (prev == NULL) {
         parent->first_child = cur->next;
       } else {
         prev->next = cur->next;
       }
       cur->next = NULL;
+      cur->parent = NULL;
       if (parent->len > 0) { parent->len--; }
       return cur;
     }

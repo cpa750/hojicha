@@ -19,6 +19,7 @@ typedef enum {
   VFS_STATUS_NOT_IMPLEMENTED,
   VFS_STATUS_FLAGS,
   VFS_STATUS_NOTEMPTY,
+  VFS_STATUS_EXISTS,
 } vfs_status_t;
 
 typedef enum {

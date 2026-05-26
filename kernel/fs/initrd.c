@@ -54,9 +54,7 @@ uint64_t get_name_start_idx(char* filename, uint64_t len);
 initrd_inode_t* get_or_create_prefix(const char* path,
                                      uint64_t path_len,
                                      initrd_inode_t* root);
-initrd_inode_t* detach_child(initrd_inode_t* parent,
-                             const char* name,
-                             uint64_t name_len);
+initrd_inode_t* detach_child(initrd_inode_t* target);
 bool is_zero_block(void* block);
 vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out);
 
@@ -403,8 +401,7 @@ vfs_status_t initrd_delete_file(vfs_node_t* dir,
   if (child == NULL) { return VFS_STATUS_NOENT; }
   if (child->vnode.type == VFS_NODE_DIR) { return VFS_STATUS_ISDIR; }
 
-  return detach_child(idir, name, name_len) == NULL ? VFS_STATUS_NOENT
-                                                    : VFS_STATUS_OK;
+  return detach_child(child) == NULL ? VFS_STATUS_NOENT : VFS_STATUS_OK;
 }
 
 vfs_status_t initrd_delete_dir(vfs_node_t* dir,
@@ -422,8 +419,7 @@ vfs_status_t initrd_delete_dir(vfs_node_t* dir,
   if (child->vnode.type != VFS_NODE_DIR) { return VFS_STATUS_NOTDIR; }
   if (child->first_child != NULL) { return VFS_STATUS_NOTEMPTY; }
 
-  return detach_child(idir, name, name_len) == NULL ? VFS_STATUS_NOENT
-                                                    : VFS_STATUS_OK;
+  return detach_child(child) == NULL ? VFS_STATUS_NOENT : VFS_STATUS_OK;
 }
 
 vfs_status_t initrd_stat(vfs_node_t* vnode, vfs_stat_t** out) {
@@ -600,19 +596,21 @@ initrd_inode_t* get_or_create_prefix(const char* path,
   return ret;
 }
 
-initrd_inode_t* detach_child(initrd_inode_t* parent,
-                             const char* name,
-                             uint64_t name_len) {
+initrd_inode_t* detach_child(initrd_inode_t* target) {
+  if (target == NULL || target->parent == NULL) { return NULL; }
+
+  initrd_inode_t* parent = target->parent;
   initrd_inode_t* prev = NULL;
   for (initrd_inode_t* n = parent->first_child; n != NULL;
        n = n->next_sibling) {
-    if (n->name_size == name_len && memcmp(name, n->name, name_len) == 0) {
+    if (n == target) {
       if (prev == NULL) {
         parent->first_child = n->next_sibling;
       } else {
         prev->next_sibling = n->next_sibling;
       }
       n->next_sibling = NULL;
+      n->parent = NULL;
       if (parent->len > 0) { parent->len--; }
       return n;
     }
