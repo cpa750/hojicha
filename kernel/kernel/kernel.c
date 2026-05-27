@@ -1,5 +1,6 @@
 #include <cpu/gdt.h>
 #include <cpu/idt.h>
+#include <dev/chardev.h>
 #include <drivers/keyboard.h>
 #include <drivers/pic.h>
 #include <drivers/pit.h>
@@ -24,6 +25,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#if defined(__chardev_test)
+#include <dev/chardev_test.h>
+#endif
 #if defined(__vfs_test)
 #include <fs/vfs_test.h>
 #endif
@@ -90,7 +94,19 @@ void kernel_main() {
   sched_initialize();
   print_ok("Multitasking");
   if (initrd_initalize() == 0) { print_ok("Initrd"); }
-  if (devfs_initialize() == 0) { print_ok("Devfs"); }
+  if (devfs_initialize()) {
+    print_ok("Devfs");
+    chardev_initialize();
+    print_ok("Character Devices");
+  }
+
+#if defined(__vfs_test)
+  vfs_test();
+#endif
+
+#if defined(__chardev_test)
+  chardev_test();
+#endif
 
   printf("\n");
 
@@ -107,10 +123,6 @@ void kernel_main() {
   printf("\n------------------------------------------------------------\n");
   printf("|                Hojicha kernel initialized.               |\n");
   printf("------------------------------------------------------------\n\n");
-
-#if defined(__vfs_test)
-  vfs_test();
-#endif
 
   asm volatile("sti");
 

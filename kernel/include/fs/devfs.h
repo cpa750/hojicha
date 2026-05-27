@@ -14,8 +14,10 @@ typedef enum {
 
 typedef struct devfs_device devfs_device_t;
 
-bool devfs_initialize();
+bool devfs_initialize(void);
 
+devfs_device_t* devfs_device_new(vfs_file_ops_t* file_ops,
+                                 vfs_node_ops_t* node_ops);
 vfs_status_t devfs_register(devfs_major_t major,
                             uint64_t minor,
                             devfs_device_t* dev,

@@ -34,17 +34,9 @@ struct devfs_open_dir {
   devfs_node_t* current;
 };
 
-static vfs_status_t dir_seek(vfs_file_t* vfile,
-                             int64_t offset,
-                             vfs_seek_whence_t whence,
-                             uint64_t* new_pos);
-static void init_vnode(vfs_node_t* vnode,
-                       vfs_node_type_t type,
-                       devfs_node_t* node);
-
 static vfs_node_t* devfs_root;
 static devfs_node_t* devfs_root_node;
-static devfs_device_t*** dev_table;
+static devfs_device_t* (*dev_table)[HOJICHA_MINOR_MAX];
 
 static const vfs_node_ops_t devfs_node_ops = {.lookup = devfs_lookup,
                                               .open = devfs_open,
@@ -63,6 +55,13 @@ static const vfs_file_ops_t devfs_file_ops = {
     .close = devfs_close,
 };
 
+static vfs_status_t dir_seek(vfs_file_t* vfile,
+                             int64_t offset,
+                             vfs_seek_whence_t whence,
+                             uint64_t* new_pos);
+static void init_vnode(vfs_node_t* vnode,
+                       vfs_node_type_t type,
+                       devfs_node_t* node);
 static devfs_node_t* create_child(devfs_node_t* parent,
                                   vfs_node_type_t type,
                                   devfs_major_t major,
@@ -73,6 +72,8 @@ static devfs_node_t* detach_child(devfs_node_t* target);
 static devfs_node_t* find_child(devfs_node_t* first_child,
                                 const char* name,
                                 uint64_t name_len);
+static devfs_device_t* get_device(devfs_node_t* node);
+static void init_vfile(vfs_file_t* vfile, vfs_node_t* vnode, uint32_t flags);
 
 bool devfs_initialize() {
   vfs_node_t* root = NULL;
@@ -96,8 +97,7 @@ bool devfs_initialize() {
   vfs_mount_t* mount = (vfs_mount_t*)calloc(1, sizeof(vfs_mount_t));
   devfs_root = (vfs_node_t*)calloc(1, sizeof(vfs_node_t));
   devfs_root_node = (devfs_node_t*)calloc(1, sizeof(devfs_node_t));
-  dev_table = (devfs_device_t***)calloc(
-      HOJICHA_MINOR_MAX, sizeof(devfs_device_t*) * HOJICHA_MAJOR_MAX);
+  dev_table = calloc(HOJICHA_MAJOR_MAX, sizeof(*dev_table));
   if (mount == NULL || devfs_root == NULL || devfs_root_node == NULL ||
       dev_table == NULL) {
     free(mount);
@@ -134,6 +134,15 @@ bool devfs_initialize() {
   return true;
 }
 
+devfs_device_t* devfs_device_new(vfs_file_ops_t* file_ops,
+                                 vfs_node_ops_t* node_ops) {
+  devfs_device_t* dev = (devfs_device_t*)calloc(1, sizeof(devfs_device_t));
+  if (dev == NULL) { return NULL; }
+  dev->file_ops = file_ops;
+  dev->node_ops = node_ops;
+  return dev;
+}
+
 vfs_status_t devfs_register(devfs_major_t major,
                             uint64_t minor,
                             devfs_device_t* dev,
@@ -141,8 +150,11 @@ vfs_status_t devfs_register(devfs_major_t major,
                             uint64_t name_len) {
   if (dev_table[major][minor] != NULL) { return VFS_STATUS_EXISTS; }
   if (dev == NULL) { return VFS_STATUS_INVALID_ARG; }
-  dev->node = create_child(
+  devfs_node_t* node = create_child(
       devfs_root_node, VFS_NODE_DEVICE, major, minor, name, name_len);
+  if (node == NULL) { return VFS_STATUS_NOMEM; }
+
+  dev->node = node;
   dev_table[major][minor] = dev;
   return VFS_STATUS_OK;
 }
@@ -150,6 +162,7 @@ vfs_status_t devfs_register(devfs_major_t major,
 vfs_status_t devfs_unregister(devfs_major_t major, uint64_t minor) {
   if (dev_table[major][minor] == NULL) { return VFS_STATUS_NOENT; }
   detach_child(dev_table[major][minor]->node);
+  dev_table[major][minor] = NULL;
   return VFS_STATUS_OK;
 }
 
@@ -199,26 +212,50 @@ vfs_status_t devfs_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
   }
 
   devfs_node_t* dev_node = (devfs_node_t*)vnode->fs_data;
-  devfs_device_t* dev = dev_table[dev_node->major][dev_node->minor];
-  if (dev != NULL && dev->node_ops != NULL && dev->node_ops->open != NULL) {
-    return dev->node_ops->open(vnode, flags, out);
+  devfs_device_t* dev = get_device(dev_node);
+  if (dev == NULL) { return VFS_STATUS_NOENT; }
+
+  vfs_file_t* vfile = (vfs_file_t*)malloc(sizeof(vfs_file_t));
+  if (vfile == NULL) { return VFS_STATUS_NOMEM; }
+
+  init_vfile(vfile, vnode, flags);
+  if (dev->node_ops != NULL && dev->node_ops->open != NULL) {
+    // Device node open hooks initialize the preallocated file handle in-place.
+    vfs_file_t* opened = vfile;
+    vfs_status_t status = dev->node_ops->open(vnode, flags, &opened);
+    if (status != VFS_STATUS_OK) {
+      free(vfile);
+      return status;
+    }
+    if (opened != vfile) {
+      free(opened);
+      free(vfile);
+      return VFS_STATUS_INVALID_ARG;
+    }
   }
 
-  return VFS_STATUS_NOT_IMPLEMENTED;
+  *out = vfile;
+  return VFS_STATUS_OK;
 }
 
 vfs_status_t devfs_close(vfs_file_t* vfile) {
+  if (vfile == NULL) { return VFS_STATUS_OK; }
+
   if (vfile->vnode->type == VFS_NODE_DIR) {
     free(vfile->fs_data);
     free(vfile);
     return VFS_STATUS_OK;
   }
+
   devfs_node_t* dev_node = (devfs_node_t*)vfile->vnode->fs_data;
-  devfs_device_t* dev = dev_table[dev_node->major][dev_node->minor];
-  if (dev == NULL || dev->file_ops == NULL || dev->file_ops->close == NULL) {
-    return VFS_STATUS_NOT_IMPLEMENTED;
+  devfs_device_t* dev = get_device(dev_node);
+  if (dev != NULL && dev->file_ops != NULL && dev->file_ops->close != NULL) {
+    vfs_status_t status = dev->file_ops->close(vfile);
+    if (status != VFS_STATUS_OK) { return status; }
   }
-  return dev->file_ops->close(vfile);
+
+  free(vfile);
+  return VFS_STATUS_OK;
 }
 
 vfs_status_t devfs_read(vfs_file_t* vfile,
@@ -226,7 +263,7 @@ vfs_status_t devfs_read(vfs_file_t* vfile,
                         uint64_t len,
                         uint64_t* bytes_read_out) {
   devfs_node_t* dev_node = (devfs_node_t*)vfile->vnode->fs_data;
-  devfs_device_t* dev = dev_table[dev_node->major][dev_node->minor];
+  devfs_device_t* dev = get_device(dev_node);
   if (dev == NULL || dev->file_ops == NULL || dev->file_ops->read == NULL) {
     return VFS_STATUS_NOT_IMPLEMENTED;
   }
@@ -238,7 +275,7 @@ vfs_status_t devfs_write(vfs_file_t* file,
                          uint64_t len,
                          uint64_t* bytes_written_out) {
   devfs_node_t* dev_node = (devfs_node_t*)file->vnode->fs_data;
-  devfs_device_t* dev = dev_table[dev_node->major][dev_node->minor];
+  devfs_device_t* dev = get_device(dev_node);
   if (dev == NULL || dev->file_ops == NULL || dev->file_ops->write == NULL) {
     return VFS_STATUS_NOT_IMPLEMENTED;
   }
@@ -283,7 +320,7 @@ vfs_status_t devfs_seek(vfs_file_t* vfile,
   }
 
   devfs_node_t* dev_node = (devfs_node_t*)vfile->vnode->fs_data;
-  devfs_device_t* dev = dev_table[dev_node->major][dev_node->minor];
+  devfs_device_t* dev = get_device(dev_node);
   if (dev == NULL || dev->file_ops == NULL || dev->file_ops->seek == NULL) {
     return VFS_STATUS_NOT_IMPLEMENTED;
   }
@@ -361,8 +398,8 @@ vfs_status_t devfs_stat(vfs_node_t* vnode, vfs_stat_t** out) {
   }
 
   devfs_node_t* dev_node = (devfs_node_t*)vnode->fs_data;
-  devfs_device_t* dev = dev_table[dev_node->major][dev_node->minor];
-  if (dev == NULL || dev->file_ops == NULL || dev->node_ops->stat == NULL) {
+  devfs_device_t* dev = get_device(dev_node);
+  if (dev == NULL || dev->node_ops == NULL || dev->node_ops->stat == NULL) {
     return VFS_STATUS_NOT_IMPLEMENTED;
   }
   return dev->node_ops->stat(vnode, out);
@@ -373,8 +410,8 @@ void devfs_free(vfs_node_t* vnode) {
 
   if (vnode->type != VFS_NODE_DIR) {
     devfs_node_t* dev_node = (devfs_node_t*)vnode->fs_data;
-    devfs_device_t* dev = dev_table[dev_node->major][dev_node->minor];
-    if (dev != NULL && dev->file_ops != NULL && dev->node_ops->free != NULL) {
+    devfs_device_t* dev = get_device(dev_node);
+    if (dev != NULL && dev->node_ops != NULL && dev->node_ops->free != NULL) {
       dev->node_ops->free(vnode);
     }
   }
@@ -491,6 +528,23 @@ static void init_vnode(vfs_node_t* vnode,
   vnode->link_count = 1;
   vnode->mount = NULL;
   vnode->type = type;
+}
+
+static devfs_device_t* get_device(devfs_node_t* node) {
+  if (node == NULL || node->major >= HOJICHA_MAJOR_MAX ||
+      node->minor >= HOJICHA_MINOR_MAX) {
+    return NULL;
+  }
+
+  return dev_table[node->major][node->minor];
+}
+
+static void init_vfile(vfs_file_t* vfile, vfs_node_t* vnode, uint32_t flags) {
+  vfile->flags = flags;
+  vfile->fs_data = NULL;
+  vfile->offset = 0;
+  vfile->vnode = vnode;
+  vfile->ops = &devfs_file_ops;
 }
 
 static devfs_node_t* find_child(devfs_node_t* first_child,
