@@ -3,20 +3,16 @@
 #include <memory/kmalloc.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(__kmalloc_test)
-#include <memory/kmalloc_test.h>
-#endif
-
-#define PAGE_SIZE     4096
-#define MAX_GROW_SIZE 160
-#define SIZEOF_HEADER sizeof(block_header_t)
-#define SIZEOF_FOOTER sizeof(block_footer_t)
+#define PAGE_SIZE      4096
+#define MAX_GROW_SIZE  160
+#define SIZEOF_HEADER  sizeof(block_header_t)
+#define SIZEOF_FOOTER  sizeof(block_footer_t)
+#define BLOCK_OVERHEAD (SIZEOF_HEADER + SIZEOF_FOOTER)
 
 typedef struct block_footer block_footer_t;
 
@@ -68,20 +64,17 @@ void kmalloc_initialize() {
 
   free_regions->is_free = true;
 
-  free_regions->size_bytes =
-      pmm_page_to_addr_base(kernel_heap_grow_size) - (SIZEOF_FOOTER * 8);
+  free_regions->size_bytes = pmm_page_to_addr_base(kernel_heap_grow_size) -
+                             SIZEOF_HEADER - SIZEOF_FOOTER;
   free_regions->next = NULL;
   block_footer_t* free_region_footer =
-      (block_footer_t*)(((haddr_t)free_regions) + free_regions->size_bytes);
+      (block_footer_t*)(((haddr_t)free_regions) + SIZEOF_HEADER +
+                        free_regions->size_bytes);
   free_region_footer->header = free_regions;
   free_regions->footer = free_region_footer;
   last_footer = (haddr_t)free_region_footer;
 
   if (kernel_heap_grow_size < MAX_GROW_SIZE) { kernel_heap_grow_size <<= 1; }
-
-#if defined(__kmalloc_test)
-  kmalloc_test();
-#endif
 }
 
 void* kmalloc_page_aligned(size_t size) {
@@ -142,6 +135,7 @@ void kfree(void* ptr) {
   } else {
     next_free = get_next_free(current_block);
   }
+  current_block->next = next_free;
 
   // TODO make this clearer
   if (are_contiguous(previous_free, current_block)) {
@@ -240,10 +234,11 @@ block_header_t* grow_heap_by(size_t size) {
 
   new_block->is_free = true;
   new_block->size_bytes =
-      pmm_page_to_addr_base(size) + difference - SIZEOF_FOOTER;
+      pmm_page_to_addr_base(size) + difference - SIZEOF_HEADER - SIZEOF_FOOTER;
   new_block->next = NULL;
   block_footer_t* new_block_footer =
-      (block_footer_t*)(((haddr_t)new_block) + new_block->size_bytes);
+      (block_footer_t*)(((haddr_t)new_block) + SIZEOF_HEADER +
+                        new_block->size_bytes);
   new_block_footer->header = new_block;
   new_block->footer = new_block_footer;
   last_footer = (haddr_t)new_block_footer;
@@ -257,7 +252,7 @@ void merge_blocks(block_header_t* first, block_header_t* second) {
   first->footer = second->footer;
   first->footer->header = first;
   first->next = second->next;
-  first->size_bytes += second->size_bytes;
+  first->size_bytes += second->size_bytes + BLOCK_OVERHEAD;
   memset(second, 0, SIZEOF_HEADER);
 }
 
@@ -265,7 +260,7 @@ void __attribute__((noinline)) occupy_block(block_header_t* block,
                                             size_t size) {
   block->is_free = false;
   haddr_t size_needed_for_split = size + SIZEOF_HEADER + SIZEOF_FOOTER;
-  if (block->size_bytes < size_needed_for_split) {
+  if (block->size_bytes <= size_needed_for_split) {
     remove_from_free_list(block);
   } else {
     block_header_t* leftover = split_region(block, size);

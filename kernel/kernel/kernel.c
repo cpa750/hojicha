@@ -25,10 +25,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#if defined(__chardev_test)
+#if defined(__test_chardev)
 #include <dev/chardev_test.h>
 #endif
-#if defined(__vfs_test)
+#if defined(__test_kmalloc)
+#include <memory/kmalloc_test.h>
+#endif
+#if defined(__test_vfs)
 #include <fs/vfs_test.h>
 #endif
 
@@ -86,6 +89,11 @@ void kernel_main() {
   print_ok("VMM");
   kmalloc_initialize();
   print_ok("kmalloc");
+
+#if defined(__test_kmalloc)
+  kmalloc_test();
+#endif
+
   if (!bootmodule_cache_finalize()) {
     printf("Error: Bootmodule cache finalization failed");
     abort();
@@ -100,11 +108,10 @@ void kernel_main() {
     print_ok("Character Devices");
   }
 
-#if defined(__vfs_test)
+#if defined(__test_vfs)
   vfs_test();
 #endif
-
-#if defined(__chardev_test)
+#if defined(__test_chardev)
   chardev_test();
 #endif
 

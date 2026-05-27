@@ -12,24 +12,31 @@ case "$*" in
     ;;
 esac
 
-KMALLOC_TEST=" "
+TEST_KMALLOC=" "
 case "$*" in
-  *--kmalloc-test*)
-    KMALLOC_TEST="KMALLOC_TEST=1"
+  *--test-kmalloc*)
+    TEST_KMALLOC="TEST_KMALLOC=1"
     ;;
 esac
 
-VFS_TEST=" "
+TEST_VFS=" "
 case "$*" in
-  *--vfs-test*)
-    VFS_TEST="VFS_TEST=1"
+  *--test-vfs*)
+    TEST_VFS="TEST_VFS=1"
     ;;
 esac
 
-CHARDEV_TEST=" "
+TEST_CHARDEV=" "
 case "$*" in
-  *--chardev-test*)
-    CHARDEV_TEST="CHARDEV_TEST=1"
+  *--test-chardev*)
+    TEST_CHARDEV="TEST_CHARDEV=1"
+    ;;
+esac
+
+TEST_ALL=" "
+case "$*" in
+  *--test-all*)
+    TEST_ALL="TEST_ALL=1"
     ;;
 esac
 
@@ -65,7 +72,7 @@ if [ -n "$HLOG_LEVEL_VALUE" ]; then
 fi
 
 for PROJECT in $PROJECTS; do
-  (cd $PROJECT && DESTDIR="$SYSROOT" bear --append -- $MAKE $DEBUG_QEMU $KMALLOC_TEST $VFS_TEST $CHARDEV_TEST $HLOG_LEVEL HOST=$HOST install)
+  (cd $PROJECT && DESTDIR="$SYSROOT" bear --append -- $MAKE $DEBUG_QEMU $TEST_KMALLOC $TEST_VFS $TEST_CHARDEV $TEST_ALL $HLOG_LEVEL HOST=$HOST install)
 done
 
 make -C userspace all HOST=$HOST SYSROOT="$SYSROOT"

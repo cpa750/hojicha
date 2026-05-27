@@ -31,16 +31,22 @@ ifeq ($(DEBUG_QEMU),1)
 	CFLAGS :=$(CFLAGS) -g -D__debug_virtual
 endif
 
-ifeq ($(KMALLOC_TEST),1)
-	CFLAGS :=$(CFLAGS) -D__kmalloc_test
+ifeq ($(TEST_ALL),1)
+	TEST_KMALLOC :=1
+	TEST_VFS :=1
+	TEST_CHARDEV :=1
 endif
 
-ifeq ($(VFS_TEST),1)
-	CFLAGS :=$(CFLAGS) -D__vfs_test
+ifeq ($(TEST_KMALLOC),1)
+	CFLAGS :=$(CFLAGS) -D__test_kmalloc
 endif
 
-ifeq ($(CHARDEV_TEST),1)
-	CFLAGS :=$(CFLAGS) -D__chardev_test
+ifeq ($(TEST_VFS),1)
+	CFLAGS :=$(CFLAGS) -D__test_vfs
+endif
+
+ifeq ($(TEST_CHARDEV),1)
+	CFLAGS :=$(CFLAGS) -D__test_chardev
 endif
 
 ifneq ($(HLOG_LEVEL),)

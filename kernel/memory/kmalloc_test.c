@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <haddr.h>
+#include <memory/kmalloc.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -79,12 +80,14 @@ void kmalloc_test() {
   char* s = (char*)malloc(30);
   char* t = (char*)malloc(20);
   char* u = (char*)malloc(20);
+  char* v = (char*)malloc(20);
 
   assert((haddr_t)q == (haddr_t)e);
   assert((haddr_t)r == (haddr_t)f);
   assert((haddr_t)s == (haddr_t)h);
-  assert((haddr_t)t == (haddr_t)l);
-  assert((haddr_t)u == (haddr_t)o);
+  assert((haddr_t)t == (haddr_t)h + 33 + 30);
+  assert((haddr_t)u == (haddr_t)l);
+  assert((haddr_t)v == (haddr_t)o);
 
   printf("kmalloc test pass.\n");
 }
