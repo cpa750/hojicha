@@ -1,6 +1,7 @@
 #ifndef HOJICHA_VFS_H
 #define HOJICHA_VFS_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #define MAX_FDS 256
@@ -18,6 +19,7 @@ typedef enum {
   VFS_STATUS_NOT_IMPLEMENTED,
   VFS_STATUS_FLAGS,
   VFS_STATUS_NOTEMPTY,
+  VFS_STATUS_EXISTS,
 } vfs_status_t;
 
 typedef enum {
@@ -59,12 +61,14 @@ typedef struct vfs_dirent vfs_dirent_t;
 typedef struct vfs_file vfs_file_t;
 
 typedef struct vfs_file_ops vfs_file_ops_t;
-typedef struct vfs_node_ops vnode_ops_t;
+typedef struct vfs_node_ops vfs_node_ops_t;
 
 typedef struct vfs_stat vfs_stat_t;
 
 struct vfs_mount {
+  vfs_node_t* point;
   vfs_node_t* root;
+  vfs_mount_t* parent;
   void* fs_data;
 };
 
@@ -82,10 +86,11 @@ struct vfs_file {
 };
 
 struct vfs_node {
-  const vnode_ops_t* ops;
+  const vfs_node_ops_t* ops;
   vfs_node_type_t type;
   uint32_t refcount;
   uint32_t link_count;
+  vfs_mount_t* mount;
   void* fs_data;
 };
 
@@ -141,6 +146,13 @@ struct vfs_stat {
  * Mounts the root filesystem at `/`.
  */
 vfs_status_t vfs_mount_root(vfs_mount_t* mount);
+
+/*
+ * Mounts a filesystem on an existing directory vnode.
+ */
+vfs_status_t vfs_mount(vfs_node_t* mountpoint,
+                       vfs_mount_t* mount,
+                       vfs_mount_t* parent);
 
 /*
  * Resolves an absolute path to a vnode.
@@ -247,5 +259,10 @@ vfs_status_t vfs_close(vfs_file_t* file);
  * on failure returns the relevant error code and does not modify `out`.
  */
 vfs_status_t vfs_resolve_fd(uint64_t fd, vfs_file_t** out);
+
+void vfs_vnode_borrow(vfs_node_t* vnode);
+void vfs_vnode_release(vfs_node_t* vnode);
+bool vfs_validate_name(const char* name, uint64_t name_len);
+char* vfs_clone_name(const char* name, uint64_t name_len, bool trailing_slash);
 
 #endif  // HOJICHA_VFS_H

@@ -42,7 +42,6 @@ initrd_inode_t* create_dir(const char* name,
                            initrd_inode_t* parent);
 initrd_inode_t* create_root();
 void init_vnode(initrd_inode_t* inode, vfs_node_type_t type);
-vfs_node_t* borrow_vnode(initrd_inode_t* inode);
 initrd_inode_t* dir_lookup(const char* path,
                            uint64_t path_len,
                            initrd_inode_t* root);
@@ -55,22 +54,19 @@ uint64_t get_name_start_idx(char* filename, uint64_t len);
 initrd_inode_t* get_or_create_prefix(const char* path,
                                      uint64_t path_len,
                                      initrd_inode_t* root);
-initrd_inode_t* detach_child(initrd_inode_t* parent,
-                             const char* name,
-                             uint64_t name_len);
+initrd_inode_t* detach_child(initrd_inode_t* target);
 bool is_zero_block(void* block);
 vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out);
-bool validate_name(const char* name, uint64_t name_len);
-char* clone_name(const char* name, uint64_t name_len, bool trailing_slash);
 
-static const vnode_ops_t initrd_vnode_ops = {.lookup = initrd_lookup,
-                                             .open = initrd_open,
-                                             .free = initrd_free,
-                                             .create_file = initrd_create_file,
-                                             .create_dir = initrd_create_dir,
-                                             .stat = initrd_stat,
-                                             .unlink = initrd_delete_file,
-                                             .rmdir = initrd_delete_dir};
+static const vfs_node_ops_t initrd_vnode_ops = {
+    .lookup = initrd_lookup,
+    .open = initrd_open,
+    .free = initrd_free,
+    .create_file = initrd_create_file,
+    .create_dir = initrd_create_dir,
+    .stat = initrd_stat,
+    .unlink = initrd_delete_file,
+    .rmdir = initrd_delete_dir};
 
 static const vfs_file_ops_t initrd_vfile_ops = {
     .read = initrd_read,
@@ -111,7 +107,8 @@ vfs_status_t initrd_lookup(vfs_node_t* dir,
   initrd_inode_t* child = find_child(dir_inode->first_child, name, name_len);
   if (child == NULL) { return VFS_STATUS_NOENT; }
 
-  if (out != NULL) { *out = borrow_vnode(child); }
+  vfs_vnode_borrow(&child->vnode);
+  if (out != NULL) { *out = &child->vnode; }
   return VFS_STATUS_OK;
 }
 
@@ -188,8 +185,8 @@ vfs_status_t initrd_write(vfs_file_t* file,
   initrd_inode_t* inode = (initrd_inode_t*)file->vnode->fs_data;
   uint64_t fsize = inode->len;
   uint64_t bufsize = inode->bufsize;
-
-  uint64_t content_size = fsize + len;
+  uint64_t content_size = file->offset + len;
+  if (content_size < fsize) { content_size = fsize; }
   uint64_t new_size = content_size + (content_size >> 1);
   if (inode->buf == NULL || bufsize == 0) {
     sched_postpone();
@@ -197,17 +194,18 @@ vfs_status_t initrd_write(vfs_file_t* file,
     sched_resume();
 
     if (new_buf == NULL) { return VFS_STATUS_NOMEM; }
+    memset(new_buf, 0, new_size);
     inode->buf = new_buf;
     inode->bufsize = new_size;
     inode->buf_owned = true;
     bufsize = new_size;
   }
 
-  if (len + file->offset < bufsize - 1) {
+  if (file->offset + len <= bufsize) {
     sched_postpone();
     memcpy(inode->buf + file->offset, buffer, len);
     file->offset += len;
-    inode->len += len;
+    if (file->offset > inode->len) { inode->len = file->offset; }
     sched_resume();
 
     if (bytes_written_out != NULL) { *bytes_written_out = len; }
@@ -219,15 +217,16 @@ vfs_status_t initrd_write(vfs_file_t* file,
 
   void* old;
   sched_postpone();
-  memcpy(new_buf, inode->buf, fsize);
-  memcpy(new_buf + fsize, buffer, len);
+  memset(new_buf, 0, new_size);
+  if (inode->buf != NULL && fsize > 0) { memcpy(new_buf, inode->buf, fsize); }
+  memcpy(new_buf + file->offset, buffer, len);
   old = inode->buf;
   bool old_buf_owned = inode->buf_owned;
   inode->buf = new_buf;
   inode->bufsize = new_size;
   inode->buf_owned = true;
-  file->offset = fsize + len - 1;
-  inode->len = fsize + len;
+  file->offset += len;
+  if (file->offset > inode->len) { inode->len = file->offset; }
   if (old_buf_owned) { free(old); }
   sched_resume();
 
@@ -254,7 +253,7 @@ vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
   vfs_dirent_t* ret = (vfs_dirent_t*)malloc(sizeof(vfs_dirent_t));
   if (ret == NULL) { return VFS_STATUS_NOMEM; }
 
-  ret->name = clone_name(
+  ret->name = vfs_clone_name(
       current->name, current->name_size, current->vnode.type == VFS_NODE_DIR);
   if (ret->name == NULL) {
     free(ret);
@@ -293,14 +292,14 @@ vfs_status_t initrd_seek(vfs_file_t* vfile,
       origin = (int64_t)vfile->offset;
       break;
     case VFS_SEEK_END:
-      origin = (int64_t)len - 1;
+      origin = (int64_t)len;
       break;
   }
 
   if (offset + origin < 0) {
     pos = 0;
-  } else if (offset + origin > (int64_t)len - 1) {
-    pos = len - 1;
+  } else if (offset + origin > (int64_t)len) {
+    pos = len;
   } else {
     pos = offset + origin;
   }
@@ -308,7 +307,7 @@ vfs_status_t initrd_seek(vfs_file_t* vfile,
   if (vfile->vnode->type == VFS_NODE_DIR) {
     initrd_file_t* file = (initrd_file_t*)vfile->fs_data;
     file->d_current = ((initrd_inode_t*)vfile->vnode->fs_data)->first_child;
-    int i = *new_pos;
+    uint64_t i = pos;
     while (i-- > 0 && file->d_current != NULL) {
       file->d_current = file->d_current->next_sibling;
     }
@@ -324,7 +323,7 @@ vfs_status_t initrd_create_file(vfs_node_t* dir,
                                 uint32_t name_len,
                                 vfs_node_t** out) {
   if (dir == NULL || dir->type != VFS_NODE_DIR ||
-      !validate_name(name, name_len)) {
+      !vfs_validate_name(name, name_len)) {
     return VFS_STATUS_INVALID_ARG;
   }
 
@@ -334,7 +333,7 @@ vfs_status_t initrd_create_file(vfs_node_t* dir,
     return VFS_STATUS_NOMEM;
   }
 
-  char* file_name = clone_name(name, name_len, false);
+  char* file_name = vfs_clone_name(name, name_len, false);
   if (file_name == NULL) {
     free(inode);
     SET_OUT_NULL(out);
@@ -354,7 +353,8 @@ vfs_status_t initrd_create_file(vfs_node_t* dir,
 
   add_child((initrd_inode_t*)dir->fs_data, inode);
 
-  SET_OUT(out, borrow_vnode(inode));
+  vfs_vnode_borrow(&inode->vnode);
+  SET_OUT(out, &inode->vnode);
   return VFS_STATUS_OK;
 }
 
@@ -368,7 +368,7 @@ vfs_status_t initrd_create_dir(vfs_node_t* dir,
   }
 
   while (name_len > 0 && name[name_len - 1] == '/') { --name_len; }
-  if (!validate_name(name, name_len)) {
+  if (!vfs_validate_name(name, name_len)) {
     SET_OUT_NULL(out);
     return VFS_STATUS_INVALID_ARG;
   }
@@ -382,7 +382,8 @@ vfs_status_t initrd_create_dir(vfs_node_t* dir,
 
   add_child((initrd_inode_t*)dir->fs_data, inode);
 
-  SET_OUT(out, borrow_vnode(inode));
+  vfs_vnode_borrow(&inode->vnode);
+  SET_OUT(out, &inode->vnode);
   return VFS_STATUS_OK;
 }
 
@@ -400,8 +401,7 @@ vfs_status_t initrd_delete_file(vfs_node_t* dir,
   if (child == NULL) { return VFS_STATUS_NOENT; }
   if (child->vnode.type == VFS_NODE_DIR) { return VFS_STATUS_ISDIR; }
 
-  return detach_child(idir, name, name_len) == NULL ? VFS_STATUS_NOENT
-                                                    : VFS_STATUS_OK;
+  return detach_child(child) == NULL ? VFS_STATUS_NOENT : VFS_STATUS_OK;
 }
 
 vfs_status_t initrd_delete_dir(vfs_node_t* dir,
@@ -419,8 +419,7 @@ vfs_status_t initrd_delete_dir(vfs_node_t* dir,
   if (child->vnode.type != VFS_NODE_DIR) { return VFS_STATUS_NOTDIR; }
   if (child->first_child != NULL) { return VFS_STATUS_NOTEMPTY; }
 
-  return detach_child(idir, name, name_len) == NULL ? VFS_STATUS_NOENT
-                                                    : VFS_STATUS_OK;
+  return detach_child(child) == NULL ? VFS_STATUS_NOENT : VFS_STATUS_OK;
 }
 
 vfs_status_t initrd_stat(vfs_node_t* vnode, vfs_stat_t** out) {
@@ -452,7 +451,7 @@ initrd_inode_t* create_dir(const char* name,
                            uint64_t name_len,
                            initrd_inode_t* parent) {
   initrd_inode_t* dir = (initrd_inode_t*)malloc(sizeof(initrd_inode_t));
-  char* dir_name = clone_name(name, name_len, false);
+  char* dir_name = vfs_clone_name(name, name_len, false);
   if (dir == NULL || dir_name == NULL) {
     free(dir);
     free(dir_name);
@@ -496,12 +495,8 @@ void init_vnode(initrd_inode_t* inode, vfs_node_type_t type) {
   inode->vnode.ops = &initrd_vnode_ops;
   inode->vnode.refcount = 0;
   inode->vnode.link_count = 1;
+  inode->vnode.mount = NULL;
   inode->vnode.type = type;
-}
-
-vfs_node_t* borrow_vnode(initrd_inode_t* inode) {
-  inode->vnode.refcount++;
-  return &inode->vnode;
 }
 
 initrd_inode_t* dir_lookup(const char* path,
@@ -601,19 +596,21 @@ initrd_inode_t* get_or_create_prefix(const char* path,
   return ret;
 }
 
-initrd_inode_t* detach_child(initrd_inode_t* parent,
-                             const char* name,
-                             uint64_t name_len) {
+initrd_inode_t* detach_child(initrd_inode_t* target) {
+  if (target == NULL || target->parent == NULL) { return NULL; }
+
+  initrd_inode_t* parent = target->parent;
   initrd_inode_t* prev = NULL;
   for (initrd_inode_t* n = parent->first_child; n != NULL;
        n = n->next_sibling) {
-    if (n->name_size == name_len && memcmp(name, n->name, name_len) == 0) {
+    if (n == target) {
       if (prev == NULL) {
         parent->first_child = n->next_sibling;
       } else {
         prev->next_sibling = n->next_sibling;
       }
       n->next_sibling = NULL;
+      n->parent = NULL;
       if (parent->len > 0) { parent->len--; }
       return n;
     }
@@ -630,30 +627,6 @@ bool is_zero_block(void* block) {
   }
 
   return true;
-}
-
-bool validate_name(const char* name, uint64_t name_len) {
-  // TODO: More thorough validation
-  if (name == NULL || name_len == 0) { return false; }
-
-  for (uint64_t i = 0; i < name_len; ++i) {
-    if (name[i] == '/' || (name[i] == '\0' && i < name_len - 1)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-char* clone_name(const char* name, uint64_t name_len, bool trailing_slash) {
-  uint64_t alloc_len = name_len + (trailing_slash ? 1 : 0);
-  char* cloned = (char*)malloc(alloc_len + 1);
-  if (cloned == NULL) { return NULL; }
-
-  memcpy(cloned, name, name_len);
-  if (trailing_slash) { cloned[name_len++] = '/'; }
-  cloned[name_len] = '\0';
-  return cloned;
 }
 
 vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out) {

@@ -1,11 +1,14 @@
 #include <cpu/gdt.h>
 #include <cpu/idt.h>
+#include <dev/chardev.h>
 #include <drivers/keyboard.h>
 #include <drivers/pic.h>
 #include <drivers/pit.h>
 #include <drivers/serial.h>
 #include <drivers/tty.h>
 #include <drivers/vga.h>
+#include <fs/devfs.h>
+#include <fs/initrd.h>
 #include <fs/vfs.h>
 #include <hlog.h>
 #include <kernel/g_kernel.h>
@@ -22,7 +25,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "fs/initrd.h"
+#if defined(__chardev_test)
+#include <dev/chardev_test.h>
+#endif
+#if defined(__vfs_test)
+#include <fs/vfs_test.h>
+#endif
 
 void print_ok(const char* component);
 
@@ -86,6 +94,19 @@ void kernel_main() {
   sched_initialize();
   print_ok("Multitasking");
   if (initrd_initalize() == 0) { print_ok("Initrd"); }
+  if (devfs_initialize()) {
+    print_ok("Devfs");
+    chardev_initialize();
+    print_ok("Character Devices");
+  }
+
+#if defined(__vfs_test)
+  vfs_test();
+#endif
+
+#if defined(__chardev_test)
+  chardev_test();
+#endif
 
   printf("\n");
 
@@ -126,115 +147,7 @@ void kernel_main() {
                                                bigmaths2_electric_boogaloo);
   sched_add_proc(elf_proc2);
 
-  vfs_file_t* etc = NULL;
-  vfs_open("/etc/", VFS_OPEN_DIRECTORY, &etc);
-
-  vfs_mkdir(etc->vnode, "test_mkdir/", 11, NULL);
-  vfs_file_t* testcreate = NULL;
-  vfs_open("/etc/test_open_create.txt",
-           VFS_OPEN_READ | VFS_OPEN_WRITE | VFS_OPEN_CREATE,
-           &testcreate);
-  char write_test[] = "open create write test";
-  vfs_write(testcreate, write_test, 22, NULL);
-
-  vfs_file_t* mkdir_test = NULL;
-  vfs_open("/etc/test_mkdir/mkdir_test.txt",
-           VFS_OPEN_READ | VFS_OPEN_WRITE | VFS_OPEN_CREATE,
-           &mkdir_test);
-  char mkdir_write_test[] = "mkdir write test";
-  vfs_write(mkdir_test, mkdir_write_test, 16, NULL);
-
-  vfs_file_t* unlink_test = NULL;
-  vfs_open("/etc/test_mkdir/unlink_test.txt",
-           VFS_OPEN_READ | VFS_OPEN_WRITE | VFS_OPEN_CREATE,
-           &unlink_test);
-  char unlink_write_test[] = "unlink write test";
-  vfs_write(unlink_test, unlink_write_test, 17, NULL);
-
-  vfs_dirent_t* etc_dirent = NULL;
-  vfs_readdir(etc, &etc_dirent);
-  while (etc_dirent != NULL) {
-    hlog_write(HLOG_INFO, "/etc/%s", etc_dirent->name);
-    vfs_readdir(etc, &etc_dirent);
-  }
-
-  vfs_file_t* testmkdir = NULL;
-  vfs_open("/etc/test_mkdir/", VFS_OPEN_DIRECTORY, &testmkdir);
-  vfs_unlink(testmkdir->vnode, "unlink_test.txt", 15, 0);
-  vfs_seek(unlink_test, 0, VFS_SEEK_SET, NULL);
-  char test7[50];
-  vfs_read(unlink_test, test7, 50, &bytes_read);
-  hlog_write(HLOG_INFO, "unlink test live fd: %s (%d B)", test7, bytes_read);
-  vfs_file_t* unlink_reopen = NULL;
-  vfs_status_t unlink_open_status =
-      vfs_open("/etc/test_mkdir/unlink_test.txt", VFS_OPEN_READ, &unlink_reopen);
-  hlog_write(HLOG_INFO, "unlink test reopen: %d", unlink_open_status);
-  vfs_status_t unlink_dir_status = vfs_unlink(etc->vnode, "test_mkdir", 10, 0);
-  hlog_write(HLOG_INFO, "unlink dir test: %d", unlink_dir_status);
-  vfs_status_t unlink_missing_status =
-      vfs_unlink(testmkdir->vnode, "missing.txt", 11, 0);
-  hlog_write(HLOG_INFO, "unlink missing test: %d", unlink_missing_status);
-  vfs_close(testmkdir);
-  vfs_open("/etc/test_mkdir/", VFS_OPEN_DIRECTORY, &testmkdir);
-  vfs_dirent_t* testmkdir_dirent = NULL;
-  vfs_readdir(testmkdir, &testmkdir_dirent);
-  while (testmkdir_dirent != NULL) {
-    hlog_write(HLOG_INFO, "/etc/test_mkdir/%s", testmkdir_dirent->name);
-    vfs_readdir(testmkdir, &testmkdir_dirent);
-  }
-
-  vfs_file_t* usrbin = NULL;
-  vfs_open("/usr/bin", VFS_OPEN_DIRECTORY, &usrbin);
-
-  vfs_dirent_t* usrbin_dirent = NULL;
-  vfs_readdir(usrbin, &usrbin_dirent);
-  while (usrbin_dirent != NULL) {
-    hlog_write(HLOG_INFO, "/usr/bin/%s", usrbin_dirent->name);
-    vfs_readdir(usrbin, &usrbin_dirent);
-  }
-
-  vfs_file_t* test = NULL;
-  vfs_open("/etc/test.txt", VFS_OPEN_READ | VFS_OPEN_WRITE, &test);
-  char test1[50];
-  vfs_read(test, test1, 50, &bytes_read);
-  hlog_write(HLOG_INFO, "test1: %s (%d B)", test1, bytes_read);
-
-  vfs_seek(test, -500, VFS_SEEK_CUR, NULL);
-  char test2[50];
-  vfs_read(test, test2, 50, &bytes_read);
-  hlog_write(HLOG_INFO, "test2: %s (%d B)", test2, bytes_read);
-
-  vfs_seek(test, -15, VFS_SEEK_END, NULL);
-  char test3[50];
-  vfs_read(test, test3, 50, &bytes_read);
-  hlog_write(HLOG_INFO, "test3: %s (%d B)", test3, bytes_read);
-
-  char append_test[] = " append test";
-  vfs_write(test, append_test, 12, NULL);
-  char test4[50];
-  vfs_seek(test, 0, VFS_SEEK_SET, NULL);
-  vfs_read(test, test4, 50, &bytes_read);
-  hlog_write(HLOG_INFO, "test4: %s (%d B)", test4, bytes_read);
-
-  vfs_seek(testcreate, 0, VFS_SEEK_SET, NULL);
-  char test5[50];
-  vfs_read(testcreate, test5, 50, &bytes_read);
-  hlog_write(HLOG_INFO, "test5: %s (%d B)", test5, bytes_read);
-
-  vfs_seek(mkdir_test, 0, VFS_SEEK_SET, NULL);
-  char test6[50];
-  vfs_read(mkdir_test, test6, 50, &bytes_read);
-  hlog_write(HLOG_INFO, "test6: %s (%d B)", test6, bytes_read);
-
-  vfs_close(usrbin);
   vfs_close(f);
-  if (unlink_reopen != NULL) { vfs_close(unlink_reopen); }
-  vfs_close(testmkdir);
-  vfs_close(unlink_test);
-  vfs_close(mkdir_test);
-  vfs_close(testcreate);
-  vfs_close(etc);
-  vfs_close(test);
 
   sched_yield();
 

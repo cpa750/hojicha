@@ -67,6 +67,7 @@ stdio/vprintf.c \
 stdio/vsnprintf.c \
 stdlib/abort.c \
 stdlib/assert.c \
+stdlib/calloc.c \
 stdlib/free.c \
 stdlib/itoa.c \
 stdlib/utoa.c \
