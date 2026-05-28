@@ -1,22 +1,28 @@
-#include <assert.h>
 #include <haddr.h>
-#include <stdio.h>
+#include <memory/kmalloc.h>
 #include <stdlib.h>
 #include <string.h>
 
+#define HTEST_USE_PRINTF
+#include <utils/test.h>
+
 void kmalloc_test() {
+  htest_ctx_t ctx = {0};
+  htest_suite_begin(&ctx, "kmalloc");
+
+  htest_case_begin(&ctx, "basic allocation reuse");
   char* a = (char*)malloc(sizeof(char) * 20);
   strcpy(a, "hello, world!");
 
   char* b = (char*)malloc(sizeof(char) * 30);
   strcpy(b, "this is so cool!!!");
 
-  assert((haddr_t)b == ((haddr_t)a) + 33 + 20);
+  HTEST_ASSERT(&ctx, (haddr_t)b == ((haddr_t)a) + 33 + 20);
 
   char* c = (char*)malloc(sizeof(char) * 40);
   strcpy(c, "look at me ma, no stack!");
 
-  assert((haddr_t)c == ((haddr_t)b) + 33 + 30);
+  HTEST_ASSERT(&ctx, (haddr_t)c == ((haddr_t)b) + 33 + 30);
 
   free(b);
 
@@ -24,10 +30,11 @@ void kmalloc_test() {
   char* d = (char*)malloc(sizeof(char) * 10);
   strcpy(d, "test\000");
 
-  assert((haddr_t)d == ((haddr_t)b));
+  HTEST_ASSERT(&ctx, (haddr_t)d == ((haddr_t)b));
 
   free(a);
 
+  htest_case_begin(&ctx, "heap growth and free list reuse");
   // Test we can grow the heap
   for (int i = 0; i < 500; ++i) {
     char* n = (char*)malloc(sizeof(char) * 2000);
@@ -49,17 +56,17 @@ void kmalloc_test() {
   o = (char*)malloc(sizeof(char) * 10);
   p = (char*)malloc(sizeof(char) * 10);
 
-  assert((haddr_t)e == (haddr_t)a);
-  assert((haddr_t)g == ((haddr_t)f) + 33 + 10);
-  assert((haddr_t)h == ((haddr_t)g) + 33 + 10);
-  assert((haddr_t)i == ((haddr_t)h) + 33 + 10);
-  assert((haddr_t)j == ((haddr_t)i) + 33 + 10);
-  assert((haddr_t)k == ((haddr_t)j) + 33 + 10);
-  assert((haddr_t)l == ((haddr_t)k) + 33 + 10);
-  assert((haddr_t)m == ((haddr_t)l) + 33 + 10);
-  assert((haddr_t)n == ((haddr_t)m) + 33 + 10);
-  assert((haddr_t)o == ((haddr_t)n) + 33 + 10);
-  assert((haddr_t)p == ((haddr_t)o) + 33 + 10);
+  HTEST_ASSERT(&ctx, (haddr_t)e == (haddr_t)a);
+  HTEST_ASSERT(&ctx, (haddr_t)g == ((haddr_t)f) + 33 + 10);
+  HTEST_ASSERT(&ctx, (haddr_t)h == ((haddr_t)g) + 33 + 10);
+  HTEST_ASSERT(&ctx, (haddr_t)i == ((haddr_t)h) + 33 + 10);
+  HTEST_ASSERT(&ctx, (haddr_t)j == ((haddr_t)i) + 33 + 10);
+  HTEST_ASSERT(&ctx, (haddr_t)k == ((haddr_t)j) + 33 + 10);
+  HTEST_ASSERT(&ctx, (haddr_t)l == ((haddr_t)k) + 33 + 10);
+  HTEST_ASSERT(&ctx, (haddr_t)m == ((haddr_t)l) + 33 + 10);
+  HTEST_ASSERT(&ctx, (haddr_t)n == ((haddr_t)m) + 33 + 10);
+  HTEST_ASSERT(&ctx, (haddr_t)o == ((haddr_t)n) + 33 + 10);
+  HTEST_ASSERT(&ctx, (haddr_t)p == ((haddr_t)o) + 33 + 10);
 
   free(f);
   free(e);
@@ -79,12 +86,14 @@ void kmalloc_test() {
   char* s = (char*)malloc(30);
   char* t = (char*)malloc(20);
   char* u = (char*)malloc(20);
+  char* v = (char*)malloc(20);
 
-  assert((haddr_t)q == (haddr_t)e);
-  assert((haddr_t)r == (haddr_t)f);
-  assert((haddr_t)s == (haddr_t)h);
-  assert((haddr_t)t == (haddr_t)l);
-  assert((haddr_t)u == (haddr_t)o);
+  HTEST_ASSERT(&ctx, (haddr_t)q == (haddr_t)e);
+  HTEST_ASSERT(&ctx, (haddr_t)r == (haddr_t)f);
+  HTEST_ASSERT(&ctx, (haddr_t)s == (haddr_t)h);
+  HTEST_ASSERT(&ctx, (haddr_t)t == (haddr_t)h + 33 + 30);
+  HTEST_ASSERT(&ctx, (haddr_t)u == (haddr_t)l);
+  HTEST_ASSERT(&ctx, (haddr_t)v == (haddr_t)o);
 
-  printf("kmalloc test pass.\n");
+  htest_suite_pass(&ctx);
 }

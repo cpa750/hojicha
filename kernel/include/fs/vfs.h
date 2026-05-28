@@ -155,6 +155,11 @@ vfs_status_t vfs_mount(vfs_node_t* mountpoint,
                        vfs_mount_t* parent);
 
 /*
+ * Unmounts a previously mounted filesystem. Root unmount is not supported.
+ */
+vfs_status_t vfs_unmount(vfs_mount_t* mount);
+
+/*
  * Resolves an absolute path to a vnode.
  */
 vfs_status_t vfs_lookup(const char* absolute_path, vfs_node_t** out);
