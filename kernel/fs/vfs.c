@@ -61,6 +61,22 @@ vfs_status_t vfs_mount(vfs_node_t* mountpoint,
   return VFS_STATUS_OK;
 }
 
+vfs_status_t vfs_unmount(vfs_mount_t* mount) {
+  if (mount == NULL) { return VFS_STATUS_INVALID_ARG; }
+  if (mount == root_mount) { return VFS_STATUS_INVALID_ARG; }
+  if (mount->point == NULL || mount->root == NULL) {
+    return VFS_STATUS_INVALID_ARG;
+  }
+  if (mount->point->mount != mount) { return VFS_STATUS_INVALID_ARG; }
+
+  mount->point->mount = NULL;
+  vfs_vnode_release(mount->root);
+  vfs_vnode_release(mount->point);
+  mount->point = NULL;
+  mount->parent = NULL;
+  return VFS_STATUS_OK;
+}
+
 vfs_status_t vfs_lookup(const char* absolute_path, vfs_node_t** out) {
   if (out == NULL) { return VFS_STATUS_INVALID_ARG; }
   return walk_path(absolute_path, false, out, NULL, NULL);

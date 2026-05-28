@@ -31,6 +31,9 @@
 #if defined(__test_kmalloc)
 #include <memory/kmalloc_test.h>
 #endif
+#if defined(__test_initrd)
+#include <fs/initrd_test.h>
+#endif
 #if defined(__test_vfs)
 #include <fs/vfs_test.h>
 #endif
@@ -108,6 +111,9 @@ void kernel_main() {
     print_ok("Character Devices");
   }
 
+#if defined(__test_initrd)
+  initrd_test();
+#endif
 #if defined(__test_vfs)
   vfs_test();
 #endif

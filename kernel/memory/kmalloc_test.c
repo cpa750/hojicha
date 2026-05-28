@@ -1,7 +1,5 @@
-#include <assert.h>
 #include <haddr.h>
 #include <memory/kmalloc.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 

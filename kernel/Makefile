@@ -33,12 +33,17 @@ endif
 
 ifeq ($(TEST_ALL),1)
 	TEST_KMALLOC :=1
+	TEST_INITRD :=1
 	TEST_VFS :=1
 	TEST_CHARDEV :=1
 endif
 
 ifeq ($(TEST_KMALLOC),1)
 	CFLAGS :=$(CFLAGS) -D__test_kmalloc
+endif
+
+ifeq ($(TEST_INITRD),1)
+	CFLAGS :=$(CFLAGS) -D__test_initrd
 endif
 
 ifeq ($(TEST_VFS),1)
@@ -110,8 +115,9 @@ drivers/serial.c \
 fonts/inconsolata.c \
 fs/devfs.c \
 fs/initrd.c \
-fs/vfs.c \
 fs/vfs_test.c \
+fs/vfs.c \
+fs/initrd_test.c \
 kernel/kernel.c \
 kernel/g_kernel.c \
 memory/kmalloc.c \
