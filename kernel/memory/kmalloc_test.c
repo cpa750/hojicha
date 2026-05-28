@@ -95,5 +95,20 @@ void kmalloc_test() {
   HTEST_ASSERT(&ctx, (haddr_t)u == (haddr_t)l);
   HTEST_ASSERT(&ctx, (haddr_t)v == (haddr_t)o);
 
+  htest_case_begin(&ctx, "consecutive allocator scans");
+  char* chain[16] = {0};
+  for (int idx = 0; idx < 16; ++idx) {
+    chain[idx] = (char*)malloc(sizeof(char) * 16);
+    memset(chain[idx], idx, 16);
+  }
+
+  free(chain[0]);
+  free(chain[15]);
+
+  char* scan_reuse = (char*)malloc(sizeof(char) * 16);
+  HTEST_ASSERT(&ctx, (haddr_t)scan_reuse == (haddr_t)chain[0]);
+  char* backwards_scan_reuse = (char*)malloc(sizeof(char) * 16);
+  HTEST_ASSERT(&ctx, (haddr_t)backwards_scan_reuse == (haddr_t)chain[15]);
+
   htest_suite_pass(&ctx);
 }

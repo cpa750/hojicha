@@ -175,10 +175,11 @@ bool are_contiguous(block_header_t* first, block_header_t* second) {
 }
 
 block_header_t* find_first_fit_block(block_header_t* block, size_t size) {
-  if (block == NULL) { return NULL; }
-  if (block->size_bytes >= size && block->is_free) { return block; }
-
-  return find_first_fit_block(block->next, size);
+  while (block != NULL) {
+    if (block->size_bytes >= size && block->is_free) { return block; }
+    block = block->next;
+  }
+  return NULL;
 }
 
 block_header_t* get_next(block_header_t* block) {
@@ -215,9 +216,9 @@ block_header_t* get_previous(block_header_t* block) {
 
 block_header_t* get_previous_free(block_header_t* block) {
   block_header_t* prev = get_previous(block);
-  if (prev == NULL) { return prev; }
-
-  if (!prev->is_free) { return get_previous_free(prev); }
+  while (prev != NULL && !prev->is_free) {
+    prev = get_previous(prev);
+  }
   return prev;
 }
 
