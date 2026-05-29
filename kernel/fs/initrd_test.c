@@ -117,6 +117,14 @@ void initrd_test(void) {
                    VFS_STATUS_OK);
   assert_read_eq(&ctx, test, append_test);
 
+  htest_case_begin(&ctx, "read eof semantics");
+  HTEST_ASSERT(&ctx, vfs_seek(test, 0, VFS_SEEK_END, NULL) == VFS_STATUS_OK);
+  memset(test_buf, 0xAB, sizeof(test_buf));
+  bytes_read = 1234;
+  HTEST_ASSERT(&ctx, vfs_read(test, test_buf, sizeof(test_buf), &bytes_read) ==
+                         VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, bytes_read == 0);
+
   htest_case_begin(&ctx, "cleanup");
   HTEST_ASSERT(&ctx, vfs_close(unlink_test) == VFS_STATUS_OK);
   unlink_test = NULL;
@@ -185,9 +193,8 @@ static bool dir_contains(htest_ctx_t* ctx, vfs_file_t* dir, const char* name) {
   while (true) {
     vfs_dirent_t* dirent = NULL;
     vfs_status_t status = vfs_readdir(dir, &dirent);
-    if (status == VFS_STATUS_EOF) { return false; }
-
     HTEST_ASSERT(ctx, status == VFS_STATUS_OK);
+    if (dirent == NULL) { return false; }
     bool match = strcmp(dirent->name, name) == 0;
     free_dirent(dirent);
     if (match) { return true; }

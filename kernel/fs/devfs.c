@@ -290,7 +290,7 @@ vfs_status_t devfs_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
 
   if (file->current == NULL) {
     SET_OUT(out, NULL);
-    return VFS_STATUS_EOF;
+    return VFS_STATUS_OK;
   }
 
   devfs_node_t* current = file->current;

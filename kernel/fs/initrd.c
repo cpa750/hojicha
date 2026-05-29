@@ -162,7 +162,7 @@ vfs_status_t initrd_read(vfs_file_t* vfile,
   initrd_inode_t* node = (initrd_inode_t*)((vfs_node_t*)vfile->vnode)->fs_data;
   if (vfile->offset >= node->len) {
     SET_OUT(bytes_read_out, 0);
-    return VFS_STATUS_EOF;
+    return VFS_STATUS_OK;
   }
 
   uint64_t remaining = node->len - vfile->offset;
@@ -242,7 +242,7 @@ vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
 
   if (file->d_current == NULL) {
     SET_OUT_NULL(out);
-    return VFS_STATUS_EOF;
+    return VFS_STATUS_OK;
   }
 
   initrd_inode_t* current = file->d_current;

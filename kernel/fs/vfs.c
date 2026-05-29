@@ -235,8 +235,14 @@ vfs_status_t vfs_read(vfs_file_t* file,
                       void* buffer,
                       uint64_t len,
                       uint64_t* out_read) {
-  if (file == NULL) { return VFS_STATUS_INVALID_ARG; }
-  if (!(file->flags & VFS_OPEN_READ)) { return VFS_STATUS_FLAGS; }
+  if (file == NULL) {
+    SET_OUT(out_read, 0);
+    return VFS_STATUS_INVALID_ARG;
+  }
+  if (!(file->flags & VFS_OPEN_READ)) {
+    SET_OUT(out_read, 0);
+    return VFS_STATUS_BAD_FD;
+  }
   if (HVFS_FOP_MISSING(file, read)) { return VFS_STATUS_NOT_IMPLEMENTED; }
   return file->ops->read(file, buffer, len, out_read);
 }
@@ -249,7 +255,10 @@ vfs_status_t vfs_write(vfs_file_t* file,
     SET_OUT(bytes_written_out, 0);
     return VFS_STATUS_INVALID_ARG;
   }
-  if (!(file->flags & VFS_OPEN_WRITE)) { return VFS_STATUS_FLAGS; }
+  if (!(file->flags & VFS_OPEN_WRITE)) {
+    SET_OUT(bytes_written_out, 0);
+    return VFS_STATUS_BAD_FD;
+  }
   if (buffer == NULL) {
     SET_OUT(bytes_written_out, 0);
     return VFS_STATUS_INVALID_ARG;

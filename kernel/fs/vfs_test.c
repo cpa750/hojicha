@@ -278,8 +278,9 @@ void vfs_test(void) {
                vfs_open("/etc/vfs_mock/existing.txt", VFS_OPEN_READ, &file) ==
                    VFS_STATUS_OK);
   HTEST_ASSERT(&ctx,
-               vfs_write(file, "x", 1, &bytes_written) == VFS_STATUS_FLAGS);
+               vfs_write(file, "x", 1, &bytes_written) == VFS_STATUS_BAD_FD);
   HTEST_ASSERT(&ctx, mock.write_calls == 0);
+  HTEST_ASSERT(&ctx, bytes_written == 0);
   HTEST_ASSERT(&ctx, vfs_close(file) == VFS_STATUS_OK);
 
   file = NULL;
@@ -288,8 +289,9 @@ void vfs_test(void) {
                    VFS_STATUS_OK);
   HTEST_ASSERT(&ctx,
                vfs_read(file, read_buf, sizeof(read_buf), &bytes_read) ==
-                   VFS_STATUS_FLAGS);
+                   VFS_STATUS_BAD_FD);
   HTEST_ASSERT(&ctx, mock.read_calls == 0);
+  HTEST_ASSERT(&ctx, bytes_read == 0);
   HTEST_ASSERT(&ctx, vfs_readdir(file, NULL) == VFS_STATUS_NOTDIR);
   HTEST_ASSERT(&ctx, mock.readdir_calls == 0);
   HTEST_ASSERT(&ctx, vfs_close(file) == VFS_STATUS_OK);
@@ -314,6 +316,10 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx, mock.readdir_calls == 1);
   HTEST_ASSERT(&ctx, strcmp(dirent->name, "existing.txt") == 0);
   free_dirent(dirent);
+  dirent = (vfs_dirent_t*)1;
+  HTEST_ASSERT(&ctx, vfs_readdir(file, &dirent) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, dirent == NULL);
+  HTEST_ASSERT(&ctx, mock.readdir_calls == 2);
   HTEST_ASSERT(&ctx, vfs_close(file) == VFS_STATUS_OK);
 
   htest_case_begin(&ctx, "mkdir/rmdir");
@@ -541,7 +547,7 @@ static vfs_status_t mock_readdir(vfs_file_t* dir, vfs_dirent_t** out) {
   state->readdir_calls++;
   if (dir->offset != 0) {
     *out = NULL;
-    return VFS_STATUS_EOF;
+    return VFS_STATUS_OK;
   }
 
   vfs_dirent_t* dirent = (vfs_dirent_t*)malloc(sizeof(vfs_dirent_t));

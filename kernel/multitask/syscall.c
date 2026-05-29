@@ -1,12 +1,12 @@
+#include <cpu/isr.h>
 #include <haddr.h>
 #include <hlog.h>
 #include <multitask/syscall.h>
 #include <multitask/syscall_callbacks.h>
 
-#include "cpu/isr.h"
-
-#define SYSCALL_EXIT      0x3C
+#define SYSCALL_OPEN      0x2
 #define SYSCALL_NANOSLEEP 0x23
+#define SYSCALL_EXIT      0x3C
 
 struct syscall {
   syscall_callback_t callback;
