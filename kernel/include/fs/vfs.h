@@ -172,12 +172,13 @@ vfs_status_t vfs_lookup_parent(const char* absolute_path,
                                uint32_t* name_len_out);
 
 /*
- * Opens a regular file or directory at `absolute_path`. `flags` are currently
- * ignored but included in the API with intent for further expansion.
+ * Opens a regular file or directory at `absolute_path`. `out_fd` is optional
+ * and receives the process fd assigned to the opened handle on success.
  */
 vfs_status_t vfs_open(const char* absolute_path,
                       uint32_t flags,
-                      vfs_file_t** out);
+                      vfs_file_t** out,
+                      uint64_t* out_fd);
 
 /*
  * Creates a file in a given `dir`.
@@ -267,5 +268,6 @@ void vfs_vnode_borrow(vfs_node_t* vnode);
 void vfs_vnode_release(vfs_node_t* vnode);
 bool vfs_validate_name(const char* name, uint64_t name_len);
 char* vfs_clone_name(const char* name, uint64_t name_len, bool trailing_slash);
+int vfs_status_to_errno(vfs_status_t status);
 
 #endif  // HOJICHA_VFS_H

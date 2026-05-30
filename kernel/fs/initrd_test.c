@@ -23,7 +23,8 @@ void initrd_test(void) {
 
   htest_case_begin(&ctx, "create and read");
   vfs_file_t* etc = NULL;
-  HTEST_ASSERT(&ctx, vfs_open("/etc/", VFS_OPEN_DIRECTORY, &etc) == VFS_STATUS_OK);
+  HTEST_ASSERT(
+      &ctx, vfs_open("/etc/", VFS_OPEN_DIRECTORY, &etc, NULL) == VFS_STATUS_OK);
 
   HTEST_ASSERT(&ctx, vfs_mkdir(etc->vnode, "test_mkdir/", 11, NULL) ==
                          VFS_STATUS_OK);
@@ -32,7 +33,8 @@ void initrd_test(void) {
   HTEST_ASSERT(&ctx,
                vfs_open("/etc/test_open_create.txt",
                         VFS_OPEN_READ | VFS_OPEN_WRITE | VFS_OPEN_CREATE,
-                        &testcreate) == VFS_STATUS_OK);
+                        &testcreate,
+                        NULL) == VFS_STATUS_OK);
   char write_test[] = "open create write test";
   HTEST_ASSERT(&ctx,
                vfs_write(testcreate, write_test, 22, NULL) == VFS_STATUS_OK);
@@ -43,7 +45,8 @@ void initrd_test(void) {
   HTEST_ASSERT(&ctx,
                vfs_open("/etc/test_mkdir/mkdir_test.txt",
                         VFS_OPEN_READ | VFS_OPEN_WRITE | VFS_OPEN_CREATE,
-                        &mkdir_test) == VFS_STATUS_OK);
+                        &mkdir_test,
+                        NULL) == VFS_STATUS_OK);
   char mkdir_write_test[] = "mkdir write test";
   HTEST_ASSERT(&ctx,
                vfs_write(mkdir_test, mkdir_write_test, 16, NULL) ==
@@ -59,7 +62,8 @@ void initrd_test(void) {
   HTEST_ASSERT(&ctx,
                vfs_open("/etc/test_mkdir/unlink_test.txt",
                         VFS_OPEN_READ | VFS_OPEN_WRITE | VFS_OPEN_CREATE,
-                        &unlink_test) == VFS_STATUS_OK);
+                        &unlink_test,
+                        NULL) == VFS_STATUS_OK);
   char unlink_write_test[] = "unlink write test";
   HTEST_ASSERT(&ctx,
                vfs_write(unlink_test, unlink_write_test, 17, NULL) ==
@@ -67,10 +71,10 @@ void initrd_test(void) {
 
   vfs_file_t* testmkdir = NULL;
   HTEST_ASSERT(&ctx,
-               vfs_open("/etc/test_mkdir/", VFS_OPEN_DIRECTORY, &testmkdir) ==
+               vfs_open("/etc/test_mkdir/", VFS_OPEN_DIRECTORY, &testmkdir,
+                        NULL) ==
                    VFS_STATUS_OK);
-  HTEST_ASSERT(&ctx,
-               vfs_unlink(testmkdir->vnode, "unlink_test.txt", 15, 0) ==
+  HTEST_ASSERT(&ctx, vfs_unlink(testmkdir->vnode, "unlink_test.txt", 15, 0) ==
                    VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, vfs_seek(unlink_test, 0, VFS_SEEK_SET, NULL) == VFS_STATUS_OK);
   assert_read_eq(&ctx, unlink_test, unlink_write_test);
@@ -78,7 +82,8 @@ void initrd_test(void) {
   vfs_file_t* unlink_reopen = NULL;
   HTEST_ASSERT(&ctx,
                vfs_open("/etc/test_mkdir/unlink_test.txt", VFS_OPEN_READ,
-                        &unlink_reopen) == VFS_STATUS_NOENT);
+                        &unlink_reopen,
+                        NULL) == VFS_STATUS_NOENT);
   HTEST_ASSERT(&ctx, unlink_reopen == NULL);
 
   HTEST_ASSERT(&ctx,
@@ -92,7 +97,10 @@ void initrd_test(void) {
   htest_case_begin(&ctx, "seek and write");
   vfs_file_t* test = NULL;
   HTEST_ASSERT(&ctx,
-               vfs_open("/etc/test.txt", VFS_OPEN_READ | VFS_OPEN_WRITE, &test) ==
+               vfs_open("/etc/test.txt",
+                        VFS_OPEN_READ | VFS_OPEN_WRITE,
+                        &test,
+                        NULL) ==
                    VFS_STATUS_OK);
   char test_buf[64] = {0};
   uint64_t bytes_read = 0;
@@ -141,8 +149,10 @@ void initrd_test(void) {
 
   vfs_file_t* removed_dir = NULL;
   HTEST_ASSERT(&ctx,
-               vfs_open("/etc/test_mkdir/", VFS_OPEN_DIRECTORY, &removed_dir) ==
-                   VFS_STATUS_NOENT);
+               vfs_open("/etc/test_mkdir/",
+                        VFS_OPEN_DIRECTORY,
+                        &removed_dir,
+                        NULL) == VFS_STATUS_NOENT);
   HTEST_ASSERT(&ctx, removed_dir == NULL);
   assert_dir_missing(&ctx, etc, "test_mkdir/");
 

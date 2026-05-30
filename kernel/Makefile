@@ -131,6 +131,7 @@ multitask/semaphore.c \
 multitask/syscall.c \
 multitask/syscalls/syscall_exit.c \
 multitask/syscalls/syscall_nanosleep.c \
+multitask/syscalls/syscall_open.c \
 utils/hlog.c \
 utils/io.c \
 

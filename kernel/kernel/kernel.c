@@ -140,7 +140,7 @@ void kernel_main() {
   asm volatile("sti");
 
   vfs_file_t* f = NULL;
-  vfs_open("/usr/bin/bigmaths.elf", VFS_OPEN_READ, &f);
+  vfs_open("/usr/bin/bigmaths.elf", VFS_OPEN_READ, &f, NULL);
   vfs_stat_t* bigmaths_stat = NULL;
   vfs_fstat(f, &bigmaths_stat);
   unsigned char* bigmath_contents =

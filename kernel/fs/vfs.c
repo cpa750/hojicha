@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <fs/vfs.h>
 #include <kernel/g_kernel.h>
 #include <multitask/scheduler.h>
@@ -95,9 +96,11 @@ vfs_status_t vfs_lookup_parent(const char* absolute_path,
 
 vfs_status_t vfs_open(const char* absolute_path,
                       uint32_t flags,
-                      vfs_file_t** out) {
+                      vfs_file_t** out,
+                      uint64_t* out_fd) {
   if (absolute_path == NULL || out == NULL) { return VFS_STATUS_INVALID_ARG; }
   *out = NULL;
+  SET_OUT(out_fd, 0);
 
   const char* path_end = absolute_path;
   while (*path_end != '\0') { path_end++; }
@@ -144,6 +147,7 @@ vfs_status_t vfs_open(const char* absolute_path,
   vfs_status_t open_status = target->ops->open(target, open_flags, out);
   if (open_status == VFS_STATUS_OK) {
     sched_pb_fd_set(g_kernel.current_process, fd_idx, *out);
+    SET_OUT(out_fd, fd_idx);
   } else {
     vfs_vnode_release(target);
   }
@@ -381,6 +385,35 @@ char* vfs_clone_name(const char* name, uint64_t name_len, bool trailing_slash) {
   if (trailing_slash) { cloned[name_len++] = '/'; }
   cloned[name_len] = '\0';
   return cloned;
+}
+
+int vfs_status_to_errno(vfs_status_t status) {
+  switch (status) {
+    case VFS_STATUS_OK:
+      return 0;
+    case VFS_STATUS_NOENT:
+      return ENOENT;
+    case VFS_STATUS_NOTDIR:
+      return ENOTDIR;
+    case VFS_STATUS_ISDIR:
+      return EISDIR;
+    case VFS_STATUS_NOMEM:
+      return ENOMEM;
+    case VFS_STATUS_INVALID_ARG:
+      return EINVAL;
+    case VFS_STATUS_TOO_MANY_OPEN:
+      return EMFILE;
+    case VFS_STATUS_BAD_FD:
+      return EBADF;
+    case VFS_STATUS_NOT_IMPLEMENTED:
+      return ENOSYS;
+    case VFS_STATUS_NOTEMPTY:
+      return ENOTEMPTY;
+    case VFS_STATUS_EXISTS:
+      return EEXIST;
+    default:
+      return EINVAL;
+  }
 }
 
 static void clear_process_fd(vfs_file_t* file) {

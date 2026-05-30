@@ -13,7 +13,10 @@ void chardev_test(void) {
   htest_case_begin(&ctx, "null semantics");
   vfs_file_t* null_file = NULL;
   HTEST_ASSERT(&ctx,
-               vfs_open("/dev/null", VFS_OPEN_READ | VFS_OPEN_WRITE, &null_file) ==
+               vfs_open("/dev/null",
+                        VFS_OPEN_READ | VFS_OPEN_WRITE,
+                        &null_file,
+                        NULL) ==
                    VFS_STATUS_OK);
 
   char null_write_buf[] = "send this to null";
@@ -38,7 +41,10 @@ void chardev_test(void) {
   htest_case_begin(&ctx, "zero semantics");
   vfs_file_t* zero_file = NULL;
   HTEST_ASSERT(&ctx,
-               vfs_open("/dev/zero", VFS_OPEN_READ | VFS_OPEN_WRITE, &zero_file) ==
+               vfs_open("/dev/zero",
+                        VFS_OPEN_READ | VFS_OPEN_WRITE,
+                        &zero_file,
+                        NULL) ==
                    VFS_STATUS_OK);
 
   char zero_write_buf[] = "discard this too";

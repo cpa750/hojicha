@@ -1,4 +1,5 @@
 #include <cpu/isr.h>
+#include <errno.h>
 #include <haddr.h>
 #include <hlog.h>
 #include <multitask/syscall.h>
@@ -17,6 +18,9 @@ typedef struct syscall syscall_t;
 void syscall_handle(interrupt_frame_t* frame) {
   long ret = -1;
   switch (frame->rax) {
+    case SYSCALL_OPEN:
+      ret = syscall_open((const char*)frame->rdi, (unsigned int)frame->rsi);
+      break;
     case SYSCALL_EXIT:
       ret = syscall_exit((int)frame->rdi);
       break;
@@ -25,6 +29,7 @@ void syscall_handle(interrupt_frame_t* frame) {
       break;
     default:
       hlog_write(HLOG_WARN, "Syscall %d is invalid.", frame->rax);
+      ret = -ENOSYS;
       break;
   }
   frame->rax = (haddr_t)ret;

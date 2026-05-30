@@ -1,6 +1,11 @@
 #ifndef HOJICHA_ERRNO_H
 #define HOJICHA_ERRNO_H
 
+// Should be more sophisticated but for now this kludge will do
+#define errno __errno
+
+extern int __errno;
+
 #define EBADF     9
 #define ENOMEM    12
 #define EEXIST    17
