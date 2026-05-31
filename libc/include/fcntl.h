@@ -8,6 +8,8 @@ extern "C" {
 #endif
 
 int open(const char* path, int flags, int mode);
+int read(long fd, void* buf, long count);
+int write(long fd, void* buf, long count);
 
 #ifdef __cplusplus
 }

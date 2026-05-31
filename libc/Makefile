@@ -62,6 +62,8 @@ LIBK_CPPFLAGS := $(LIBK_CPPFLAGS) $(KERNEL_ARCH_CPPFLAGS)
 LIBC_SRC = \
 errno.c \
 fcntl/open.c \
+fcntl/read.c \
+fcntl/write.c \
 stdio/printf.c \
 stdio/putchar.c \
 stdio/puts.c \
