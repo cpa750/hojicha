@@ -1,6 +1,7 @@
 #include <fs/initrd.h>
 #include <fs/ustar.h>
 #include <fs/vfs.h>
+#include <fs/vfs_utils.h>
 #include <hlog.h>
 #include <multitask/bootmodule.h>
 #include <multitask/scheduler.h>
@@ -8,10 +9,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define SET_OUT(out, val)                                                      \
-  if (out != NULL) { *out = val; }
-#define SET_OUT_NULL(out) SET_OUT(out, NULL)
 
 typedef struct initrd_inode initrd_inode_t;
 struct initrd_inode {

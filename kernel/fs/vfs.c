@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <fs/vfs.h>
+#include <fs/vfs_utils.h>
 #include <kernel/g_kernel.h>
 #include <multitask/scheduler.h>
 #include <stdbool.h>
@@ -7,8 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define SET_OUT(out, val)                                                      \
-  if (out != NULL) { *out = val; }
 #define HVFS_VOP_MISSING(vnode, op)                                            \
   ((vnode) == NULL || (vnode)->ops == NULL || (vnode)->ops->op == NULL)
 #define HVFS_FOP_MISSING(file, op)                                             \
