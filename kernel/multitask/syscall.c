@@ -20,6 +20,7 @@ void syscall_handle(interrupt_frame_t* frame) {
       break;
     case __HOJICHA_SYS_SYSCALL_WRITE:
       ret = syscall_write(frame->rdi, (void*)frame->rsi, frame->rdx);
+      break;
     case __HOJICHA_SYS_SYSCALL_OPEN:
       ret = syscall_open((const char*)frame->rdi, (unsigned int)frame->rsi);
       break;
