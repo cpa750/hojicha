@@ -116,6 +116,31 @@ vfs_status_t vfs_open(const char* absolute_path,
   bool has_fd = sched_pb_fd_find_null(g_kernel.current_process, &fd_idx);
   if (!has_fd) { return VFS_STATUS_TOO_MANY_OPEN; }
 
+  vfs_status_t open_status = vfs_get_file_handle(absolute_path, flags, out);
+  if (open_status == VFS_STATUS_OK) {
+    sched_pb_fd_set(g_kernel.current_process, fd_idx, *out);
+    SET_OUT(out_fd, fd_idx);
+  }
+  return open_status;
+}
+
+vfs_status_t vfs_get_file_handle(const char* absolute_path,
+                                 uint32_t flags,
+                                 vfs_file_t** out) {
+  if (absolute_path == NULL || out == NULL) { return VFS_STATUS_INVALID_ARG; }
+  *out = NULL;
+
+  const char* path_end = absolute_path;
+  while (*path_end != '\0') { path_end++; }
+
+  if ((flags & VFS_OPEN_CREATE) && (flags & VFS_OPEN_DIRECTORY)) {
+    return VFS_STATUS_INVALID_ARG;
+  }
+  if ((flags & VFS_OPEN_CREATE) && path_end > absolute_path + 1 &&
+      path_end[-1] == '/') {
+    return VFS_STATUS_INVALID_ARG;
+  }
+
   vfs_node_t* target = NULL;
   vfs_status_t lookup_res = vfs_lookup(absolute_path, &target);
   if (lookup_res != VFS_STATUS_OK &&
@@ -144,12 +169,7 @@ vfs_status_t vfs_open(const char* absolute_path,
 
   uint32_t open_flags = flags & ~VFS_OPEN_CREATE;
   vfs_status_t open_status = target->ops->open(target, open_flags, out);
-  if (open_status == VFS_STATUS_OK) {
-    sched_pb_fd_set(g_kernel.current_process, fd_idx, *out);
-    SET_OUT(out_fd, fd_idx);
-  } else {
-    vfs_vnode_release(target);
-  }
+  if (open_status != VFS_STATUS_OK) { vfs_vnode_release(target); }
   return open_status;
 }
 

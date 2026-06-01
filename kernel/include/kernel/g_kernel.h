@@ -4,6 +4,7 @@
 #include <cpu/tss.h>
 #include <drivers/pit.h>
 #include <multitask/scheduler.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 struct sched_state;
@@ -21,18 +22,21 @@ typedef struct vmm vmm_t;
 struct tty_state;
 typedef struct tty_state tty_state_t;
 
+typedef struct console_state console_state_t;
+
 struct kernel_state {
   // Begin ASM-mapped fields
   tss_t* tss;
   process_block_t* current_process;
   // End asm-mapped fields
 
-  sched_state_t* sched;
+  console_state_t* console;
   pit_state_t* pit;
   pmm_state_t* pmm;
+  sched_state_t* sched;
   tty_state_t* tty;
-  vmm_t* vmm;
   vga_state_t* vga;
+  vmm_t* vmm;
 };
 typedef struct kernel_state kernel_state_t;
 

@@ -4,12 +4,7 @@
 #include <hlog.h>
 #include <multitask/syscall.h>
 #include <multitask/syscall_callbacks.h>
-
-#define SYSCALL_READ      0x0
-#define SYSCALL_WRITE     0x1
-#define SYSCALL_OPEN      0x2
-#define SYSCALL_NANOSLEEP 0x23
-#define SYSCALL_EXIT      0x3C
+#include <sys/__syscalls.h>
 
 struct syscall {
   syscall_callback_t callback;
@@ -20,18 +15,18 @@ typedef struct syscall syscall_t;
 void syscall_handle(interrupt_frame_t* frame) {
   long ret = -1;
   switch (frame->rax) {
-    case SYSCALL_READ:
+    case __HOJICHA_SYS_SYSCALL_READ:
       ret = syscall_read(frame->rdi, (void*)frame->rsi, frame->rdx);
       break;
-    case SYSCALL_WRITE:
+    case __HOJICHA_SYS_SYSCALL_WRITE:
       ret = syscall_write(frame->rdi, (void*)frame->rsi, frame->rdx);
-    case SYSCALL_OPEN:
+    case __HOJICHA_SYS_SYSCALL_OPEN:
       ret = syscall_open((const char*)frame->rdi, (unsigned int)frame->rsi);
       break;
-    case SYSCALL_EXIT:
+    case __HOJICHA_SYS_SYSCALL_EXIT:
       ret = syscall_exit((int)frame->rdi);
       break;
-    case SYSCALL_NANOSLEEP:
+    case __HOJICHA_SYS_SYSCALL_NANOSLEEP:
       ret = syscall_nanosleep((unsigned long)frame->rdi);
       break;
     default:

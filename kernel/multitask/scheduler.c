@@ -211,6 +211,18 @@ process_block_t* sched_uproc_new(char* name, elf_t* elf) {
   vmm_t* vmm = vmm_new(PAGE_USER_ACCESIBLE);
   process_block_t* new_proc = new_proc_shared(name, vmm_get_cr3(vmm));
   if (vmm == NULL || new_proc == NULL) { return NULL; }
+
+  if (g_kernel.console != NULL) {
+    for (uint64_t fd = 0; fd < 3; ++fd) {
+      vfs_file_t* console = NULL;
+      if (vfs_get_file_handle("/dev/console",
+                              VFS_OPEN_READ | VFS_OPEN_WRITE,
+                              &console) == VFS_STATUS_OK) {
+        sched_pb_fd_set(new_proc, fd, console);
+      }
+    }
+  }
+
   new_proc->is_kernel_proc = false;
   new_proc->elf = elf;
   new_proc->vmm = vmm;
@@ -455,17 +467,18 @@ void insert_process_after(process_block_t* process, process_block_t* after) {
 }
 
 process_block_t* new_proc_shared(char* name, void* cr3) {
-  process_block_t* new_proc = (process_block_t*)malloc(sizeof(process_block_t));
-  vfs_file_t** fds = (vfs_file_t**)malloc(sizeof(vfs_file_t*) * MAX_FDS);
-  uint8_t* stack_end = (uint8_t*)malloc(STACK_SIZE);
+  process_block_t* new_proc =
+      (process_block_t*)calloc(1, sizeof(process_block_t));
+  vfs_file_t** fds = (vfs_file_t**)calloc(1, sizeof(vfs_file_t*) * MAX_FDS);
+  uint8_t* stack_end = (uint8_t*)calloc(1, STACK_SIZE);
   hlogger_t* logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
   if (new_proc == NULL || fds == NULL || stack_end == NULL || logger == NULL) {
+    free(new_proc);
+    free(fds);
+    free(stack_end);
     hlog_write(HLOG_ERROR, "Could not create new process %s: out of memory.");
     return NULL;
   }
-  memset(new_proc, 0, sizeof(process_block_t));
-  memset(fds, 0, sizeof(vfs_file_t*) * MAX_FDS);
-  memset(stack_end, 0, STACK_SIZE);
 
   ++(g_kernel.sched->total_processes_added);
   ++(g_kernel.sched->process_count);

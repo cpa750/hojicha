@@ -106,6 +106,7 @@ cpu/isr.c \
 dev/chardev.c \
 dev/chardev_test.c \
 dev/null.c \
+dev/console.c \
 dev/zero.c \
 drivers/keyboard.c \
 drivers/pic.c \
