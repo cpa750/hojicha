@@ -139,28 +139,21 @@ void kernel_main() {
 
   asm volatile("sti");
 
-  vfs_file_t* f = NULL;
-  vfs_open("/usr/bin/bigmaths.elf", VFS_OPEN_READ, &f);
-  vfs_stat_t* bigmaths_stat = NULL;
-  vfs_fstat(f, &bigmaths_stat);
-  unsigned char* bigmath_contents =
-      malloc(sizeof(unsigned char) * bigmaths_stat->size);
+  vfs_file_t* ls_file = NULL;
+  vfs_open("/usr/bin/ls.elf", VFS_OPEN_READ, &ls_file, NULL);
+  vfs_stat_t* ls_stat = NULL;
+  vfs_fstat(ls_file, &ls_stat);
+  unsigned char* ls_contents = malloc(sizeof(unsigned char) * ls_stat->size);
   uint64_t bytes_read = 0;
   vfs_status_t res =
-      vfs_read(f, bigmath_contents, bigmaths_stat->size, &bytes_read);
+      vfs_read(ls_file, ls_contents, ls_stat->size, &bytes_read);
   if (res != VFS_STATUS_OK) { hlog_write(HLOG_ERROR, "uh oh..."); }
 
-  elf_t* bigmaths = elf_read(bigmath_contents, bigmaths_stat->size);
-  process_block_t* elf_proc = sched_uproc_new("bigmaths", bigmaths);
+  elf_t* ls = elf_read(ls_contents, ls_stat->size);
+  process_block_t* elf_proc = sched_uproc_new("ls", ls);
   sched_add_proc(elf_proc);
 
-  elf_t* bigmaths2_electric_boogaloo =
-      elf_read(bigmath_contents, bigmaths_stat->size);
-  process_block_t* elf_proc2 = sched_uproc_new("bigmaths2_electric_boogaloo",
-                                               bigmaths2_electric_boogaloo);
-  sched_add_proc(elf_proc2);
-
-  vfs_close(f);
+  vfs_close(ls_file);
 
   sched_yield();
 

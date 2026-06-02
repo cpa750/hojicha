@@ -106,6 +106,7 @@ cpu/isr.c \
 dev/chardev.c \
 dev/chardev_test.c \
 dev/null.c \
+dev/console.c \
 dev/zero.c \
 drivers/keyboard.c \
 drivers/pic.c \
@@ -129,8 +130,19 @@ multitask/elf.c \
 multitask/scheduler.c \
 multitask/semaphore.c \
 multitask/syscall.c \
+multitask/syscalls/syscall_close.c \
 multitask/syscalls/syscall_exit.c \
+multitask/syscalls/syscall_getdents.c \
+multitask/syscalls/syscall_lseek.c \
+multitask/syscalls/syscall_mkdir.c \
 multitask/syscalls/syscall_nanosleep.c \
+multitask/syscalls/syscall_open.c \
+multitask/syscalls/syscall_read.c \
+multitask/syscalls/syscall_rmdir.c \
+multitask/syscalls/syscall_stat.c \
+multitask/syscalls/syscall_unlink.c \
+multitask/syscalls/syscall_utils.c \
+multitask/syscalls/syscall_write.c \
 utils/hlog.c \
 utils/io.c \
 

@@ -1,10 +1,8 @@
 #include <dev/zero.h>
 #include <fs/vfs.h>
+#include <fs/vfs_utils.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define SET_OUT(out, val)                                                      \
-  if ((out) != NULL) { *(out) = (val); }
 
 static vfs_status_t zero_open(vfs_node_t* vnode,
                               uint32_t flags,

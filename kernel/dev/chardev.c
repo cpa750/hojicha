@@ -1,4 +1,5 @@
 #include <dev/chardev.h>
+#include <dev/console.h>
 #include <dev/null.h>
 #include <dev/zero.h>
 #include <fs/devfs.h>
@@ -14,4 +15,6 @@ void chardev_initialize(void) {
   if (zero_dev != NULL) {
     devfs_register(DEVFS_CHARDEV, 1, zero_dev, "zero", 4);
   }
+
+  console_initialize();
 }

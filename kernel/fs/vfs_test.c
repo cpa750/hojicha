@@ -116,7 +116,6 @@ static void mock_node_init(mock_node_t* node,
 static void mock_reset(mock_vfs_state_t* state);
 static void ensure_mock_mount(htest_ctx_t* ctx);
 static void cleanup_mock_mount(htest_ctx_t* ctx);
-static bool find_fd_for_file(vfs_file_t* file, uint64_t* fd_out);
 static void free_dirent(vfs_dirent_t* dirent);
 
 static const vfs_node_ops_t mock_dir_ops = {
@@ -167,10 +166,12 @@ void vfs_test(void) {
   vfs_vnode_release(looked_up);
 
   vfs_file_t* file = NULL;
+  uint64_t fd = 0;
   HTEST_ASSERT(&ctx,
                vfs_open("/etc/vfs_mock/existing.txt",
                         VFS_OPEN_READ | VFS_OPEN_WRITE,
-                        &file) == VFS_STATUS_OK);
+                        &file,
+                        &fd) == VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, mock.lookup_calls > 0);
   HTEST_ASSERT(&ctx, mock.last_lookup_dir == &mock.root.vnode);
   HTEST_ASSERT(&ctx, mock.open_calls == 1);
@@ -184,8 +185,6 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx, stat->size == 128);
   free(stat);
 
-  uint64_t fd = 0;
-  HTEST_ASSERT(&ctx, find_fd_for_file(file, &fd));
   vfs_file_t* resolved = NULL;
   HTEST_ASSERT(&ctx, vfs_resolve_fd(fd, &resolved) == VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, resolved == file);
@@ -212,7 +211,8 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx,
                vfs_open("/etc/vfs_mock/created.txt",
                         VFS_OPEN_READ | VFS_OPEN_WRITE | VFS_OPEN_CREATE,
-                        &file) == VFS_STATUS_OK);
+                        &file,
+                        NULL) == VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, mock.create_file_calls == 1);
   HTEST_ASSERT(&ctx, mock.open_calls == 1);
   HTEST_ASSERT(&ctx, mock.last_name_len == strlen("created.txt"));
@@ -227,7 +227,8 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx,
                vfs_open("/etc/vfs_mock/created.txt",
                         VFS_OPEN_READ | VFS_OPEN_WRITE | VFS_OPEN_CREATE,
-                        &file) == VFS_STATUS_OK);
+                        &file,
+                        NULL) == VFS_STATUS_OK);
 
   char write_buf[] = "payload";
   uint64_t bytes_written = 0;
@@ -265,7 +266,8 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx,
                vfs_open("/etc/vfs_mock/bad/",
                         VFS_OPEN_CREATE | VFS_OPEN_DIRECTORY,
-                        &file) == VFS_STATUS_INVALID_ARG);
+                        &file,
+                        NULL) == VFS_STATUS_INVALID_ARG);
   HTEST_ASSERT(&ctx, mock.lookup_calls == 0);
   HTEST_ASSERT(&ctx, mock.create_file_calls == 0);
   HTEST_ASSERT(&ctx, mock.open_calls == 0);
@@ -275,21 +277,29 @@ void vfs_test(void) {
 
   file = NULL;
   HTEST_ASSERT(&ctx,
-               vfs_open("/etc/vfs_mock/existing.txt", VFS_OPEN_READ, &file) ==
+               vfs_open("/etc/vfs_mock/existing.txt",
+                        VFS_OPEN_READ,
+                        &file,
+                        NULL) ==
                    VFS_STATUS_OK);
   HTEST_ASSERT(&ctx,
-               vfs_write(file, "x", 1, &bytes_written) == VFS_STATUS_FLAGS);
+               vfs_write(file, "x", 1, &bytes_written) == VFS_STATUS_BAD_FD);
   HTEST_ASSERT(&ctx, mock.write_calls == 0);
+  HTEST_ASSERT(&ctx, bytes_written == 0);
   HTEST_ASSERT(&ctx, vfs_close(file) == VFS_STATUS_OK);
 
   file = NULL;
   HTEST_ASSERT(&ctx,
-               vfs_open("/etc/vfs_mock/existing.txt", VFS_OPEN_WRITE, &file) ==
+               vfs_open("/etc/vfs_mock/existing.txt",
+                        VFS_OPEN_WRITE,
+                        &file,
+                        NULL) ==
                    VFS_STATUS_OK);
   HTEST_ASSERT(&ctx,
                vfs_read(file, read_buf, sizeof(read_buf), &bytes_read) ==
-                   VFS_STATUS_FLAGS);
+                   VFS_STATUS_BAD_FD);
   HTEST_ASSERT(&ctx, mock.read_calls == 0);
+  HTEST_ASSERT(&ctx, bytes_read == 0);
   HTEST_ASSERT(&ctx, vfs_readdir(file, NULL) == VFS_STATUS_NOTDIR);
   HTEST_ASSERT(&ctx, mock.readdir_calls == 0);
   HTEST_ASSERT(&ctx, vfs_close(file) == VFS_STATUS_OK);
@@ -308,12 +318,17 @@ void vfs_test(void) {
   file = NULL;
   HTEST_ASSERT(
       &ctx,
-      vfs_open("/etc/vfs_mock/", VFS_OPEN_DIRECTORY, &file) == VFS_STATUS_OK);
+      vfs_open("/etc/vfs_mock/", VFS_OPEN_DIRECTORY, &file, NULL) ==
+          VFS_STATUS_OK);
   vfs_dirent_t* dirent = NULL;
   HTEST_ASSERT(&ctx, vfs_readdir(file, &dirent) == VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, mock.readdir_calls == 1);
   HTEST_ASSERT(&ctx, strcmp(dirent->name, "existing.txt") == 0);
   free_dirent(dirent);
+  dirent = (vfs_dirent_t*)1;
+  HTEST_ASSERT(&ctx, vfs_readdir(file, &dirent) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, dirent == NULL);
+  HTEST_ASSERT(&ctx, mock.readdir_calls == 2);
   HTEST_ASSERT(&ctx, vfs_close(file) == VFS_STATUS_OK);
 
   htest_case_begin(&ctx, "mkdir/rmdir");
@@ -541,7 +556,7 @@ static vfs_status_t mock_readdir(vfs_file_t* dir, vfs_dirent_t** out) {
   state->readdir_calls++;
   if (dir->offset != 0) {
     *out = NULL;
-    return VFS_STATUS_EOF;
+    return VFS_STATUS_OK;
   }
 
   vfs_dirent_t* dirent = (vfs_dirent_t*)malloc(sizeof(vfs_dirent_t));
@@ -701,7 +716,8 @@ static void ensure_mock_mount(htest_ctx_t* ctx) {
 
   vfs_file_t* etc = NULL;
   HTEST_ASSERT(ctx,
-               vfs_open("/etc/", VFS_OPEN_DIRECTORY, &etc) == VFS_STATUS_OK);
+               vfs_open("/etc/", VFS_OPEN_DIRECTORY, &etc, NULL) ==
+                   VFS_STATUS_OK);
 
   vfs_node_t* mountpoint = NULL;
   HTEST_ASSERT(
@@ -733,22 +749,13 @@ static void cleanup_mock_mount(htest_ctx_t* ctx) {
 
   vfs_file_t* etc = NULL;
   HTEST_ASSERT(ctx,
-               vfs_open("/etc/", VFS_OPEN_DIRECTORY, &etc) == VFS_STATUS_OK);
+               vfs_open("/etc/", VFS_OPEN_DIRECTORY, &etc, NULL) ==
+                   VFS_STATUS_OK);
   HTEST_ASSERT(ctx, vfs_rmdir(etc->vnode, "vfs_mock", 8, 0) == VFS_STATUS_OK);
   HTEST_ASSERT(ctx, vfs_close(etc) == VFS_STATUS_OK);
 
   HTEST_ASSERT(
       ctx, vfs_lookup("/etc/vfs_mock/", &unmounted_root) == VFS_STATUS_NOENT);
-}
-
-static bool find_fd_for_file(vfs_file_t* file, uint64_t* fd_out) {
-  for (uint64_t i = 0; i < MAX_FDS; ++i) {
-    if (sched_pb_fd_get(g_kernel.current_process, i) == file) {
-      if (fd_out != NULL) { *fd_out = i; }
-      return true;
-    }
-  }
-  return false;
 }
 
 static void free_dirent(vfs_dirent_t* dirent) {

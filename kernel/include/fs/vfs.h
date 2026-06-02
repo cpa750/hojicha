@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #define MAX_FDS 256
 
@@ -12,12 +13,10 @@ typedef enum {
   VFS_STATUS_NOTDIR,
   VFS_STATUS_ISDIR,
   VFS_STATUS_NOMEM,
-  VFS_STATUS_EOF,
   VFS_STATUS_INVALID_ARG,
   VFS_STATUS_TOO_MANY_OPEN,
   VFS_STATUS_BAD_FD,
   VFS_STATUS_NOT_IMPLEMENTED,
-  VFS_STATUS_FLAGS,
   VFS_STATUS_NOTEMPTY,
   VFS_STATUS_EXISTS,
 } vfs_status_t;
@@ -36,7 +35,11 @@ typedef enum {
   VFS_OPEN_CREATE = 8,
 } vfs_open_flags_t;
 
-typedef enum { VFS_SEEK_SET = 0, VFS_SEEK_CUR, VFS_SEEK_END } vfs_seek_whence_t;
+typedef enum {
+  VFS_SEEK_SET = SEEK_SET,
+  VFS_SEEK_CUR = SEEK_CUR,
+  VFS_SEEK_END = SEEK_END,
+} vfs_seek_whence_t;
 
 /*
  * One mounted filesystem instance. Owns the root vnode for that mount and any
@@ -174,12 +177,21 @@ vfs_status_t vfs_lookup_parent(const char* absolute_path,
                                uint32_t* name_len_out);
 
 /*
- * Opens a regular file or directory at `absolute_path`. `flags` are currently
- * ignored but included in the API with intent for further expansion.
+ * Opens a regular file or directory at `absolute_path`. `out_fd` is optional
+ * and receives the process fd assigned to the opened handle on success.
  */
 vfs_status_t vfs_open(const char* absolute_path,
                       uint32_t flags,
-                      vfs_file_t** out);
+                      vfs_file_t** out,
+                      uint64_t* out_fd);
+
+/*
+ * Opens a regular file or directory at `absolute_path` and returns a file
+ * handle.
+ */
+vfs_status_t vfs_get_file_handle(const char* absolute_path,
+                                 uint32_t flags,
+                                 vfs_file_t** out);
 
 /*
  * Creates a file in a given `dir`.
@@ -238,7 +250,7 @@ vfs_status_t vfs_readdir(vfs_file_t* dir, vfs_dirent_t** out);
  * Seeks to at most the given `offset` from `whence` in the given `file`.
  */
 vfs_status_t vfs_seek(vfs_file_t* file,
-                      uint64_t offset,
+                      int64_t offset,
                       vfs_seek_whence_t whence,
                       uint64_t* new_pos);
 
@@ -269,5 +281,6 @@ void vfs_vnode_borrow(vfs_node_t* vnode);
 void vfs_vnode_release(vfs_node_t* vnode);
 bool vfs_validate_name(const char* name, uint64_t name_len);
 char* vfs_clone_name(const char* name, uint64_t name_len, bool trailing_slash);
+int vfs_status_to_errno(vfs_status_t status);
 
 #endif  // HOJICHA_VFS_H

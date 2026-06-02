@@ -6,7 +6,10 @@
 
 kernel_state_t g_kernel;
 
-void g_kernel_initialize() { memset(&g_kernel, 0x0, sizeof(kernel_state_t)); }
+void g_kernel_initialize() {
+  memset(&g_kernel, 0x0, sizeof(kernel_state_t));
+  g_kernel.console = NULL;
+}
 void g_kernel_dump() {
   pmm_state_dump(g_kernel.pmm);
   vmm_dump(g_kernel.vmm);

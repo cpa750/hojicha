@@ -60,6 +60,11 @@ LIBK_CFLAGS := $(LIBK_CFLAGS) $(KERNEL_ARCH_CFLAGS)
 LIBK_CPPFLAGS := $(LIBK_CPPFLAGS) $(KERNEL_ARCH_CPPFLAGS)
 
 LIBC_SRC = \
+errno.c \
+dirent/getdents.c \
+fcntl/open.c \
+fcntl/read.c \
+fcntl/write.c \
 stdio/printf.c \
 stdio/putchar.c \
 stdio/puts.c \
@@ -79,8 +84,14 @@ string/memset.c \
 string/strcmp.c \
 string/strcpy.c \
 string/strlen.c \
+sys/mkdir.c \
+sys/stat.c \
+unistd/close.c \
+unistd/lseek.c \
+unistd/rmdir.c \
 time/nanosleep.c \
-unistd/sleep.c
+unistd/sleep.c \
+unistd/unlink.c
 
 # Build directory versions
 OBJDIRS := $(sort $(dir $(addprefix $(BUILDDIR)/,$(LIBC_SRC:.c=.o))))

@@ -1,13 +1,11 @@
 #include <fs/devfs.h>
 #include <fs/vfs.h>
+#include <fs/vfs_utils.h>
 #include <hlog.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define SET_OUT(out, val)                                                      \
-  if (out != NULL) { *out = val; }
 
 typedef struct devfs_node devfs_node_t;
 struct devfs_node {
@@ -177,7 +175,7 @@ vfs_status_t devfs_lookup(vfs_node_t* dir,
   if (child == NULL) { return VFS_STATUS_NOENT; }
 
   vfs_vnode_borrow(child->vnode);
-  SET_OUT(out, child->vnode)
+  SET_OUT(out, child->vnode);
   return VFS_STATUS_OK;
 }
 
@@ -290,7 +288,7 @@ vfs_status_t devfs_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
 
   if (file->current == NULL) {
     SET_OUT(out, NULL);
-    return VFS_STATUS_EOF;
+    return VFS_STATUS_OK;
   }
 
   devfs_node_t* current = file->current;

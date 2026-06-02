@@ -1,6 +1,7 @@
 #include <fs/initrd.h>
 #include <fs/ustar.h>
 #include <fs/vfs.h>
+#include <fs/vfs_utils.h>
 #include <hlog.h>
 #include <multitask/bootmodule.h>
 #include <multitask/scheduler.h>
@@ -8,10 +9,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define SET_OUT(out, val)                                                      \
-  if (out != NULL) { *out = val; }
-#define SET_OUT_NULL(out) SET_OUT(out, NULL)
 
 typedef struct initrd_inode initrd_inode_t;
 struct initrd_inode {
@@ -162,7 +159,7 @@ vfs_status_t initrd_read(vfs_file_t* vfile,
   initrd_inode_t* node = (initrd_inode_t*)((vfs_node_t*)vfile->vnode)->fs_data;
   if (vfile->offset >= node->len) {
     SET_OUT(bytes_read_out, 0);
-    return VFS_STATUS_EOF;
+    return VFS_STATUS_OK;
   }
 
   uint64_t remaining = node->len - vfile->offset;
@@ -242,7 +239,7 @@ vfs_status_t initrd_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
 
   if (file->d_current == NULL) {
     SET_OUT_NULL(out);
-    return VFS_STATUS_EOF;
+    return VFS_STATUS_OK;
   }
 
   initrd_inode_t* current = file->d_current;
