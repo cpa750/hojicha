@@ -1,5 +1,7 @@
 export CMAKE=${CMAKE:-cmake}
 export HOST=${HOST:-$(./default_host.sh)}
+export CMAKE_GENERATOR=Ninja
+export CMAKE_BUILD_PARALLEL_LEVEL=16
 
 export AR=${HOST}-ar
 export AS=${HOST}-as

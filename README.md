@@ -6,7 +6,7 @@ This project is a first effort at developing an operating system for the x86_64 
 
 ## Current Status:
 Preparation work for proper init and shell programs:
-- [ ] VFS exposed as syscalls
+- [X] VFS exposed as syscalls
 - [ ] TTY configuration via devfs
 - [ ] stdin/stdout/stderr
 
@@ -51,6 +51,8 @@ If you're reading this and you have feedback, please don't hesitate to let me kn
 ## Building & Running:
 ### Prerequisites
 - GCC cross-compiler targeting x86_64 ELF - there are good instructions for this at https://wiki.osdev.org/GCC_Cross-Compiler. I personally am building with v15.2.0 - other versions _should_ work as well, but no guarantees.
+- CMake
+- Ninja
 - NASM
 - Xorriso
 - QEMU - Other emulators likely work as well, but the build/run scripts are built around using QEMU for emulation.
