@@ -4,6 +4,8 @@
 #define __HOJICHA_SYS_SYSCALL_READ      0x0
 #define __HOJICHA_SYS_SYSCALL_WRITE     0x1
 #define __HOJICHA_SYS_SYSCALL_OPEN      0x2
+#define __HOJICHA_SYS_SYSCALL_STAT      0x4
+#define __HOJICHA_SYS_SYSCALL_GETDENTS  0x4E
 #define __HOJICHA_SYS_SYSCALL_NANOSLEEP 0x23
 #define __HOJICHA_SYS_SYSCALL_EXIT      0x3C
 
@@ -25,4 +27,3 @@ __syscall6(long n, long a1, long a2, long a3, long a4, long a5, long a6);
 #endif
 
 #endif  // __HOJICHA_SYS_SYSCALLS_H
-

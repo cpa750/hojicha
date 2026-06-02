@@ -24,6 +24,13 @@ void syscall_handle(interrupt_frame_t* frame) {
     case __HOJICHA_SYS_SYSCALL_OPEN:
       ret = syscall_open((const char*)frame->rdi, (unsigned int)frame->rsi);
       break;
+    case __HOJICHA_SYS_SYSCALL_STAT:
+      ret = syscall_stat((const char*)frame->rdi, (stat_t*)frame->rsi);
+      break;
+    case __HOJICHA_SYS_SYSCALL_GETDENTS:
+      ret = syscall_getdents(
+          frame->rdi, (linux_dirent_t*)frame->rsi, frame->rdx);
+      break;
     case __HOJICHA_SYS_SYSCALL_EXIT:
       ret = syscall_exit((int)frame->rdi);
       break;

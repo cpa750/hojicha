@@ -61,6 +61,7 @@ LIBK_CPPFLAGS := $(LIBK_CPPFLAGS) $(KERNEL_ARCH_CPPFLAGS)
 
 LIBC_SRC = \
 errno.c \
+dirent/getdents.c \
 fcntl/open.c \
 fcntl/read.c \
 fcntl/write.c \
@@ -83,6 +84,7 @@ string/memset.c \
 string/strcmp.c \
 string/strcpy.c \
 string/strlen.c \
+sys/stat.c \
 time/nanosleep.c \
 unistd/sleep.c
 

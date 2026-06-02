@@ -133,7 +133,9 @@ multitask/syscall.c \
 multitask/syscalls/syscall_exit.c \
 multitask/syscalls/syscall_nanosleep.c \
 multitask/syscalls/syscall_open.c \
+multitask/syscalls/syscall_getdents.c \
 multitask/syscalls/syscall_read.c \
+multitask/syscalls/syscall_stat.c \
 multitask/syscalls/syscall_write.c \
 utils/hlog.c \
 utils/io.c \

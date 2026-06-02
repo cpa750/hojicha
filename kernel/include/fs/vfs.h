@@ -182,7 +182,7 @@ vfs_status_t vfs_open(const char* absolute_path,
 
 /*
  * Opens a regular file or directory at `absolute_path` and returns a file
- * handle without installing it into any process file descriptor table.
+ * handle.
  */
 vfs_status_t vfs_get_file_handle(const char* absolute_path,
                                  uint32_t flags,
