@@ -1,53 +1,53 @@
 #!/bin/sh
 
-HOST=x86_64-elf
+HOST=${HOST:-x86_64-elf}
 
 set -e
-. ./headers.sh
+. ./config.sh
 
-DEBUG_FLAG=" "
+DEBUG_QEMU=0
 case "$*" in
   *--debug-qemu*)
-    DEBUG_QEMU="DEBUG_QEMU=1"
+    DEBUG_QEMU=1
     ;;
 esac
 
-TEST_KMALLOC=" "
+TEST_KMALLOC=0
 case "$*" in
   *--test-kmalloc*)
-    TEST_KMALLOC="TEST_KMALLOC=1"
+    TEST_KMALLOC=1
     ;;
 esac
 
-TEST_INITRD=" "
+TEST_INITRD=0
 case "$*" in
   *--test-initrd*)
-    TEST_INITRD="TEST_INITRD=1"
+    TEST_INITRD=1
     ;;
 esac
 
-TEST_VFS=" "
+TEST_VFS=0
 case "$*" in
   *--test-vfs*)
-    TEST_VFS="TEST_VFS=1"
+    TEST_VFS=1
     ;;
 esac
 
-TEST_CHARDEV=" "
+TEST_CHARDEV=0
 case "$*" in
   *--test-chardev*)
-    TEST_CHARDEV="TEST_CHARDEV=1"
+    TEST_CHARDEV=1
     ;;
 esac
 
-TEST_ALL=" "
+TEST_ALL=0
 case "$*" in
   *--test-all*)
-    TEST_ALL="TEST_ALL=1"
+    TEST_ALL=1
     ;;
 esac
 
-HLOG_LEVEL=" "
+HLOG_LEVEL=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --hlog-level=*)
@@ -68,7 +68,7 @@ done
 if [ -n "$HLOG_LEVEL_VALUE" ]; then
   case "$HLOG_LEVEL_VALUE" in
     FATAL|ERROR|WARN|INFO|DEBUG|VERBOSE)
-      HLOG_LEVEL="HLOG_LEVEL=HLOG_$HLOG_LEVEL_VALUE"
+      HLOG_LEVEL="HLOG_$HLOG_LEVEL_VALUE"
       ;;
     *)
       echo "Unknown --hlog-level value: $HLOG_LEVEL_VALUE" >&2
@@ -78,15 +78,40 @@ if [ -n "$HLOG_LEVEL_VALUE" ]; then
   esac
 fi
 
-for PROJECT in $PROJECTS; do
-  (cd $PROJECT && DESTDIR="$SYSROOT" bear --append -- $MAKE $DEBUG_QEMU $TEST_KMALLOC $TEST_INITRD $TEST_VFS $TEST_CHARDEV $TEST_ALL $HLOG_LEVEL HOST=$HOST install)
-done
+HOSTARCH=$(./target_triplet_to_arch.sh "$HOST")
+if [ "$DEBUG_QEMU" = "1" ]; then
+  BUILD_FLAVOR=debug
+  CMAKE_BUILD_TYPE=Debug
+else
+  BUILD_FLAVOR=release
+  CMAKE_BUILD_TYPE=Release
+fi
 
-make -C userspace all HOST=$HOST SYSROOT="$SYSROOT"
+BUILDDIR="build/$HOSTARCH/$BUILD_FLAVOR"
+
+"$CMAKE" -S . -B "$BUILDDIR" \
+  -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/elf.cmake \
+  -DHOJICHA_HOST="$HOST" \
+  -DHOJICHA_ARCH="$HOSTARCH" \
+  -DHOJICHA_SYSROOT="$SYSROOT" \
+  -DHOJICHA_BUILD_FLAVOR="$BUILD_FLAVOR" \
+  -DHOJICHA_DEBUG_QEMU="$DEBUG_QEMU" \
+  -DHOJICHA_TEST_KMALLOC="$TEST_KMALLOC" \
+  -DHOJICHA_TEST_INITRD="$TEST_INITRD" \
+  -DHOJICHA_TEST_VFS="$TEST_VFS" \
+  -DHOJICHA_TEST_CHARDEV="$TEST_CHARDEV" \
+  -DHOJICHA_TEST_ALL="$TEST_ALL" \
+  -DHOJICHA_HLOG_LEVEL="$HLOG_LEVEL" \
+  -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE" \
+  -DCMAKE_INSTALL_PREFIX=/usr
+
+"$CMAKE" --build "$BUILDDIR"
+DESTDIR="$SYSROOT" "$CMAKE" --install "$BUILDDIR"
+
 ./build_initrd.sh
 mkdir -p "$SYSROOT/boot"
 cp -f initrd/bin/initrd.tar "$SYSROOT/boot/"
-mkdir -p "$SYSROOT/boot/limine"
-cp -f limine.conf "$SYSROOT/boot/limine/limine.conf"
 
-jq -s 'add' $(printf '%s/compile_commands.json ' $PROJECTS) > compile_commands.json
+if [ -f "$BUILDDIR/compile_commands.json" ]; then
+  cp -f "$BUILDDIR/compile_commands.json" compile_commands.json
+fi
