@@ -1,7 +1,4 @@
-SYSTEM_HEADER_PROJECTS="libc kernel"
-PROJECTS="libc kernel"
-
-export MAKE=${MAKE:-make}
+export CMAKE=${CMAKE:-cmake}
 export HOST=${HOST:-$(./default_host.sh)}
 
 export AR=${HOST}-ar

@@ -1,0 +1,7 @@
+target_sources(kernel_objects PRIVATE
+  keyboard.c
+  pic.c
+  pit.c
+  tty.c
+  serial.c
+)
