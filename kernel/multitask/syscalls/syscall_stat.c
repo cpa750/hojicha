@@ -20,18 +20,40 @@ static uint32_t vfs_type_to_mode(vfs_node_type_t type) {
   }
 }
 
+static long copy_vfs_stat(vfs_stat_t* vfs_stat_buf, stat_t* stat_buf) {
+  if (vfs_stat_buf == NULL || stat_buf == NULL) { return -EINVAL; }
+
+  memset(stat_buf, 0, sizeof(stat_t));
+  stat_buf->st_mode = vfs_type_to_mode(vfs_stat_buf->type);
+  stat_buf->st_size = vfs_stat_buf->size;
+  return 0;
+}
+
 long syscall_stat(const char* path, stat_t* stat_buf) {
   if (path == NULL || stat_buf == NULL) { return -EINVAL; }
 
   vfs_stat_t* vfs_stat_buf = NULL;
   vfs_status_t status = vfs_stat(path, &vfs_stat_buf);
   if (status != VFS_STATUS_OK) { return -vfs_status_to_errno(status); }
-  if (vfs_stat_buf == NULL) { return -EINVAL; }
 
-  memset(stat_buf, 0, sizeof(stat_t));
-  stat_buf->st_mode = vfs_type_to_mode(vfs_stat_buf->type);
-  stat_buf->st_size = vfs_stat_buf->size;
+  long ret = copy_vfs_stat(vfs_stat_buf, stat_buf);
 
   free(vfs_stat_buf);
-  return 0;
+  return ret;
+}
+
+long syscall_fstat(long fd, stat_t* stat_buf) {
+  if (stat_buf == NULL) { return -EINVAL; }
+
+  vfs_file_t* file = NULL;
+  vfs_status_t status = vfs_resolve_fd(fd, &file);
+  if (status != VFS_STATUS_OK) { return -vfs_status_to_errno(status); }
+
+  vfs_stat_t* vfs_stat_buf = NULL;
+  status = vfs_fstat(file, &vfs_stat_buf);
+  if (status != VFS_STATUS_OK) { return -vfs_status_to_errno(status); }
+
+  long ret = copy_vfs_stat(vfs_stat_buf, stat_buf);
+  free(vfs_stat_buf);
+  return ret;
 }

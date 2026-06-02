@@ -107,12 +107,12 @@ void initrd_test(void) {
   HTEST_ASSERT(&ctx, vfs_read(test, test_buf, 50, &bytes_read) == VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, bytes_read > 0);
   HTEST_ASSERT(&ctx,
-               vfs_seek(test, (uint64_t)-500, VFS_SEEK_CUR, NULL) ==
+               vfs_seek(test, -500, VFS_SEEK_CUR, NULL) ==
                    VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, vfs_read(test, test_buf, 50, &bytes_read) == VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, bytes_read > 0);
   HTEST_ASSERT(&ctx,
-               vfs_seek(test, (uint64_t)-15, VFS_SEEK_END, NULL) ==
+               vfs_seek(test, -15, VFS_SEEK_END, NULL) ==
                    VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, vfs_read(test, test_buf, 15, &bytes_read) == VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, bytes_read > 0);
@@ -121,7 +121,7 @@ void initrd_test(void) {
   HTEST_ASSERT(&ctx,
                vfs_write(test, append_test, 12, NULL) == VFS_STATUS_OK);
   HTEST_ASSERT(&ctx,
-               vfs_seek(test, (uint64_t)-12, VFS_SEEK_END, NULL) ==
+               vfs_seek(test, -12, VFS_SEEK_END, NULL) ==
                    VFS_STATUS_OK);
   assert_read_eq(&ctx, test, append_test);
 

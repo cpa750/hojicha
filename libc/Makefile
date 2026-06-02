@@ -84,9 +84,14 @@ string/memset.c \
 string/strcmp.c \
 string/strcpy.c \
 string/strlen.c \
+sys/mkdir.c \
 sys/stat.c \
+unistd/close.c \
+unistd/lseek.c \
+unistd/rmdir.c \
 time/nanosleep.c \
-unistd/sleep.c
+unistd/sleep.c \
+unistd/unlink.c
 
 # Build directory versions
 OBJDIRS := $(sort $(dir $(addprefix $(BUILDDIR)/,$(LIBC_SRC:.c=.o))))

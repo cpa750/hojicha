@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #define MAX_FDS 256
 
@@ -34,7 +35,11 @@ typedef enum {
   VFS_OPEN_CREATE = 8,
 } vfs_open_flags_t;
 
-typedef enum { VFS_SEEK_SET = 0, VFS_SEEK_CUR, VFS_SEEK_END } vfs_seek_whence_t;
+typedef enum {
+  VFS_SEEK_SET = SEEK_SET,
+  VFS_SEEK_CUR = SEEK_CUR,
+  VFS_SEEK_END = SEEK_END,
+} vfs_seek_whence_t;
 
 /*
  * One mounted filesystem instance. Owns the root vnode for that mount and any
@@ -245,7 +250,7 @@ vfs_status_t vfs_readdir(vfs_file_t* dir, vfs_dirent_t** out);
  * Seeks to at most the given `offset` from `whence` in the given `file`.
  */
 vfs_status_t vfs_seek(vfs_file_t* file,
-                      uint64_t offset,
+                      int64_t offset,
                       vfs_seek_whence_t whence,
                       uint64_t* new_pos);
 

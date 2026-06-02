@@ -37,7 +37,7 @@ struct stat {
 #define st_ctime st_ctim.tv_sec
 };
 
-#define S_IFMT  0170000
+#define S_IFMT   0170000
 #define S_IFSOCK 0140000
 #define S_IFLNK  0120000
 #define S_IFREG  0100000
@@ -50,6 +50,8 @@ struct stat {
 extern "C" {
 #endif
 
+int fstat(int fd, stat_t* stat_buf);
+int mkdir(const char* path);
 int stat(const char* path, stat_t* stat_buf);
 
 #ifdef __cplusplus

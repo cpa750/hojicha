@@ -312,10 +312,14 @@ vfs_status_t vfs_readdir(vfs_file_t* dir, vfs_dirent_t** out) {
 }
 
 vfs_status_t vfs_seek(vfs_file_t* file,
-                      uint64_t offset,
+                      int64_t offset,
                       vfs_seek_whence_t whence,
                       uint64_t* new_pos) {
   if (file == NULL) { return VFS_STATUS_INVALID_ARG; }
+  if (whence != VFS_SEEK_SET && whence != VFS_SEEK_CUR &&
+      whence != VFS_SEEK_END) {
+    return VFS_STATUS_INVALID_ARG;
+  }
   if (HVFS_FOP_MISSING(file, seek)) { return VFS_STATUS_NOT_IMPLEMENTED; }
 
   return file->ops->seek(file, offset, whence, new_pos);
