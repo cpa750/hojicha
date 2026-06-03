@@ -19,6 +19,40 @@
           }
         ]
       }
+    },
+    "CMake": {
+      "adapter": "cmake",
+      "filetypes": [
+        "cmake"
+      ],
+      "configuration": {
+        "request": "launch",
+        "cmakeDebugType": "configure",
+        "cwd": "${workspaceRoot}",
+        "cmakeCommand": [
+          "cmake",
+          "-S",
+          "${workspaceRoot}",
+          "-B",
+          "${workspaceRoot}/build/x86_64/release",
+          "-G",
+          "Ninja",
+          "-DCMAKE_TOOLCHAIN_FILE=${workspaceRoot}/cmake/toolchains/elf.cmake",
+          "-DHOJICHA_HOST=x86_64-elf",
+          "-DHOJICHA_ARCH=x86_64",
+          "-DHOJICHA_SYSROOT=${workspaceRoot}/sysroot",
+          "-DHOJICHA_BUILD_FLAVOR=release",
+          "-DHOJICHA_DEBUG_QEMU=0",
+          "-DHOJICHA_TEST_KMALLOC=0",
+          "-DHOJICHA_TEST_INITRD=0",
+          "-DHOJICHA_TEST_VFS=0",
+          "-DHOJICHA_TEST_CHARDEV=0",
+          "-DHOJICHA_TEST_ALL=1",
+          "-DHOJICHA_HLOG_LEVEL=",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DCMAKE_INSTALL_PREFIX=/usr"
+        ]
+      }
     }
   }
 }
