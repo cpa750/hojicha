@@ -62,4 +62,4 @@ It then should be as simple as `./run_virtual.sh` from the project root - see be
 ### Build Flags
 - You can set the default kernel log level by passing `--hlog-level=INFO` (or `WARN`, `ERROR`, `FATAL`, `DEBUG`, `VERBOSE`) to `./build.sh` or `./run_virtual.sh`.
 - You can enable debugging via QEMU by passing `--debug-qemu` to `./build.sh` and `./run_virtual.sh`.
-- Tests can be run with: `--test-chardev`, `--test-kmalloc`, `--test-initrd`, `--test-vfs`, or `--test-all`
+- Tests can be run with: `--test-chardev`, `--test-kmalloc`, `--test-initrd`, `--test-vfs`, `--test-ringbuffer`, or `--test-all`

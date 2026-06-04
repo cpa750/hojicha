@@ -1,6 +1,6 @@
 #include <fs/devfs.h>
 #include <fs/vfs.h>
-#include <fs/vfs_utils.h>
+#include <utils/set_out.h>
 #include <hlog.h>
 #include <stdbool.h>
 #include <stdint.h>

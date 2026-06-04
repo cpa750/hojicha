@@ -40,6 +40,13 @@ case "$*" in
     ;;
 esac
 
+TEST_RINGBUFFER=0
+case "$*" in
+  *--test-ringbuffer*)
+    TEST_RINGBUFFER=1
+    ;;
+esac
+
 TEST_ALL=0
 case "$*" in
   *--test-all*)
@@ -103,6 +110,7 @@ echo "Calling CMake:"
     -DHOJICHA_TEST_INITRD="$TEST_INITRD" \
     -DHOJICHA_TEST_VFS="$TEST_VFS" \
     -DHOJICHA_TEST_CHARDEV="$TEST_CHARDEV" \
+    -DHOJICHA_TEST_RINGBUFFER="$TEST_RINGBUFFER" \
     -DHOJICHA_TEST_ALL="$TEST_ALL" \
     -DHOJICHA_HLOG_LEVEL="$HLOG_LEVEL" \
     -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE" \

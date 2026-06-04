@@ -1,0 +1,6 @@
+#ifndef HOJICHA_UTILS_RINGBUFFER_TEST_H
+#define HOJICHA_UTILS_RINGBUFFER_TEST_H
+
+void ringbuffer_test(void);
+
+#endif  // HOJICHA_UTILS_RINGBUFFER_TEST_H

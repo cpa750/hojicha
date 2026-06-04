@@ -37,6 +37,9 @@
 #if defined(__test_vfs)
 #include <fs/vfs_test.h>
 #endif
+#if defined(__test_ringbuffer)
+#include <utils/ringbuffer_test.h>
+#endif
 
 void print_ok(const char* component);
 
@@ -120,6 +123,9 @@ void kernel_main() {
 #if defined(__test_chardev)
   chardev_test();
 #endif
+#if defined(__test_ringbuffer)
+  ringbuffer_test();
+#endif
 
   printf("\n");
 
@@ -145,8 +151,7 @@ void kernel_main() {
   vfs_fstat(ls_file, &ls_stat);
   unsigned char* ls_contents = malloc(sizeof(unsigned char) * ls_stat->size);
   uint64_t bytes_read = 0;
-  vfs_status_t res =
-      vfs_read(ls_file, ls_contents, ls_stat->size, &bytes_read);
+  vfs_status_t res = vfs_read(ls_file, ls_contents, ls_stat->size, &bytes_read);
   if (res != VFS_STATUS_OK) { hlog_write(HLOG_ERROR, "uh oh..."); }
 
   elf_t* ls = elf_read(ls_contents, ls_stat->size);

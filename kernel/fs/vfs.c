@@ -1,6 +1,6 @@
 #include <errno.h>
 #include <fs/vfs.h>
-#include <fs/vfs_utils.h>
+#include <utils/set_out.h>
 #include <kernel/g_kernel.h>
 #include <multitask/scheduler.h>
 #include <stdbool.h>

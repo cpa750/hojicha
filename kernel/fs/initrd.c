@@ -1,7 +1,7 @@
 #include <fs/initrd.h>
 #include <fs/ustar.h>
 #include <fs/vfs.h>
-#include <fs/vfs_utils.h>
+#include <utils/set_out.h>
 #include <hlog.h>
 #include <multitask/bootmodule.h>
 #include <multitask/scheduler.h>

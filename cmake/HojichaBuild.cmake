@@ -20,6 +20,7 @@ set(HOJICHA_TEST_KMALLOC OFF CACHE BOOL "Enable kmalloc boot tests")
 set(HOJICHA_TEST_INITRD OFF CACHE BOOL "Enable initrd boot tests")
 set(HOJICHA_TEST_VFS OFF CACHE BOOL "Enable VFS boot tests")
 set(HOJICHA_TEST_CHARDEV OFF CACHE BOOL "Enable chardev boot tests")
+set(HOJICHA_TEST_RINGBUFFER OFF CACHE BOOL "Enable ringbuffer boot tests")
 set(HOJICHA_TEST_ALL OFF CACHE BOOL "Enable all boot tests")
 set(HOJICHA_HLOG_LEVEL "" CACHE STRING "Default hlog level macro")
 
