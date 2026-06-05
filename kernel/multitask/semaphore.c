@@ -43,11 +43,14 @@ void semaphore_lock(semaphore_t* s) {
 }
 
 bool semaphore_try_lock(semaphore_t* s) {
+  sched_postpone();
   if (s->current_locks < s->limit) {
     semaphore_lock(s);
+    sched_resume();
     return true;
   }
 
+  sched_resume();
   return false;
 }
 
