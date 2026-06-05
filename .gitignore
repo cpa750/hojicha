@@ -8,6 +8,7 @@
 
 *compile_commands.json
 *.cache
+__pycache__/
 
 bin
 build/
@@ -15,3 +16,4 @@ cmake-build-*/
 iso_root
 sysroot
 limine
+logs/

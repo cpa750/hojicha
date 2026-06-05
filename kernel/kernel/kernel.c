@@ -40,6 +40,9 @@
 #if defined(__test_ringbuffer)
 #include <utils/ringbuffer_test.h>
 #endif
+#if defined(__ast_scheduler)
+#include <multitask/scheduler_ast.h>
+#endif
 
 void print_ok(const char* component);
 
@@ -125,6 +128,9 @@ void kernel_main() {
 #endif
 #if defined(__test_ringbuffer)
   ringbuffer_test();
+#endif
+#if defined(__ast_scheduler)
+  ast_scheduler();
 #endif
 
   printf("\n");
