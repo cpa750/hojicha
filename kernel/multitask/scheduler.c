@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define QUANTUM_LENGTH 5000000  // 5 ms
+#define QUANTUM_LENGTH 50000000  // 50 ms
 
 struct sched_state {
   process_block_t* first_ready_to_run;
@@ -170,7 +170,7 @@ void sched_initialize(void) {
   kernel_process->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
   kernel_process->pid = UINT64_MAX;
   kernel_process->vmm = g_kernel.vmm;
-  kernel_process->fds = (vfs_file_t**)malloc(sizeof(vfs_file_t*) * MAX_FDS);
+  kernel_process->fds = (vfs_file_t**)calloc(1, sizeof(vfs_file_t*) * MAX_FDS);
   mt.kernel_pid = kernel_process->pid;
 
   mt.first_ready_to_run = NULL;
@@ -504,7 +504,7 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
     itoa(new_proc->pid, new_proc->name, 10);
   }
 
-  new_proc->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
+  new_proc->logger = logger;
 
   // Because we pop 15 registers from the newly allocated stack
   // in switch_to()

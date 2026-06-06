@@ -8,8 +8,8 @@
 
 static semaphore_t* ast_scheduler_sem;
 static wait_queue_t ast_scheduler_wait_queue;
-static bool ast_scheduler_awake_1 = false;
-static bool ast_scheduler_awake_2 = false;
+static volatile bool ast_scheduler_awake_1 = false;
+static volatile bool ast_scheduler_awake_2 = false;
 static process_block_t* ast_scheduler_proc_1;
 static process_block_t* ast_scheduler_proc_2;
 

@@ -74,8 +74,8 @@ set(HOJICHA_KERNEL_CFLAGS
 )
 
 if(HOJICHA_DEBUG_QEMU)
-  list(APPEND HOJICHA_KERNEL_CFLAGS -g -D__debug_virtual)
-  list(APPEND HOJICHA_LIBC_CFLAGS -g)
+  list(APPEND HOJICHA_KERNEL_CFLAGS -O0 -g -D__debug_virtual)
+  list(APPEND HOJICHA_LIBC_CFLAGS -O0 -g)
 endif()
 
 function(target_compile_options_for_language target language)
