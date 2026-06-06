@@ -10,11 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define PROC_STATUS_UNINITIALIZED 0b11111111
-#define PROC_STATUS_RUNNING       0b00000001
-#define PROC_STATUS_READY_TO_RUN  0b00000010
-#define PROC_STATUS_READY_TO_DIE  0b00000100
-#define QUANTUM_LENGTH            5000000  // 5 ms
+#define QUANTUM_LENGTH 5000000  // 5 ms
 
 struct sched_state {
   process_block_t* first_ready_to_run;
@@ -146,7 +142,7 @@ void handle_timer(uint64_t timestamp);
 void insert_process_after(process_block_t* process, process_block_t* after);
 void mark_proc_range(process_block_t* start,
                      process_block_t* end,
-                     uint8_t status);
+                     proc_status_t status);
 process_block_t* new_proc_shared(char* name, void* cr3);
 void proc_prelude(process_block_t* p);
 void set_last_ready_to_run(sched_state_t* mt,
@@ -374,14 +370,22 @@ void sched_current_block(uint8_t reason) {
 }
 
 void sched_proc_unblock(process_block_t* process) {
+  if (process == NULL) { return; }
+
   sched_lock();
 
-  if (g_kernel.sched->first_ready_to_run != NULL) {
-    process->status = PROC_STATUS_READY_TO_RUN;
-    g_kernel.sched->last_ready_to_run->next = process;
+  process->status = PROC_STATUS_READY_TO_RUN;
+  process->next = NULL;
+
+  if (g_kernel.sched->first_ready_to_run == NULL) {
+    g_kernel.sched->first_ready_to_run = process;
     g_kernel.sched->last_ready_to_run = process;
   } else {
-    multitask_switch(process);
+    if (g_kernel.sched->last_ready_to_run == NULL) {
+      set_last_ready_to_run(g_kernel.sched, g_kernel.sched->first_ready_to_run);
+    }
+    g_kernel.sched->last_ready_to_run->next = process;
+    g_kernel.sched->last_ready_to_run = process;
   }
 
   sched_unlock();
@@ -535,7 +539,7 @@ void remove_proc(process_block_t* p) {
       head = g_kernel.sched->first_ready_to_run;
       is_ready_queue = true;
       break;
-    case PROC_STATUS_PAUSED:
+    case PROC_STATUS_SLEEPING_TIMER:
       head = g_kernel.sched->sleeping;
       break;
     default:
@@ -552,7 +556,7 @@ void remove_proc(process_block_t* p) {
               g_kernel.sched->first_ready_to_run;
         }
         break;
-      case PROC_STATUS_PAUSED:
+      case PROC_STATUS_SLEEPING_TIMER:
         g_kernel.sched->sleeping = p->next;
         break;
       default:
@@ -586,7 +590,7 @@ void set_last_ready_to_run(sched_state_t* mt,
 void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
   sched_postpone();
   process->sleep_until = timestamp;
-  process->status = PROC_STATUS_PAUSED;
+  process->status = PROC_STATUS_SLEEPING_TIMER;
 
   // TODO rewrite this to use `multitask_block()`
 

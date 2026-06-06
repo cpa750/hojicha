@@ -8,9 +8,16 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define PROC_STATUS_PAUSED    0b00000100
-#define PROC_STATUS_SEMAPHORE 0b00001000
-#define STACK_SIZE            16384  // 4 pages
+#define STACK_SIZE 16384  // 4 pages
+
+typedef enum proc_status {
+  PROC_STATUS_RUNNING = 0b00000001,
+  PROC_STATUS_READY_TO_RUN = 0b00000010,
+  PROC_STATUS_SLEEPING_TIMER = 0b00000100,
+  PROC_STATUS_BLOCKED = 0b00001000,
+  PROC_STATUS_READY_TO_DIE = 0b00010000,
+  PROC_STATUS_UNINITIALIZED = 0b11111111,
+} proc_status_t;
 
 typedef struct elf elf_t;
 

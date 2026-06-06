@@ -6,6 +6,7 @@ target_sources(kernel_objects PRIVATE
   scheduler.c
   semaphore.c
   syscall.c
+  wait_queue.c
 )
 
 add_subdirectory(syscalls)

@@ -2,17 +2,18 @@
 #include <kernel/g_kernel.h>
 #include <multitask/scheduler.h>
 #include <multitask/semaphore.h>
+#include <multitask/wait_queue.h>
 #include <stdbool.h>
 #include <stdint.h>
 
 static semaphore_t* ast_scheduler_sem;
+static wait_queue_t ast_scheduler_wait_queue;
 static bool ast_scheduler_awake_1 = false;
 static bool ast_scheduler_awake_2 = false;
 static process_block_t* ast_scheduler_proc_1;
 static process_block_t* ast_scheduler_proc_2;
 
 static void ast_scheduler_watch_1(void) {
-  ast_scheduler_awake_1 = true;
   while (1) {
     if (ast_scheduler_awake_1) {
       hlog_write(HLOG_INFO, "AST_SCHEDULER: watch_1 observed wake");
@@ -22,7 +23,6 @@ static void ast_scheduler_watch_1(void) {
 }
 
 static void ast_scheduler_watch_2(void) {
-  ast_scheduler_awake_2 = true;
   while (1) {
     if (ast_scheduler_awake_2) {
       hlog_write(HLOG_INFO, "AST_SCHEDULER: watch_2 observed wake");
@@ -81,6 +81,27 @@ static void ast_scheduler_try_success(void) {
   }
 }
 
+static void ast_scheduler_waiter_1(void) {
+  hlog_write(HLOG_INFO, "AST_SCHEDULER: waitq_waiter_1 sleeping");
+  wait_queue_sleep(&ast_scheduler_wait_queue);
+  hlog_write(HLOG_INFO, "AST_SCHEDULER: waitq_waiter_1 woke");
+}
+
+static void ast_scheduler_waiter_2(void) {
+  hlog_write(HLOG_INFO, "AST_SCHEDULER: waitq_waiter_2 sleeping");
+  wait_queue_sleep(&ast_scheduler_wait_queue);
+  hlog_write(HLOG_INFO, "AST_SCHEDULER: waitq_waiter_2 woke");
+}
+
+static void ast_scheduler_waitq_waker(void) {
+  sched_current_sleep(3);
+  hlog_write(HLOG_INFO, "AST_SCHEDULER: waitq wake one");
+  wait_queue_wake_one(&ast_scheduler_wait_queue);
+  sched_current_sleep(3);
+  hlog_write(HLOG_INFO, "AST_SCHEDULER: waitq wake all");
+  wait_queue_wake_all(&ast_scheduler_wait_queue);
+}
+
 static void ast_scheduler_waker(void) {
   while (1) {
     sched_current_sleep(5);
@@ -120,6 +141,7 @@ static void ast_scheduler_add(char* name, proc_entry_t entry) {
 void ast_scheduler(void) {
   hlog_write(HLOG_INFO, "AST_SCHEDULER: starting");
   ast_scheduler_sem = semaphore_create(1);
+  wait_queue_init(&ast_scheduler_wait_queue);
 
   ast_scheduler_add("ast_sched_waker", ast_scheduler_waker);
   ast_scheduler_add("ast_sched_watch_1", ast_scheduler_watch_1);
@@ -130,6 +152,9 @@ void ast_scheduler(void) {
   ast_scheduler_add("ast_sched_sem_waiter", ast_scheduler_sem_waiter);
   ast_scheduler_add("ast_sched_try_fail", ast_scheduler_try_fail);
   ast_scheduler_add("ast_sched_try_success", ast_scheduler_try_success);
+  ast_scheduler_add("ast_sched_waitq_waiter_1", ast_scheduler_waiter_1);
+  ast_scheduler_add("ast_sched_waitq_waiter_2", ast_scheduler_waiter_2);
+  ast_scheduler_add("ast_sched_waitq_waker", ast_scheduler_waitq_waker);
   ast_scheduler_add("ast_sched_monitor", ast_scheduler_monitor);
   hlog_write(HLOG_INFO, "AST_SCHEDULER: processes added");
 }

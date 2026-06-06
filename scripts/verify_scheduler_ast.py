@@ -180,6 +180,40 @@ class SchedulerAstAssertions(unittest.TestCase):
             "try_success failed after the semaphore should have been released",
         )
 
+    def test_wait_queue_ordering(self) -> None:
+        waiter_1_sleeping = self.require("waitq_waiter_1 sleeping")
+        waiter_2_sleeping = self.require("waitq_waiter_2 sleeping")
+        wake_one = self.require("waitq wake one", min_tick=3)
+        waiter_1_woke = self.require("waitq_waiter_1 woke", min_tick=3)
+        wake_all = self.require("waitq wake all", min_tick=6)
+        waiter_2_woke = self.require("waitq_waiter_2 woke", min_tick=6)
+
+        self.assert_before(
+            waiter_1_sleeping,
+            wake_one,
+            "wait_queue waiter 1 should sleep before wake_one",
+        )
+        self.assert_before(
+            waiter_2_sleeping,
+            wake_one,
+            "wait_queue waiter 2 should sleep before wake_one",
+        )
+        self.assert_before(
+            wake_one,
+            waiter_1_woke,
+            "wait_queue waiter 1 woke before wake_one",
+        )
+        self.assert_before(
+            waiter_1_woke,
+            wake_all,
+            "wait_queue wake_one woke more than one waiter",
+        )
+        self.assert_before(
+            wake_all,
+            waiter_2_woke,
+            "wait_queue waiter 2 woke before wake_all",
+        )
+
     def test_monitor_ticks_increase(self) -> None:
         ticks = self.analysis.monitor_ticks()
         self.assertNotEqual([], ticks, "missing monitor ticks")
