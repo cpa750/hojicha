@@ -50,6 +50,7 @@ static const vfs_file_ops_t devfs_file_ops = {
     .write = devfs_write,
     .readdir = devfs_readdir,
     .seek = devfs_seek,
+    .ioctl = devfs_ioctl,
     .close = devfs_close,
 };
 
@@ -323,6 +324,15 @@ vfs_status_t devfs_seek(vfs_file_t* vfile,
     return VFS_STATUS_NOT_IMPLEMENTED;
   }
   return dev->file_ops->seek(vfile, offset, whence, new_pos);
+}
+
+vfs_status_t devfs_ioctl(vfs_file_t* file, uint64_t number, void* args) {
+  devfs_node_t* dev_node = (devfs_node_t*)file->vnode->fs_data;
+  devfs_device_t* dev = get_device(dev_node);
+  if (dev == NULL || dev->file_ops == NULL || dev->file_ops->ioctl == NULL) {
+    return VFS_STATUS_NOT_IMPLEMENTED;
+  }
+  return dev->file_ops->ioctl(file, number, args);
 }
 
 vfs_status_t devfs_create_file(vfs_node_t* dir,

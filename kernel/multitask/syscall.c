@@ -36,6 +36,9 @@ void syscall_handle(interrupt_frame_t* frame) {
     case __HOJICHA_SYS_SYSCALL_LSEEK:
       ret = syscall_lseek(frame->rdi, (long)frame->rsi, (int)frame->rdx);
       break;
+    case __HOJICHA_SYS_SYSCALL_IOCTL:
+      ret = syscall_ioctl(frame->rdi, frame->rsi, (void*)frame->rdx);
+      break;
     case __HOJICHA_SYS_SYSCALL_GETDENTS:
       ret = syscall_getdents(
           frame->rdi, (linux_dirent_t*)frame->rsi, frame->rdx);

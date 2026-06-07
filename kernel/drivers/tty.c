@@ -16,19 +16,15 @@
 #include <utils/set_out.h>
 
 #define TTY_INPUT_BUFFER_SIZE 1024
-#define TTY_LINE_BUFFER_SIZE 256
+#define TTY_LINE_BUFFER_SIZE  256
 
 static uint16_t terminal_row;
 static uint16_t terminal_column;
-static uint32_t terminal_color;
 
 static uint32_t* framebuffer;
 static uint64_t vga_height;
 static uint64_t vga_width;
 static uint64_t vga_pitch;
-
-// TODO chage this once we can malloc again
-static uint16_t terminal_buffer[5000];
 
 static uint32_t under_caret[INCONSOLATA_WIDTH * INCONSOLATA_HEIGHT];
 
@@ -76,6 +72,7 @@ static vfs_status_t tty_write(vfs_file_t* file,
                               void* buffer,
                               uint64_t len,
                               uint64_t* bytes_written_out);
+static vfs_status_t tty_ioctl(vfs_file_t* file, uint64_t number, void* args);
 static vfs_status_t tty_close(vfs_file_t* file);
 static vfs_status_t tty_stat(vfs_node_t* vnode, vfs_stat_t** out);
 static void tty_mutex_lock(void* lock);
@@ -135,6 +132,7 @@ void tty_device_initialize(void) {
 
   file_ops->read = tty_read;
   file_ops->write = tty_write;
+  file_ops->ioctl = tty_ioctl;
   file_ops->close = tty_close;
   node_ops->stat = tty_stat;
 
@@ -421,6 +419,33 @@ static vfs_status_t tty_write(vfs_file_t* file,
   return VFS_STATUS_OK;
 }
 
+static vfs_status_t tty_ioctl(vfs_file_t* file, uint64_t number, void* args) {
+  (void)file;
+  if (!tty_device_ready()) { return VFS_STATUS_NOT_IMPLEMENTED; }
+  if (args == NULL) { return VFS_STATUS_INVALID_ARG; }
+
+  switch (number) {
+    case TTY_IOCTL_GET_MODE:
+      *((tty_mode_t*)args) = tty_get_mode();
+      return VFS_STATUS_OK;
+    case TTY_IOCTL_SET_MODE:
+      if (*((tty_mode_t*)args) != TTY_MODE_CANONICAL &&
+          *((tty_mode_t*)args) != TTY_MODE_RAW) {
+        return VFS_STATUS_INVALID_ARG;
+      }
+      tty_set_mode(*((tty_mode_t*)args));
+      return VFS_STATUS_OK;
+    case TTY_IOCTL_GET_ECHO:
+      *((bool*)args) = g_kernel.tty->echo;
+      return VFS_STATUS_OK;
+    case TTY_IOCTL_SET_ECHO:
+      tty_set_echo(*((bool*)args));
+      return VFS_STATUS_OK;
+    default:
+      return VFS_STATUS_NOT_IMPLEMENTED;
+  }
+}
+
 vga_position_t tty_pos_to_vga_pos(uint16_t row, uint16_t col) {
   vga_position_t pos = {
       row * vga_state_get_pitch(g_kernel.vga) * INCONSOLATA_HEIGHT,
@@ -430,11 +455,6 @@ vga_position_t tty_pos_to_vga_pos(uint16_t row, uint16_t col) {
 
 void terminal_caret_disable(tty_state_t* t) { t->caret->enabled = false; }
 void terminal_caret_enable(tty_state_t* t) {
-  vga_position_t top_left = {t->caret->column * INCONSOLATA_WIDTH,
-                             t->caret->row * INCONSOLATA_HEIGHT};
-  vga_position_t bottom_right = {
-      t->caret->column * INCONSOLATA_WIDTH + INCONSOLATA_WIDTH - 1,
-      t->caret->row * INCONSOLATA_HEIGHT + INCONSOLATA_HEIGHT - 1};
   terminal_caret_set_pos(t->caret->row, t->caret->column, false);
   t->caret->enabled = true;
 }
@@ -454,11 +474,11 @@ static void tty_emit_output(const char* data, uint64_t len) {
 }
 
 static uint64_t terminal_lock(void) {
-  return spinlock_lock_irqsave(&terminal_output_lock);
+  return spinlock_lock(&terminal_output_lock);
 }
 
 static void terminal_unlock(uint64_t irq_state) {
-  spinlock_unlock_irqrestore(&terminal_output_lock, irq_state);
+  spinlock_unlock(&terminal_output_lock, irq_state);
 }
 
 static vfs_status_t tty_close(vfs_file_t* file) {

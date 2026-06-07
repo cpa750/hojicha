@@ -16,6 +16,13 @@ typedef enum {
   TTY_MODE_RAW = 2,
 } tty_mode_t;
 
+enum {
+  TTY_IOCTL_GET_MODE = 1,
+  TTY_IOCTL_SET_MODE,
+  TTY_IOCTL_GET_ECHO,
+  TTY_IOCTL_SET_ECHO,
+};
+
 void terminal_initialize(void);
 void terminal_putchar(char c);
 uint32_t terminal_get_fg(void);

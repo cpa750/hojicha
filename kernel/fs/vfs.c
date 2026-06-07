@@ -1,12 +1,12 @@
 #include <errno.h>
 #include <fs/vfs.h>
-#include <utils/set_out.h>
 #include <kernel/g_kernel.h>
 #include <multitask/scheduler.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <utils/set_out.h>
 
 #define HVFS_VOP_MISSING(vnode, op)                                            \
   ((vnode) == NULL || (vnode)->ops == NULL || (vnode)->ops->op == NULL)
@@ -364,6 +364,19 @@ vfs_status_t vfs_close(vfs_file_t* file) {
   vfs_status_t status = file->ops->close(file);
   vfs_vnode_release(vnode);
   return status;
+}
+
+vfs_status_t vfs_ioctl(vfs_file_t* file, uint64_t request, void* args) {
+  if (file == NULL) { return VFS_STATUS_BAD_FD; }
+  if (file->vnode->type != VFS_NODE_DEVICE) {
+    return VFS_STATUS_NOT_IMPLEMENTED;
+  }
+
+  if (!HVFS_FOP_MISSING(file, ioctl)) {
+    return file->ops->ioctl(file, request, args);
+  }
+
+  return VFS_STATUS_NOT_IMPLEMENTED;
 }
 
 vfs_status_t vfs_resolve_fd(uint64_t fd, vfs_file_t** out) {
