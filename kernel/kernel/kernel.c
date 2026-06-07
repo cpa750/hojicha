@@ -149,6 +149,10 @@ void kernel_main() {
   printf("|                Hojicha kernel initialized.               |\n");
   printf("------------------------------------------------------------\n\n");
 
+  hlog_write(HLOG_DEBUG,
+             "Kernel initialization complete, turning off console log output.");
+  hlog_disable_console();
+
   asm volatile("sti");
 
   vfs_file_t* ls_file = NULL;

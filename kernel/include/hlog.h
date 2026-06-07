@@ -92,5 +92,8 @@ uint64_t hlog_write_logger(hlogger_t* logger,
                            ...);
 
 char* hlog_level_to_string(hlog_level_t level);
+
+void hlog_disable_console(void);
+void hlog_enable_console(void);
 #endif  // HLOG_H
 
