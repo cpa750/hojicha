@@ -5,6 +5,7 @@
 #include <io.h>
 #include <kernel/g_kernel.h>
 #include <multitask/mutex.h>
+#include <multitask/spinlock.h>
 #include <multitask/wait_queue.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -59,8 +60,12 @@ struct tty_state {
 typedef struct tty_state tty_state_t;
 static tty_state_t tty;
 static caret_t caret;
+static spinlock_t terminal_output_lock;
 
 uint64_t tty_pos_to_vga_idx(uint16_t row, uint16_t col);
+static uint64_t terminal_lock(void);
+static void terminal_unlock(uint64_t irq_state);
+static void terminal_putchar_unlocked(char c);
 static void tty_buffer_input_char(tty_state_t* t, char c);
 static void tty_emit_output(const char* data, uint64_t len);
 static vfs_status_t tty_read(vfs_file_t* file,
@@ -79,6 +84,7 @@ static void tty_mutex_unlock(void* lock);
 void terminal_initialize(void) {
   memset(&tty, 0, sizeof(tty_state_t));
   memset(&caret, 0, sizeof(caret_t));
+  spinlock_init(&terminal_output_lock);
   terminal_row = 0;
   terminal_column = 0;
   tty.height = vga_state_get_height(g_kernel.vga) / INCONSOLATA_HEIGHT;
@@ -217,8 +223,17 @@ tty_mode_t tty_get_mode(void) {
   return g_kernel.tty->mode;
 }
 
-uint32_t terminal_get_fg(void) { return g_kernel.tty->fg; }
-void terminal_set_fg(uint32_t fg) { g_kernel.tty->fg = fg; }
+uint32_t terminal_get_fg(void) {
+  uint64_t irq_state = terminal_lock();
+  uint32_t fg = g_kernel.tty->fg;
+  terminal_unlock(irq_state);
+  return fg;
+}
+void terminal_set_fg(uint32_t fg) {
+  uint64_t irq_state = terminal_lock();
+  g_kernel.tty->fg = fg;
+  terminal_unlock(irq_state);
+}
 
 void terminal_put_entry_at(unsigned char c, uint32_t fg, size_t x, size_t y) {
   if (c == '\n') { return; }
@@ -297,6 +312,12 @@ void terminal_caret_set_pos(uint16_t row,
 }
 
 void terminal_putchar(char c) {
+  uint64_t irq_state = terminal_lock();
+  terminal_putchar_unlocked(c);
+  terminal_unlock(irq_state);
+}
+
+static void terminal_putchar_unlocked(char c) {
   if (c == 0x08) {
     terminal_erase();
     return;
@@ -319,7 +340,9 @@ void terminal_putchar(char c) {
   }
 
   if (c == '\t') {
-    for (uint8_t i = terminal_column % 4; i < 4; ++i) { terminal_putchar(' '); }
+    for (uint8_t i = terminal_column % 4; i < 4; ++i) {
+      terminal_putchar_unlocked(' ');
+    }
     return;
   }
 
@@ -339,8 +362,10 @@ void terminal_putchar(char c) {
 }
 
 void terminal_write(const char* data, size_t len) {
+  uint64_t irq_state = terminal_lock();
   size_t idx = 0;
-  while (len--) { terminal_putchar(data[idx++]); }
+  while (len--) { terminal_putchar_unlocked(data[idx++]); }
+  terminal_unlock(irq_state);
 }
 
 static vfs_status_t tty_read(vfs_file_t* file,
@@ -426,6 +451,14 @@ static void tty_buffer_input_char(tty_state_t* t, char c) {
 
 static void tty_emit_output(const char* data, uint64_t len) {
   terminal_write(data, len);
+}
+
+static uint64_t terminal_lock(void) {
+  return spinlock_lock_irqsave(&terminal_output_lock);
+}
+
+static void terminal_unlock(uint64_t irq_state) {
+  spinlock_unlock_irqrestore(&terminal_output_lock, irq_state);
 }
 
 static vfs_status_t tty_close(vfs_file_t* file) {
