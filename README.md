@@ -7,8 +7,10 @@ This project is a first effort at developing an operating system for the x86_64 
 ## Current Status:
 Preparation work for proper init and shell programs:
 - [X] VFS exposed as syscalls
-- [ ] TTY configuration via devfs
-- [ ] stdin/stdout/stderr
+- [x] TTY configuration via devfs
+- [x] stdin/stdout/stderr
+- [ ] fork()/exec()
+- [ ] Userland malloc()/free(), mmap(), sbrk()
 
 ## MVP Done:
 - [x] Babysteps
@@ -33,7 +35,7 @@ Preparation work for proper init and shell programs:
 - [x] Syscall machinery
   - [x] exit
   - [x] sleep/nanosleep
-  - [ ] VFS functionality
+  - [x] VFS functionality
   - [ ] Many, many others
 - [x] Filesystems
   - [x] VFS prototype
