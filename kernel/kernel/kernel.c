@@ -156,7 +156,7 @@ void kernel_main() {
   asm volatile("sti");
 
   vfs_file_t* ls_file = NULL;
-  vfs_open("/usr/bin/ls.elf", VFS_OPEN_READ, &ls_file, NULL);
+  vfs_open("/usr/bin/ls", VFS_OPEN_READ, &ls_file, NULL);
   vfs_stat_t* ls_stat = NULL;
   vfs_fstat(ls_file, &ls_stat);
   unsigned char* ls_contents = malloc(sizeof(unsigned char) * ls_stat->size);

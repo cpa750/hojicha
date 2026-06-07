@@ -5,7 +5,7 @@ foreach(source ${USERSPACE_SOURCES})
   add_executable("userspace_${program}" crt0.s "${source}")
   set_target_properties("userspace_${program}" PROPERTIES
     OUTPUT_NAME "${program}"
-    SUFFIX ".elf"
+    SUFFIX ""
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/bin"
   )
   target_compile_options_for_language("userspace_${program}" C ${HOJICHA_LIBC_CFLAGS} -O2)
