@@ -208,12 +208,19 @@ process_block_t* sched_uproc_new(char* name, elf_t* elf) {
   process_block_t* new_proc = new_proc_shared(name, vmm_get_cr3(vmm));
   if (vmm == NULL || new_proc == NULL) { return NULL; }
 
-  if (g_kernel.console != NULL) {
-    for (uint64_t fd = 0; fd < 3; ++fd) {
+  for (uint64_t fd = 0; fd < 3; ++fd) {
+    vfs_file_t* tty = NULL;
+    if (vfs_get_file_handle("/dev/tty0",
+                            VFS_OPEN_READ | VFS_OPEN_WRITE,
+                            &tty) == VFS_STATUS_OK) {
+      sched_pb_fd_set(new_proc, fd, tty);
+      continue;
+    }
+
+    if (g_kernel.console != NULL) {
       vfs_file_t* console = NULL;
-      if (vfs_get_file_handle("/dev/console",
-                              VFS_OPEN_READ | VFS_OPEN_WRITE,
-                              &console) == VFS_STATUS_OK) {
+      if (vfs_get_file_handle("/dev/console", VFS_OPEN_WRITE, &console) ==
+          VFS_STATUS_OK) {
         sched_pb_fd_set(new_proc, fd, console);
       }
     }

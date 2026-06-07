@@ -4,7 +4,6 @@
 #include <io.h>
 #include <memory/pmm.h>
 #include <stdint.h>
-#include <stdio.h>
 
 // TODO refactor this mess
 
@@ -113,7 +112,7 @@ void handle_scancode(uint8_t scancode) {
     keyboard_status.shift_held = false;
   } else {
     char c = lookup_scancode(scancode, &keyboard_status);
-    if (c != 0) terminal_putchar(c);
+    if (c != 0) tty_receive_char(c);
   }
 }
 
