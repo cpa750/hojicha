@@ -7,8 +7,10 @@
 
 typedef struct mock_lock mock_lock_t;
 struct mock_lock {
-  uint64_t lock_count;
-  uint64_t unlock_count;
+  uint64_t read_lock_count;
+  uint64_t read_unlock_count;
+  uint64_t write_lock_count;
+  uint64_t write_unlock_count;
   uint64_t event_count;
   char events[MOCK_LOCK_MAX_EVENTS];
   bool locked;
@@ -22,18 +24,34 @@ static void mock_lock_record(mock_lock_t* lock, char event) {
   }
 }
 
-static void mock_lock(void* lock) {
+static void mock_read_lock(void* lock) {
   mock_lock_t* mock = (mock_lock_t*)lock;
-  mock_lock_record(mock, 'L');
-  mock->lock_count++;
+  mock_lock_record(mock, 'R');
+  mock->read_lock_count++;
   if (mock->locked) { mock->relocked = true; }
   mock->locked = true;
 }
 
-static void mock_unlock(void* lock) {
+static void mock_read_unlock(void* lock) {
   mock_lock_t* mock = (mock_lock_t*)lock;
-  mock_lock_record(mock, 'U');
-  mock->unlock_count++;
+  mock_lock_record(mock, 'r');
+  mock->read_unlock_count++;
+  if (!mock->locked) { mock->unlocked_before_lock = true; }
+  mock->locked = false;
+}
+
+static void mock_write_lock(void* lock) {
+  mock_lock_t* mock = (mock_lock_t*)lock;
+  mock_lock_record(mock, 'W');
+  mock->write_lock_count++;
+  if (mock->locked) { mock->relocked = true; }
+  mock->locked = true;
+}
+
+static void mock_write_unlock(void* lock) {
+  mock_lock_t* mock = (mock_lock_t*)lock;
+  mock_lock_record(mock, 'w');
+  mock->write_unlock_count++;
   if (!mock->locked) { mock->unlocked_before_lock = true; }
   mock->locked = false;
 }
@@ -46,7 +64,7 @@ void ringbuffer_test(void) {
   {
     ringbuffer_t* rb = NULL;
     char a;
-    ringbuffer_new(RINGBUFFER_SIZE, &rb, NULL, NULL, NULL);
+    ringbuffer_new(RINGBUFFER_SIZE, &rb, NULL, NULL, NULL, NULL, NULL);
     HTEST_ASSERT(&ctx, rb != NULL);
     ringbuffer_write(rb, 'a');
 
@@ -59,7 +77,7 @@ void ringbuffer_test(void) {
   {
     ringbuffer_t* rb = NULL;
     char a;
-    ringbuffer_new(RINGBUFFER_SIZE, &rb, NULL, NULL, NULL);
+    ringbuffer_new(RINGBUFFER_SIZE, &rb, NULL, NULL, NULL, NULL, NULL);
     HTEST_ASSERT(&ctx, rb != NULL);
     ringbuffer_write(rb, 'a');
     ringbuffer_read(rb, &a);
@@ -82,7 +100,7 @@ void ringbuffer_test(void) {
     char c;
     char d;
 
-    ringbuffer_new(RINGBUFFER_SIZE, &rb, NULL, NULL, NULL);
+    ringbuffer_new(RINGBUFFER_SIZE, &rb, NULL, NULL, NULL, NULL, NULL);
     HTEST_ASSERT(&ctx, rb != NULL);
     ringbuffer_write(rb, 'a');
     ringbuffer_write(rb, 'b');
@@ -105,7 +123,7 @@ void ringbuffer_test(void) {
     ringbuffer_t* rb = NULL;
     char d;
 
-    ringbuffer_new(RINGBUFFER_SIZE, &rb, NULL, NULL, NULL);
+    ringbuffer_new(RINGBUFFER_SIZE, &rb, NULL, NULL, NULL, NULL, NULL);
     HTEST_ASSERT(&ctx, rb != NULL);
     ringbuffer_write(rb, 'a');
     ringbuffer_write(rb, 'b');
@@ -118,28 +136,45 @@ void ringbuffer_test(void) {
     ringbuffer_free(rb);
   }
 
-  htest_case_begin(&ctx, "lock callbacks");
+  htest_case_begin(&ctx, "read and write lock callbacks");
   {
     ringbuffer_t* rb = NULL;
     mock_lock_t lock = {0};
     char a;
 
-    ringbuffer_new(RINGBUFFER_SIZE, &rb, &lock, mock_lock, mock_unlock);
+    ringbuffer_new(RINGBUFFER_SIZE,
+                   &rb,
+                   &lock,
+                   mock_read_lock,
+                   mock_read_unlock,
+                   mock_write_lock,
+                   mock_write_unlock);
     HTEST_ASSERT(&ctx, rb != NULL);
 
     ringbuffer_write(rb, 'a');
-    HTEST_ASSERT(&ctx, lock.lock_count == 1);
-    HTEST_ASSERT(&ctx, lock.unlock_count == 1);
+    HTEST_ASSERT(&ctx, lock.read_lock_count == 0);
+    HTEST_ASSERT(&ctx, lock.read_unlock_count == 0);
+    HTEST_ASSERT(&ctx, lock.write_lock_count == 1);
+    HTEST_ASSERT(&ctx, lock.write_unlock_count == 1);
 
     HTEST_ASSERT(&ctx, ringbuffer_read(rb, &a) == true);
     HTEST_ASSERT(&ctx, a == 'a');
-    HTEST_ASSERT(&ctx, lock.lock_count == 2);
-    HTEST_ASSERT(&ctx, lock.unlock_count == 2);
-    HTEST_ASSERT(&ctx, lock.event_count == 4);
-    HTEST_ASSERT(&ctx, lock.events[0] == 'L');
-    HTEST_ASSERT(&ctx, lock.events[1] == 'U');
-    HTEST_ASSERT(&ctx, lock.events[2] == 'L');
-    HTEST_ASSERT(&ctx, lock.events[3] == 'U');
+    HTEST_ASSERT(&ctx, lock.read_lock_count == 1);
+    HTEST_ASSERT(&ctx, lock.read_unlock_count == 1);
+    HTEST_ASSERT(&ctx, lock.write_lock_count == 1);
+    HTEST_ASSERT(&ctx, lock.write_unlock_count == 1);
+    HTEST_ASSERT(&ctx, ringbuffer_read(rb, &a) == false);
+    HTEST_ASSERT(&ctx, lock.read_lock_count == 2);
+    HTEST_ASSERT(&ctx, lock.read_unlock_count == 2);
+    HTEST_ASSERT(&ctx, lock.write_lock_count == 1);
+    HTEST_ASSERT(&ctx, lock.write_unlock_count == 1);
+    HTEST_ASSERT(&ctx, lock.event_count == 6);
+    HTEST_ASSERT(&ctx, lock.events[0] == 'W');
+    HTEST_ASSERT(&ctx, lock.events[1] == 'w');
+    HTEST_ASSERT(&ctx, lock.events[2] == 'R');
+    HTEST_ASSERT(&ctx, lock.events[3] == 'r');
+    HTEST_ASSERT(&ctx, lock.events[4] == 'R');
+    HTEST_ASSERT(&ctx, lock.events[5] == 'r');
     HTEST_ASSERT(&ctx, lock.locked == false);
     HTEST_ASSERT(&ctx, lock.relocked == false);
     HTEST_ASSERT(&ctx, lock.unlocked_before_lock == false);

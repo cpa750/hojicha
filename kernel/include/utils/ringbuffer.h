@@ -18,8 +18,10 @@ typedef void (*ringbuffer_unlock_fn_t)(void*);
 void ringbuffer_new(uint64_t size,
                     ringbuffer_t** out,
                     void* lock,
-                    ringbuffer_lock_fn_t lock_fn,
-                    ringbuffer_unlock_fn_t unlock_fn);
+                    ringbuffer_lock_fn_t read_lock_fn,
+                    ringbuffer_unlock_fn_t read_unlock_fn,
+                    ringbuffer_lock_fn_t write_lock_fn,
+                    ringbuffer_unlock_fn_t write_unlock_fn);
 
 /*
  * Frees a ringbuffer created with `ringbuffer_new()`.
