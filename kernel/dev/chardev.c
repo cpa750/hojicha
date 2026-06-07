@@ -2,6 +2,7 @@
 #include <dev/console.h>
 #include <dev/null.h>
 #include <dev/zero.h>
+#include <drivers/tty.h>
 #include <fs/devfs.h>
 #include <stddef.h>
 
@@ -17,4 +18,5 @@ void chardev_initialize(void) {
   }
 
   console_initialize();
+  tty_device_initialize();
 }

@@ -1,6 +1,6 @@
 #include <dev/null.h>
 #include <fs/vfs.h>
-#include <fs/vfs_utils.h>
+#include <utils/set_out.h>
 #include <stdlib.h>
 
 static vfs_status_t null_open(vfs_node_t* vnode,

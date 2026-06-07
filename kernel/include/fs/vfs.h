@@ -112,6 +112,7 @@ struct vfs_file_ops {
                        vfs_seek_whence_t whence,
                        uint64_t* new_pos);
   vfs_status_t (*close)(vfs_file_t* file);
+  vfs_status_t (*ioctl)(vfs_file_t* file, uint64_t number, void* args);
 };
 
 struct vfs_node_ops {
@@ -263,6 +264,11 @@ vfs_status_t vfs_stat(const char* absolute_path, vfs_stat_t** out);
  * Returns metadata for an already-open file.
  */
 vfs_status_t vfs_fstat(vfs_file_t* file, vfs_stat_t** out);
+
+/*
+ * Performs a device-specific control operation on an open file handle.
+ */
+vfs_status_t vfs_ioctl(vfs_file_t* file, uint64_t number, void* args);
 
 /*
  * Closes an open handle.

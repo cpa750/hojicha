@@ -11,6 +11,18 @@ typedef struct tty_state tty_state_t;
 struct caret;
 typedef struct caret caret_t;
 
+typedef enum {
+  TTY_MODE_CANONICAL = 1,
+  TTY_MODE_RAW = 2,
+} tty_mode_t;
+
+enum {
+  TTY_IOCTL_GET_MODE = 1,
+  TTY_IOCTL_SET_MODE,
+  TTY_IOCTL_GET_ECHO,
+  TTY_IOCTL_SET_ECHO,
+};
+
 void terminal_initialize(void);
 void terminal_putchar(char c);
 uint32_t terminal_get_fg(void);
@@ -23,5 +35,12 @@ void terminal_caret_set_colour(tty_state_t* t, uint32_t colour);
 void terminal_caret_set_pos(uint16_t row,
                             uint16_t col,
                             bool put_old_character_back);
+
+void tty_device_initialize(void);
+bool tty_device_ready(void);
+void tty_receive_char(char c);
+void tty_set_echo(bool echo);
+void tty_set_mode(tty_mode_t mode);
+tty_mode_t tty_get_mode(void);
 
 #endif

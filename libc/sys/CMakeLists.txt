@@ -1,4 +1,5 @@
 set(LIBC_SYS_SOURCES
+  ioctl.c
   mkdir.c
   stat.c
 )

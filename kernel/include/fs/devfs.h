@@ -46,6 +46,7 @@ vfs_status_t devfs_seek(vfs_file_t* vfile,
                         int64_t offset,
                         vfs_seek_whence_t whence,
                         uint64_t* new_pos);
+vfs_status_t devfs_ioctl(vfs_file_t* file, uint64_t number, void* args);
 
 vfs_status_t devfs_create_file(vfs_node_t* dir,
                                const char* name,
@@ -70,4 +71,3 @@ vfs_status_t devfs_stat(vfs_node_t* vnode, vfs_stat_t** out);
 void devfs_free(vfs_node_t* vnode);
 
 #endif  // HOJICHA_DEVFS_H
-

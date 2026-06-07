@@ -9,6 +9,7 @@ long syscall_exit(int code);
 long syscall_getdents(unsigned long fd,
                       linux_dirent_t* dirent_buf,
                       unsigned int count);
+long syscall_ioctl(long fd, unsigned long request, void* arg);
 long syscall_lseek(long fd, long offset, int whence);
 long syscall_mkdir(const char* path);
 long syscall_open(const char* absolute_path, unsigned int flags);

@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <utils/irq.h>
 
 #define PAGE_SIZE      4096
 #define MAX_GROW_SIZE  160
@@ -78,42 +79,69 @@ void kmalloc_initialize() {
 }
 
 void* kmalloc_page_aligned(size_t size) {
-  if (size > 0xFFFFFFFFFFFFFFFF) { return 0; }
+  uint64_t irq_state = irq_store();
+
+  // TODO: replace this with a multi-core enabled spinlock later
+  if (size > 0xFFFFFFFFFFFFFFFF) {
+    irq_load(irq_state);
+    return 0;
+  }
   block_header_t* new_block = grow_heap_by(pmm_addr_to_page(size) + 1);
   occupy_block(new_block, size);
+  irq_load(irq_state);
   return new_block;
 }
 
 void* kmalloc(size_t size) {
-  if (size > 0xFFFFFFFFFFFFFFFF) { return 0; }
+  uint64_t irq_state = irq_store();
+
+  if (size > 0xFFFFFFFFFFFFFFFF) {
+    irq_load(irq_state);
+    return 0;
+  }
 
   if (size > (kernel_heap_grow_size)*PAGE_SIZE) {
     block_header_t* new_block = grow_heap_by(pmm_addr_to_page(size) + 1);
     occupy_block(new_block, size);
+    irq_load(irq_state);
     return new_block;
   }
 
   block_header_t* first_fit = find_first_fit_block(free_regions, size);
   if (first_fit == NULL) {
     first_fit = grow_heap();
-    if (first_fit == NULL) { return NULL; }
+    if (first_fit == NULL) {
+      irq_load(irq_state);
+      return NULL;
+    }
   }
 
   occupy_block(first_fit, size);
 
-  return (void*)((haddr_t)first_fit + SIZEOF_HEADER);
+  void* ret = (void*)((haddr_t)first_fit + SIZEOF_HEADER);
+  irq_load(irq_state);
+  return ret;
 }
 
 void kfree(void* ptr) {
-  if (ptr == NULL) { return; }
+  uint64_t irq_state = irq_store();
+
+  if (ptr == NULL) {
+    irq_load(irq_state);
+    return;
+  }
   block_header_t* current_block =
       (block_header_t*)((haddr_t)ptr - SIZEOF_HEADER);
   if ((haddr_t)current_block < first_available_vaddr ||
       (haddr_t)current_block >= last_footer) {
+    irq_load(irq_state);
     return;
   }
 
-  if (current_block->footer == NULL) { return; }
+  if (current_block->footer == NULL) {
+    irq_load(irq_state);
+    return;
+  }
 
   current_block->is_free = true;
   // Special case to handle when the first available block is freed
@@ -151,6 +179,7 @@ void kfree(void* ptr) {
   } else {
     add_to_free_list(previous_free, current_block);
   }
+  irq_load(irq_state);
 }
 
 void add_to_free_list(block_header_t* prev, block_header_t* current) {
@@ -216,9 +245,7 @@ block_header_t* get_previous(block_header_t* block) {
 
 block_header_t* get_previous_free(block_header_t* block) {
   block_header_t* prev = get_previous(block);
-  while (prev != NULL && !prev->is_free) {
-    prev = get_previous(prev);
-  }
+  while (prev != NULL && !prev->is_free) { prev = get_previous(prev); }
   return prev;
 }
 
@@ -230,6 +257,7 @@ block_header_t* grow_heap_by(size_t size) {
       vmm_map(g_kernel.vmm, addr_to_map, size, PAGE_PRESENT | PAGE_WRITABLE);
   if (new_pages == 0) { return NULL; }
 
+  block_header_t* last_block = ((block_footer_t*)last_footer)->header;
   block_header_t* new_block = (block_header_t*)(last_footer + SIZEOF_FOOTER);
   haddr_t difference = new_pages - ((haddr_t)last_footer + SIZEOF_FOOTER);
 
@@ -243,6 +271,10 @@ block_header_t* grow_heap_by(size_t size) {
   new_block_footer->header = new_block;
   new_block->footer = new_block_footer;
   last_footer = (haddr_t)new_block_footer;
+  if (last_block->is_free) {
+    merge_blocks(last_block, new_block);
+    new_block = last_block;
+  }
   block_header_t* prev_free = get_previous_free(new_block);
   if (prev_free != NULL) { prev_free->next = new_block; }
   return new_block;

@@ -1,5 +1,5 @@
-#ifndef HOJICHA_FS_VFS_UTILS_H
-#define HOJICHA_FS_VFS_UTILS_H
+#ifndef HOJICHA_UTILS_SET_OUT_H
+#define HOJICHA_UTILS_SET_OUT_H
 
 #include <stddef.h>
 
