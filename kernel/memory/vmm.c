@@ -17,6 +17,7 @@
 #define LOW_REGION_END         0x100000
 #define PAGE_SIZE              4096
 #define MAPPING_STRUCTURE_MASK 0xFFFFFFFFFFFFF000ULL
+#define ENTRY_PHYS_MASK        0x000FFFFFFFFFF000ULL
 #define PD_ENTRIES             511ULL
 #define RECURSIVE_IDX          510ULL
 #define KERNEL_PML4_FIRST      256ULL
@@ -42,6 +43,10 @@ struct vmm {
   haddr_t* pml4_phys;
 };
 typedef struct vmm vmm_t;
+typedef bool (*vmm_mapping_callback_t)(vmm_t* vmm,
+                                       haddr_t virt,
+                                       haddr_t entry,
+                                       void* ctx);
 haddr_t vmm_get_kernel_offset(vmm_t* vmm) { return vmm->kernel_offset; }
 haddr_t vmm_get_first_available_vaddr(vmm_t* vmm) {
   return vmm->first_available_vaddr;
@@ -74,7 +79,28 @@ void map_framebuffer(vmm_t* vmm);
 static haddr_t map_in_current_cr3(haddr_t virt, haddr_t phys, haddr_t flags);
 static bool entry_is_present(haddr_t entry);
 static haddr_t entry_phys(haddr_t entry);
+static haddr_t entry_flags(haddr_t entry);
 static haddr_t* scratch_map_table(haddr_t scratch_addr, haddr_t phys);
+static haddr_t* scratch_map_page(haddr_t scratch_addr, haddr_t phys);
+static haddr_t* walk_to_child_table(haddr_t* table,
+                                    uint16_t idx,
+                                    haddr_t scratch_addr,
+                                    haddr_t virt,
+                                    haddr_t flags,
+                                    bool create);
+static haddr_t flags_to_mapping_request(haddr_t flags);
+static haddr_t map_at_paddr_with_leaf_flags(vmm_t* vmm,
+                                            haddr_t virt,
+                                            haddr_t phys,
+                                            haddr_t leaf_flags);
+static bool walk_lower_mappings(vmm_t* vmm,
+                                vmm_mapping_callback_t callback,
+                                void* ctx,
+                                bool free_tables);
+static bool vmm_copy_mappings(vmm_t* dst, vmm_t* src);
+static void vmm_destroy_mappings(vmm_t* vmm);
+static bool copy_mapping(vmm_t* src, haddr_t virt, haddr_t entry, void* ctx);
+static bool destroy_mapping(vmm_t* vmm, haddr_t virt, haddr_t entry, void* ctx);
 static haddr_t* walk_non_kernel_to_pt(vmm_t* vmm,
                                       haddr_t virt,
                                       haddr_t flags,
@@ -178,9 +204,13 @@ void vmm_initialize() {
 vmm_t* vmm_new(haddr_t flags) {
   vmm_t* vmm = (vmm_t*)malloc(sizeof(vmm_t));
   if (vmm == NULL) { return NULL; }
+  memset(vmm, 0, sizeof(vmm_t));
 
   haddr_t pml4 = pmm_alloc_frame();
-  if (pml4 == 0) { return NULL; }
+  if (pml4 == 0) {
+    free(vmm);
+    return NULL;
+  }
 
   vmm->kernel_offset = g_kernel.vmm->kernel_offset;
   vmm->pml4_phys = (haddr_t*)pml4;
@@ -188,7 +218,11 @@ vmm_t* vmm_new(haddr_t flags) {
   haddr_t* new_pml4 = scratch_map_table(VIRT_SCRATCH_L4, pml4);
   haddr_t* kernel_pml4 =
       scratch_map_table(VIRT_SCRATCH_L3, (haddr_t)g_kernel.vmm->pml4_phys);
-  if (new_pml4 == NULL || kernel_pml4 == NULL) { return NULL; }
+  if (new_pml4 == NULL || kernel_pml4 == NULL) {
+    pmm_free_frame(pml4);
+    free(vmm);
+    return NULL;
+  }
 
   memset(new_pml4, 0, PAGE_SIZE);
   for (haddr_t idx = KERNEL_PML4_FIRST; idx <= KERNEL_PML4_LAST; ++idx) {
@@ -204,6 +238,29 @@ vmm_t* vmm_new(haddr_t flags) {
   vmm->last_available_vaddr = LAST_VADDR;
   vmm->pml4_phys = (haddr_t*)pml4;
   return vmm;
+}
+
+vmm_t* vmm_copy(vmm_t* src) {
+  if (src == NULL) { return NULL; }
+
+  haddr_t* src_pml4 =
+      scratch_map_table(VIRT_SCRATCH_L4, (haddr_t)src->pml4_phys);
+  if (src_pml4 == NULL) { return NULL; }
+
+  haddr_t recursive_flags = entry_flags(src_pml4[RECURSIVE_IDX]);
+  vmm_t* dst = vmm_new(recursive_flags);
+  if (dst == NULL) { return NULL; }
+
+  dst->first_available_vaddr = src->first_available_vaddr;
+  dst->last_available_vaddr = src->last_available_vaddr;
+  dst->kernel_offset = src->kernel_offset;
+
+  if (!vmm_copy_mappings(dst, src)) {
+    vmm_free(dst);
+    return NULL;
+  }
+
+  return dst;
 }
 
 haddr_t vmm_map(vmm_t* vmm, haddr_t virt, haddr_t size, haddr_t flags) {
@@ -312,7 +369,10 @@ haddr_t vmm_unmap(vmm_t* vmm, haddr_t virt) {
 }
 
 void vmm_free(vmm_t* vmm) {
-  // TODO: give back the physical pages we allocated
+  if (vmm == NULL || vmm == g_kernel.vmm) { return; }
+
+  vmm_destroy_mappings(vmm);
+  pmm_free_frame((haddr_t)vmm->pml4_phys);
   free(vmm);
 }
 
@@ -430,13 +490,12 @@ static haddr_t map_in_current_cr3(haddr_t virt, haddr_t phys, haddr_t flags) {
 }
 
 static bool entry_is_present(haddr_t entry) {
-  return (entry & (PAGE_PRESENT | PAGE_WRITABLE)) ==
-         (PAGE_PRESENT | PAGE_WRITABLE);
+  return (entry & PAGE_PRESENT) == PAGE_PRESENT;
 }
 
-static haddr_t entry_phys(haddr_t entry) {
-  return entry & MAPPING_STRUCTURE_MASK;
-}
+static haddr_t entry_phys(haddr_t entry) { return entry & ENTRY_PHYS_MASK; }
+
+static haddr_t entry_flags(haddr_t entry) { return entry & ~ENTRY_PHYS_MASK; }
 
 static haddr_t* scratch_map_table(haddr_t scratch_addr, haddr_t phys) {
   if (map_in_current_cr3(scratch_addr, phys, PAGE_PRESENT | PAGE_WRITABLE) ==
@@ -447,11 +506,164 @@ static haddr_t* scratch_map_table(haddr_t scratch_addr, haddr_t phys) {
   return (haddr_t*)scratch_addr;
 }
 
+static haddr_t* scratch_map_page(haddr_t scratch_addr, haddr_t phys) {
+  return scratch_map_table(scratch_addr, phys);
+}
+
+static haddr_t* walk_to_child_table(haddr_t* table,
+                                    uint16_t idx,
+                                    haddr_t scratch_addr,
+                                    haddr_t virt,
+                                    haddr_t flags,
+                                    bool create) {
+  if (!entry_is_present(table[idx])) {
+    if (!create) { return NULL; }
+
+    haddr_t new_table_phys = pmm_alloc_frame();
+    if (new_table_phys == 0) { return NULL; }
+    table[idx] = new_table_phys | normalize_table_flags(virt, flags);
+
+    haddr_t* new_table = scratch_map_table(scratch_addr, new_table_phys);
+    if (new_table == NULL) {
+      table[idx] = 0;
+      pmm_free_frame(new_table_phys);
+      return NULL;
+    }
+    memset(new_table, 0, PAGE_SIZE);
+    return new_table;
+  }
+
+  clear_nx(&table[idx], flags);
+  set_user_access(&table[idx], virt, flags);
+  return scratch_map_table(scratch_addr, entry_phys(table[idx]));
+}
+
+static haddr_t flags_to_mapping_request(haddr_t flags) {
+  haddr_t request = flags;
+  if ((flags & PAGE_NO_EXECUTE) == 0) { request |= PAGE_EXECUTABLE; }
+  return request;
+}
+
+static haddr_t map_at_paddr_with_leaf_flags(vmm_t* vmm,
+                                            haddr_t virt,
+                                            haddr_t phys,
+                                            haddr_t leaf_flags) {
+  haddr_t virt_base = virt & MAPPING_STRUCTURE_MASK;
+  haddr_t* pt = walk_non_kernel_to_pt(
+      vmm, virt, flags_to_mapping_request(leaf_flags), true);
+  if (pt == NULL) { return 0; }
+
+  uint16_t pt_idx = get_pt_idx(virt);
+  pt[pt_idx] = phys | leaf_flags;
+  _invlpg(virt);
+  return virt_base;
+}
+
+static bool walk_lower_mappings(vmm_t* vmm,
+                                vmm_mapping_callback_t callback,
+                                void* ctx,
+                                bool free_tables) {
+  for (haddr_t pml4_idx = 0; pml4_idx < KERNEL_PML4_FIRST; ++pml4_idx) {
+    haddr_t* pml4 = scratch_map_table(VIRT_SCRATCH_L4, (haddr_t)vmm->pml4_phys);
+    if (pml4 == NULL) { return false; }
+
+    if (!entry_is_present(pml4[pml4_idx])) { continue; }
+
+    haddr_t pml3_phys = entry_phys(pml4[pml4_idx]);
+    haddr_t* pml3 = walk_to_child_table(
+        pml4, pml4_idx, VIRT_SCRATCH_L3, pml4_idx << 39, 0, false);
+    if (pml3 == NULL) { return false; }
+
+    for (haddr_t pml3_idx = 0; pml3_idx <= PD_ENTRIES; ++pml3_idx) {
+      if (!entry_is_present(pml3[pml3_idx])) { continue; }
+
+      haddr_t pd_phys = entry_phys(pml3[pml3_idx]);
+      haddr_t* pd = walk_to_child_table(pml3,
+                                        pml3_idx,
+                                        VIRT_SCRATCH_L2,
+                                        (pml4_idx << 39) | (pml3_idx << 30),
+                                        0,
+                                        false);
+      if (pd == NULL) { return false; }
+
+      for (haddr_t pd_idx = 0; pd_idx <= PD_ENTRIES; ++pd_idx) {
+        if (!entry_is_present(pd[pd_idx])) { continue; }
+
+        haddr_t pt_phys = entry_phys(pd[pd_idx]);
+        haddr_t* pt = walk_to_child_table(
+            pd,
+            pd_idx,
+            VIRT_SCRATCH_L1,
+            (pml4_idx << 39) | (pml3_idx << 30) | (pd_idx << 21),
+            0,
+            false);
+        if (pt == NULL) { return false; }
+
+        for (haddr_t pt_idx = 0; pt_idx <= PD_ENTRIES; ++pt_idx) {
+          haddr_t pt_entry = pt[pt_idx];
+          if (!entry_is_present(pt_entry)) { continue; }
+
+          haddr_t virt = (pml4_idx << 39) | (pml3_idx << 30) | (pd_idx << 21) |
+                         (pt_idx << 12);
+          if (!callback(vmm, virt, pt_entry, ctx)) { return false; }
+        }
+
+        if (free_tables) { pmm_free_frame(pt_phys); }
+      }
+
+      if (free_tables) { pmm_free_frame(pd_phys); }
+    }
+
+    if (free_tables) { pmm_free_frame(pml3_phys); }
+  }
+
+  return true;
+}
+
+static bool vmm_copy_mappings(vmm_t* dst, vmm_t* src) {
+  return walk_lower_mappings(src, copy_mapping, dst, false);
+}
+
+static void vmm_destroy_mappings(vmm_t* vmm) {
+  if (!walk_lower_mappings(vmm, destroy_mapping, NULL, true)) { return; }
+}
+
+static bool copy_mapping(vmm_t* src, haddr_t virt, haddr_t entry, void* ctx) {
+  vmm_t* dst = (vmm_t*)ctx;
+  haddr_t new_page = pmm_alloc_frame();
+  if (new_page == 0) { return false; }
+
+  haddr_t* src_page = scratch_map_page(VIRT_SCRATCH_ADDR, entry_phys(entry));
+  haddr_t* dst_page = scratch_map_page(VIRT_PML4, new_page);
+  if (src_page == NULL || dst_page == NULL) {
+    pmm_free_frame(new_page);
+    return false;
+  }
+
+  memcpy(dst_page, src_page, PAGE_SIZE);
+
+  if (map_at_paddr_with_leaf_flags(dst, virt, new_page, entry_flags(entry)) ==
+      0) {
+    pmm_free_frame(new_page);
+    return false;
+  }
+
+  (void)src;
+  return true;
+}
+
+static bool destroy_mapping(vmm_t* vmm,
+                            haddr_t virt,
+                            haddr_t entry,
+                            void* ctx) {
+  pmm_free_frame(entry_phys(entry));
+  return true;
+}
+
 static haddr_t* walk_non_kernel_to_pt(vmm_t* vmm,
                                       haddr_t virt,
                                       haddr_t flags,
                                       bool create) {
-  haddr_t table_flags = normalize_table_flags(virt, flags);
   uint16_t pml4_idx = get_pml4_idx(virt);
   uint16_t pml3_idx = get_pml3_idx(virt);
   uint16_t pd_idx = get_pd_idx(virt);
@@ -461,51 +673,15 @@ static haddr_t* walk_non_kernel_to_pt(vmm_t* vmm,
   haddr_t* pml4 = scratch_map_table(VIRT_SCRATCH_L4, (haddr_t)vmm->pml4_phys);
   if (pml4 == NULL) { return NULL; }
 
-  if (!entry_is_present(pml4[pml4_idx])) {
-    if (!create) { return NULL; }
-    haddr_t new_pml3_phys = pmm_alloc_frame();
-    if (new_pml3_phys == 0) { return NULL; }
-    pml4[pml4_idx] = new_pml3_phys | table_flags;
-
-    haddr_t* new_pml3 = scratch_map_table(VIRT_SCRATCH_L3, new_pml3_phys);
-    if (new_pml3 == NULL) { return NULL; }
-    memset(new_pml3, 0, PAGE_SIZE);
-  }
-  clear_nx(&pml4[pml4_idx], flags);
-  set_user_access(&pml4[pml4_idx], virt, flags);
-
   haddr_t* pml3 =
-      scratch_map_table(VIRT_SCRATCH_L3, entry_phys(pml4[pml4_idx]));
+      walk_to_child_table(pml4, pml4_idx, VIRT_SCRATCH_L3, virt, flags, create);
   if (pml3 == NULL) { return NULL; }
-  if (!entry_is_present(pml3[pml3_idx])) {
-    if (!create) { return NULL; }
-    haddr_t new_pd_phys = pmm_alloc_frame();
-    if (new_pd_phys == 0) { return NULL; }
-    pml3[pml3_idx] = new_pd_phys | table_flags;
 
-    haddr_t* new_pd = scratch_map_table(VIRT_SCRATCH_L2, new_pd_phys);
-    if (new_pd == NULL) { return NULL; }
-    memset(new_pd, 0, PAGE_SIZE);
-  }
-  clear_nx(&pml3[pml3_idx], flags);
-  set_user_access(&pml3[pml3_idx], virt, flags);
-
-  haddr_t* pd = scratch_map_table(VIRT_SCRATCH_L2, entry_phys(pml3[pml3_idx]));
+  haddr_t* pd =
+      walk_to_child_table(pml3, pml3_idx, VIRT_SCRATCH_L2, virt, flags, create);
   if (pd == NULL) { return NULL; }
-  if (!entry_is_present(pd[pd_idx])) {
-    if (!create) { return NULL; }
-    haddr_t new_pt_phys = pmm_alloc_frame();
-    if (new_pt_phys == 0) { return NULL; }
-    pd[pd_idx] = new_pt_phys | table_flags;
 
-    haddr_t* new_pt = scratch_map_table(VIRT_SCRATCH_L1, new_pt_phys);
-    if (new_pt == NULL) { return NULL; }
-    memset(new_pt, 0, PAGE_SIZE);
-  }
-  clear_nx(&pd[pd_idx], flags);
-  set_user_access(&pd[pd_idx], virt, flags);
-
-  return scratch_map_table(VIRT_SCRATCH_L1, entry_phys(pd[pd_idx]));
+  return walk_to_child_table(pd, pd_idx, VIRT_SCRATCH_L1, virt, flags, create);
 }
 
 static haddr_t normalize_leaf_flags(haddr_t virt, haddr_t flags) {
