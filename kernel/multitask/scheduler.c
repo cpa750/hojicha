@@ -1,4 +1,5 @@
 #include <drivers/pit.h>
+#include <errno.h>
 #include <fs/vfs.h>
 #include <haddr.h>
 #include <hlog.h>
@@ -10,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define QUANTUM_LENGTH 50000000  // 50 ms
+#define QUANTUM_LENGTH 20000000  // 20 ms
 
 struct sched_state {
   process_block_t* first_ready_to_run;
@@ -64,6 +65,8 @@ struct process_block {
   elf_t* elf;
 
   vfs_file_t** fds;
+  process_block_t** children;
+  process_block_t* parent;
 };
 
 process_block_t* sched_pb_get_next(process_block_t* p) { return p->next; }
@@ -131,10 +134,12 @@ static sched_state_t mt = {0};
 static pit_callback_t pit_callback = {0};
 
 extern void switch_to(process_block_t* process, bool is_ctx_switch);
+extern void make_fork_kstack(void);
 
 void multitask_switch(process_block_t* process);
 
 void block_process(process_block_t* p, uint8_t reason);
+void enqueue_ready_process(process_block_t* process);
 process_block_t* find_last_sleep_timestamp_less_than_equal(
     process_block_t* process,
     uint64_t timestamp);
@@ -232,21 +237,101 @@ process_block_t* sched_uproc_new(char* name, elf_t* elf) {
   return new_proc;
 }
 
-void sched_add_proc(process_block_t* process) {
-  sched_postpone();
-  process->next = NULL;
-  if (g_kernel.sched->first_ready_to_run == NULL) {
-    g_kernel.sched->first_ready_to_run = process;
-    g_kernel.sched->last_ready_to_run = process;
-    sched_resume();
-    return;
+long sched_fork(process_block_t* process, interrupt_frame_t* frame) {
+  if (process == NULL || frame == NULL || process->stack_end == NULL) {
+    return -EINVAL;
   }
 
-  if (g_kernel.sched->last_ready_to_run == NULL) {
-    set_last_ready_to_run(g_kernel.sched, g_kernel.sched->first_ready_to_run);
+  process_block_t* new_proc =
+      (process_block_t*)calloc(1, sizeof(process_block_t));
+  vfs_file_t** fds = (vfs_file_t**)calloc(1, sizeof(vfs_file_t*) * MAX_FDS);
+  uint8_t* stack_end = (uint8_t*)calloc(1, STACK_SIZE);
+  hlogger_t* logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
+  new_proc->vmm = vmm_copy(process->vmm);
+  if (new_proc == NULL || fds == NULL || stack_end == NULL || logger == NULL ||
+      new_proc->vmm) {
+    free(new_proc);
+    free(fds);
+    free(stack_end);
+    if (logger != NULL) { hlog_free_logger(logger); }
+    hlog_write(HLOG_ERROR,
+               "Could not fork new process %s: out of memory.",
+               process->name);
+    return -ENOMEM;
   }
-  g_kernel.sched->last_ready_to_run->next = process;
-  g_kernel.sched->last_ready_to_run = process;
+
+  new_proc->cr3 = vmm_get_cr3(new_proc->vmm);
+
+  haddr_t parent_stack_bottom = (haddr_t)process->stack_end;
+  haddr_t parent_stack_base = parent_stack_bottom + STACK_SIZE;
+  haddr_t parent_frame = (haddr_t)frame;
+  if (parent_frame < parent_stack_bottom ||
+      parent_frame + sizeof(interrupt_frame_t) > parent_stack_base) {
+    vmm_free(new_proc->vmm);
+    free(new_proc);
+    free(fds);
+    free(stack_end);
+    if (logger != NULL) { hlog_free_logger(logger); }
+    return -EINVAL;
+  }
+
+  haddr_t child_stack_bottom = (haddr_t)stack_end;
+  haddr_t child_stack_base = child_stack_bottom + STACK_SIZE;
+  haddr_t frame_offset_from_base = parent_stack_base - parent_frame;
+  haddr_t child_frame_addr = child_stack_base - frame_offset_from_base;
+  size_t switch_frame_size = (15 + 1) * sizeof(haddr_t);
+  if (child_frame_addr < child_stack_bottom + switch_frame_size) {
+    vmm_free(new_proc->vmm);
+    free(new_proc);
+    free(fds);
+    free(stack_end);
+    if (logger != NULL) { hlog_free_logger(logger); }
+    return -EINVAL;
+  }
+
+  interrupt_frame_t* child_frame = (interrupt_frame_t*)child_frame_addr;
+  memcpy(child_frame, frame, sizeof(interrupt_frame_t));
+  child_frame->rax = 0;
+
+  haddr_t switch_rsp = child_frame_addr - switch_frame_size;
+  memset((void*)switch_rsp, 0, switch_frame_size);
+  *(haddr_t*)(child_frame_addr - sizeof(haddr_t)) =
+      (haddr_t)make_fork_kstack;
+
+  ++(g_kernel.sched->total_processes_added);
+  ++(g_kernel.sched->process_count);
+
+  new_proc->parent = process;
+
+  new_proc->stack_end = stack_end;
+  haddr_t stack_base = (haddr_t)(new_proc->stack_end + STACK_SIZE);
+  new_proc->rsp0 = (void*)stack_base;
+  new_proc->fds = fds;
+  // Copy fds
+
+  new_proc->pid = g_kernel.sched->total_processes_added;
+  // if (name != NULL) {
+  //   new_proc->name = name;
+  // } else {
+  //   itoa(new_proc->pid, new_proc->name, 10);
+  // }
+  // TODO: copy name instead
+
+  new_proc->name = process->name;
+  new_proc->logger = logger;
+
+  new_proc->rsp = (void*)switch_rsp;
+  new_proc->is_kernel_proc = process->is_kernel_proc;
+  new_proc->entry = process->entry;
+  new_proc->elf = process->elf;
+  new_proc->status = PROC_STATUS_READY_TO_RUN;
+  enqueue_ready_process(new_proc);
+  return new_proc->pid;
+}
+
+void sched_add_proc(process_block_t* process) {
+  sched_postpone();
+  enqueue_ready_process(process);
   sched_resume();
 }
 
@@ -433,6 +518,21 @@ void block_process(process_block_t* p, uint8_t reason) {
   p->status = reason;
   schedule_advance();
   sched_unlock();
+}
+
+void enqueue_ready_process(process_block_t* process) {
+  process->next = NULL;
+  if (g_kernel.sched->first_ready_to_run == NULL) {
+    g_kernel.sched->first_ready_to_run = process;
+    g_kernel.sched->last_ready_to_run = process;
+    return;
+  }
+
+  if (g_kernel.sched->last_ready_to_run == NULL) {
+    set_last_ready_to_run(g_kernel.sched, g_kernel.sched->first_ready_to_run);
+  }
+  g_kernel.sched->last_ready_to_run->next = process;
+  g_kernel.sched->last_ready_to_run = process;
 }
 
 /*

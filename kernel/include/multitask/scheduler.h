@@ -4,6 +4,7 @@
 #include <fs/vfs.h>
 #include <haddr.h>
 #include <hlog.h>
+#include <cpu/isr.h>
 #include <memory/vmm.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -83,6 +84,11 @@ process_block_t* sched_kproc_new(char* name, proc_entry_t entry, void* cr3);
  * on the process handle manually.
  */
 process_block_t* sched_uproc_new(char* name, elf_t* elf);
+
+/*
+ * Forks the given `process`.
+ */
+long sched_fork(process_block_t* process, interrupt_frame_t* frame);
 
 /*
  * Adds a proc to the scheduler's queue.
