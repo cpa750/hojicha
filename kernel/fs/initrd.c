@@ -134,6 +134,7 @@ vfs_status_t initrd_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
   }
 
   vfile->flags = flags;
+  vfile->refcount = 1;
   vfile->fs_data = NULL;
   vfile->offset = 0;
   vfile->vnode = vnode;

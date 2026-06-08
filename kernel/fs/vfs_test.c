@@ -192,6 +192,25 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx, mock.close_calls == 1);
   HTEST_ASSERT(&ctx, sched_pb_fd_get(g_kernel.current_process, fd) == NULL);
 
+  htest_case_begin(&ctx, "file refcount defers final close");
+  mock_reset(&mock);
+
+  file = NULL;
+  HTEST_ASSERT(
+      &ctx,
+      vfs_get_file_handle(
+          "/etc/vfs_mock/existing.txt", VFS_OPEN_READ, &file) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, file->refcount == 1);
+
+  vfs_file_borrow(file);
+  HTEST_ASSERT(&ctx, file->refcount == 2);
+  HTEST_ASSERT(&ctx, vfs_close(file) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, file->refcount == 1);
+  HTEST_ASSERT(&ctx, mock.close_calls == 0);
+
+  HTEST_ASSERT(&ctx, vfs_close(file) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, mock.close_calls == 1);
+
   htest_case_begin(&ctx, "create with open");
   mock_reset(&mock);
 
@@ -418,6 +437,7 @@ static vfs_status_t mock_open(vfs_node_t* vnode,
 
   file->vnode = vnode;
   file->flags = flags;
+  file->refcount = 1;
   file->offset = 0;
   file->fs_data = state;
   file->ops =

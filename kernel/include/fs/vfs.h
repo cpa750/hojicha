@@ -84,6 +84,7 @@ struct vfs_file {
   vfs_node_t* vnode;
   const vfs_file_ops_t* ops;
   uint32_t flags;
+  uint32_t refcount;
   uint64_t offset;
   void* fs_data;
 };
@@ -283,6 +284,8 @@ vfs_status_t vfs_close(vfs_file_t* file);
  */
 vfs_status_t vfs_resolve_fd(uint64_t fd, vfs_file_t** out);
 
+void vfs_file_borrow(vfs_file_t* file);
+void vfs_file_release(vfs_file_t* file);
 void vfs_vnode_borrow(vfs_node_t* vnode);
 void vfs_vnode_release(vfs_node_t* vnode);
 bool vfs_validate_name(const char* name, uint64_t name_len);
