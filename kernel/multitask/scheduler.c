@@ -147,6 +147,7 @@ static pit_callback_t pit_callback = {0};
 
 extern void switch_to(process_block_t* process, bool is_ctx_switch);
 extern void make_fork_kstack(void);
+extern void load_pd(haddr_t* pd_addr);
 
 void multitask_switch(process_block_t* process);
 
@@ -161,7 +162,7 @@ void mark_proc_range(process_block_t* start,
                      process_block_t* end,
                      proc_status_t status);
 process_block_t* new_proc_shared(char* name, void* cr3);
-char* proc_name_new(const char* name, uint64_t pid);
+char* proc_name_new(const char* name, uint64_t name_len);
 void proc_prelude(process_block_t* p);
 void set_last_ready_to_run(sched_state_t* mt,
                            process_block_t* first_ready_to_run);
@@ -185,7 +186,7 @@ void sched_initialize(void) {
   kernel_process->status = PROC_STATUS_RUNNING;
   kernel_process->is_kernel_proc = true;
   kernel_process->pid = UINT64_MAX;
-  kernel_process->name = proc_name_new("hojicha", kernel_process->pid);
+  kernel_process->name = proc_name_new("hojicha", strlen("hojicha"));
   kernel_process->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
   kernel_process->vmm = g_kernel.vmm;
   kernel_process->fds = (vfs_file_t**)calloc(1, sizeof(vfs_file_t*) * MAX_FDS);
@@ -263,6 +264,57 @@ process_block_t* sched_uproc_new(char* name, elf_t* elf) {
   return new_proc;
 }
 
+long sched_execve(process_block_t* process,
+                  elf_t* elf,
+                  char* name,
+                  uint64_t name_len) {
+  if (process == NULL || process != g_kernel.current_process || elf == NULL ||
+      process->fds == NULL) {
+    return -EINVAL;
+  }
+
+  hlogger_t* logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
+  vmm_t* vmm = vmm_new(PAGE_USER_ACCESIBLE);
+  char* proc_name = proc_name_new(name, name_len);
+  if (logger == NULL || vmm == NULL || proc_name == NULL) {
+    if (logger != NULL) { hlog_free_logger(logger); }
+    if (vmm != NULL) { vmm_free(vmm); }
+    free(proc_name);
+    return -ENOMEM;
+  }
+
+  for (uint64_t fd = 0; fd < MAX_FDS; ++fd) {
+    vfs_file_t* file = process->fds[fd];
+    if (file == NULL) { continue; }
+
+    if (file->flags & VFS_OPEN_CLOEXEC) {
+      process->fds[fd] = NULL;
+      vfs_close(file);
+    }
+  }
+
+  char* old_name = process->name;
+  hlogger_t* old_logger = process->logger;
+  vmm_t* old_vmm = process->vmm;
+  elf_t* old_elf = process->elf;
+
+  process->name = proc_name;
+  process->logger = logger;
+  process->vmm = vmm;
+  process->cr3 = vmm_get_cr3(vmm);
+  process->elf = elf;
+  process->is_kernel_proc = false;
+
+  load_pd(process->cr3);
+  if (old_vmm != NULL && old_vmm != g_kernel.vmm) { vmm_free(old_vmm); }
+  free(old_name);
+  if (old_logger != NULL) { hlog_free_logger(old_logger); }
+  if (old_elf != NULL && old_elf != elf) { elf_free(old_elf); }
+
+  elf_launch(process->elf, process->vmm);
+  return -EINVAL;
+}
+
 long sched_fork(process_block_t* process, interrupt_frame_t* frame) {
   if (process == NULL || frame == NULL || process->stack_end == NULL ||
       process->fds == NULL || process->children == NULL) {
@@ -280,7 +332,9 @@ long sched_fork(process_block_t* process, interrupt_frame_t* frame) {
   uint8_t* stack_end = (uint8_t*)calloc(1, STACK_SIZE);
   hlogger_t* logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
   vmm_t* new_vmm = vmm_copy(process->vmm);
-  char* new_name = proc_name_new(process->name, 0);
+  char* new_name = process->name == NULL
+                       ? NULL
+                       : proc_name_new(process->name, strlen(process->name));
   if (new_proc == NULL || fds == NULL || children == NULL ||
       stack_end == NULL || logger == NULL || new_vmm == NULL ||
       new_name == NULL) {
@@ -626,7 +680,12 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
   uint8_t* stack_end = (uint8_t*)calloc(1, STACK_SIZE);
   hlogger_t* logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
   uint64_t pid = g_kernel.sched->total_processes_added + 1;
-  char* proc_name = proc_name_new(name, pid);
+  char pid_name[21] = {0};
+  if (name == NULL) {
+    itoa(pid, pid_name, 10);
+    name = pid_name;
+  }
+  char* proc_name = proc_name_new(name, strlen(name));
   if (new_proc == NULL || fds == NULL || children == NULL ||
       stack_end == NULL || logger == NULL || proc_name == NULL) {
     free(new_proc);
@@ -668,16 +727,12 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
   return new_proc;
 }
 
-char* proc_name_new(const char* name, uint64_t pid) {
-  char pid_name[21] = {0};
-  if (name == NULL) {
-    itoa(pid, pid_name, 10);
-    name = pid_name;
-  }
-
-  char* ret = (char*)calloc(strlen(name) + 1, sizeof(char));
+char* proc_name_new(const char* name, uint64_t name_len) {
+  if (name == NULL) { return NULL; }
+  char* ret = (char*)calloc(name_len + 1, sizeof(char));
   if (ret == NULL) { return NULL; }
-  strcpy(ret, name);
+  memcpy(ret, name, name_len);
+  ret[name_len] = '\0';
   return ret;
 }
 
