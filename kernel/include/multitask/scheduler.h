@@ -10,6 +10,7 @@
 #include <stdint.h>
 
 #define STACK_SIZE 16384  // 4 pages
+#define MAX_CHILDREN 256
 
 typedef enum proc_status {
   PROC_STATUS_RUNNING = 0b00000001,
@@ -49,6 +50,7 @@ void* sched_pb_get_cr3(process_block_t* p);
  * descriptor, `false` if not.
  */
 bool sched_pb_fd_find_null(process_block_t* p, uint64_t* idx_out);
+bool sched_pb_child_find_null(process_block_t* p, uint64_t* idx_out);
 
 /*
  * Gets the entry in the processe's file descriptor table at `idx`.
