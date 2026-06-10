@@ -30,6 +30,12 @@ void syscall_handle(interrupt_frame_t* frame) {
     case __HOJICHA_SYS_SYSCALL_FORK:
       ret = syscall_fork(frame);
       break;
+    case __HOJICHA_SYS_SYSCALL_EXECVE:
+      ret = syscall_execve(
+          (const char*)frame->rdi,
+          (char* const*)frame->rsi,
+          (char* const*)frame->rdx);
+      break;
     case __HOJICHA_SYS_SYSCALL_STAT:
       ret = syscall_stat((const char*)frame->rdi, (stat_t*)frame->rsi);
       break;

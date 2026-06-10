@@ -23,6 +23,7 @@ irq_common:
     push r8
     push rsi
     push rdi
+    push rbp
     push rdx
     push rcx
     push rbx
@@ -42,6 +43,7 @@ irq_common:
     pop rbx
     pop rcx
     pop rdx
+    pop rbp
     pop rdi
     pop rsi
     pop r8
@@ -61,4 +63,3 @@ global irq_stub_table
 irq_stub_table:
     dq irq_stub_32
     dq irq_stub_33
-

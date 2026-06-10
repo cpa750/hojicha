@@ -6,6 +6,9 @@
 #include <sys/stat.h>
 
 long syscall_close(long fd);
+long syscall_execve(const char* pathname,
+                    char* const argv[],
+                    char* const envp[]);
 long syscall_exit(int code);
 long syscall_fork(interrupt_frame_t* frame);
 long syscall_getdents(unsigned long fd,

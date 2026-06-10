@@ -3,6 +3,8 @@
 global make_fork_kstack
 
 make_fork_kstack:
+    ; switch_to has already popped its saved-register frame and ret'd here.
+    ; rsp points at the copied interrupt_frame_t on the child kernel stack.
     add rsp, 0x08
 
     pop rax
@@ -10,6 +12,7 @@ make_fork_kstack:
     pop rbx
     pop rcx
     pop rdx
+    pop rbp
     pop rdi
     pop rsi
     pop r8

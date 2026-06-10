@@ -7,7 +7,7 @@
 static long translate_open_flags(unsigned int userspace_flags,
                                  uint32_t* vfs_flags_out) {
   const unsigned int supported_flags =
-      O_ACCMODE | O_CREAT | O_DIRECTORY;
+      O_ACCMODE | O_CREAT | O_CLOEXEC | O_DIRECTORY;
   if ((userspace_flags & ~supported_flags) != 0) { return -EINVAL; }
 
   uint32_t vfs_flags = 0;
@@ -31,6 +31,7 @@ static long translate_open_flags(unsigned int userspace_flags,
   }
 
   if (userspace_flags & O_CREAT) { vfs_flags |= VFS_OPEN_CREATE; }
+  if (userspace_flags & O_CLOEXEC) { vfs_flags |= VFS_OPEN_CLOEXEC; }
 
   *vfs_flags_out = vfs_flags;
   return 0;

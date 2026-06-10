@@ -155,20 +155,22 @@ void kernel_main() {
 
   asm volatile("sti");
 
-  vfs_file_t* ls_file = NULL;
-  vfs_open("/usr/bin/ls", VFS_OPEN_READ, &ls_file, NULL);
-  vfs_stat_t* ls_stat = NULL;
-  vfs_fstat(ls_file, &ls_stat);
-  unsigned char* ls_contents = malloc(sizeof(unsigned char) * ls_stat->size);
+  vfs_file_t* init_file = NULL;
+  vfs_open("/usr/bin/init", VFS_OPEN_READ, &init_file, NULL);
+  vfs_stat_t* init_stat = NULL;
+  vfs_fstat(init_file, &init_stat);
+  unsigned char* init_contents =
+      malloc(sizeof(unsigned char) * init_stat->size);
   uint64_t bytes_read = 0;
-  vfs_status_t res = vfs_read(ls_file, ls_contents, ls_stat->size, &bytes_read);
+  vfs_status_t res =
+      vfs_read(init_file, init_contents, init_stat->size, &bytes_read);
   if (res != VFS_STATUS_OK) { hlog_write(HLOG_ERROR, "uh oh..."); }
 
-  elf_t* ls = elf_read(ls_contents, ls_stat->size);
-  process_block_t* elf_proc = sched_uproc_new("ls", ls);
+  elf_t* init = elf_read(init_contents, init_stat->size);
+  process_block_t* elf_proc = sched_uproc_new("init", init);
   sched_add_proc(elf_proc);
 
-  vfs_close(ls_file);
+  vfs_close(init_file);
 
   sched_yield();
 

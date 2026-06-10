@@ -369,11 +369,14 @@ long sched_fork(process_block_t* process, interrupt_frame_t* frame) {
     return -EINVAL;
   }
 
+  memcpy(stack_end, process->stack_end, STACK_SIZE);
+
   haddr_t child_stack_bottom = (haddr_t)stack_end;
   haddr_t child_stack_base = child_stack_bottom + STACK_SIZE;
   haddr_t frame_offset_from_base = parent_stack_base - parent_frame;
   haddr_t child_frame_addr = child_stack_base - frame_offset_from_base;
-  size_t switch_frame_size = (15 + 1) * sizeof(haddr_t);
+  const size_t switch_saved_reg_count = 15;
+  size_t switch_frame_size = (switch_saved_reg_count + 1) * sizeof(haddr_t);
   if (child_frame_addr < child_stack_bottom + switch_frame_size) {
     vmm_free(new_proc->vmm);
     free(new_proc);
@@ -386,12 +389,13 @@ long sched_fork(process_block_t* process, interrupt_frame_t* frame) {
   }
 
   interrupt_frame_t* child_frame = (interrupt_frame_t*)child_frame_addr;
-  memcpy(child_frame, frame, sizeof(interrupt_frame_t));
   child_frame->rax = 0;
 
   haddr_t switch_rsp = child_frame_addr - switch_frame_size;
   memset((void*)switch_rsp, 0, switch_frame_size);
-  *(haddr_t*)(child_frame_addr - sizeof(haddr_t)) = (haddr_t)make_fork_kstack;
+  // switch_to pops 15 saved registers, then ret jumps to the fork epilogue.
+  // *(haddr_t*)(child_frame_addr - sizeof(haddr_t)) =
+  // (haddr_t)make_fork_kstack;
 
   ++(g_kernel.sched->total_processes_added);
   ++(g_kernel.sched->process_count);
@@ -413,7 +417,6 @@ long sched_fork(process_block_t* process, interrupt_frame_t* frame) {
   new_proc->name = new_name;
   new_proc->logger = logger;
 
-  new_proc->rsp = (void*)switch_rsp;
   new_proc->is_kernel_proc = process->is_kernel_proc;
   new_proc->entry = process->entry;
   new_proc->elf = process->elf;
