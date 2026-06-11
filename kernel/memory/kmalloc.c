@@ -104,7 +104,7 @@ void* kmalloc(size_t size) {
     block_header_t* new_block = grow_heap_by(pmm_addr_to_page(size) + 1);
     occupy_block(new_block, size);
     irq_load(irq_state);
-    return new_block;
+    return (void*)((haddr_t)new_block + SIZEOF_HEADER);
   }
 
   block_header_t* first_fit = find_first_fit_block(free_regions, size);
@@ -271,12 +271,12 @@ block_header_t* grow_heap_by(size_t size) {
   new_block_footer->header = new_block;
   new_block->footer = new_block_footer;
   last_footer = (haddr_t)new_block_footer;
+  block_header_t* prev_free = get_previous_free(new_block);
+  if (prev_free != NULL) { prev_free->next = new_block; }
   if (last_block->is_free) {
     merge_blocks(last_block, new_block);
     new_block = last_block;
   }
-  block_header_t* prev_free = get_previous_free(new_block);
-  if (prev_free != NULL) { prev_free->next = new_block; }
   return new_block;
 }
 
