@@ -23,7 +23,7 @@
 #define KERNEL_PML4_FIRST      256ULL
 #define KERNEL_PML4_LAST       511ULL
 #define VIRT_PT_START          0
-#define VIRT_SCRATCH_ADDR      LOW_REGION_END
+#define VIRT_SCRATCH_ADDR      0xFFFFFFFF70000000ULL
 #define VIRT_PML4              VIRT_SCRATCH_ADDR + 0x1000
 #define VIRT_SCRATCH_L4        VIRT_PML4 + 0x1000
 #define VIRT_SCRATCH_L3        VIRT_SCRATCH_L4 + 0x1000
@@ -233,8 +233,7 @@ vmm_t* vmm_new(haddr_t flags) {
   new_pml4[RECURSIVE_IDX] =
       pml4 | PAGE_PRESENT | PAGE_WRITABLE | (flags & PAGE_USER_ACCESIBLE);
 
-  vmm->first_available_vaddr =
-      pmm_page_to_addr_base(pmm_addr_to_page(VIRT_SCRATCH_L1 + PAGE_SIZE));
+  vmm->first_available_vaddr = LOW_REGION_END;
   vmm->last_available_vaddr = LAST_VADDR;
   vmm->pml4_phys = (haddr_t*)pml4;
   return vmm;
@@ -570,36 +569,24 @@ static bool walk_lower_mappings(vmm_t* vmm,
     if (!entry_is_present(pml4[pml4_idx])) { continue; }
 
     haddr_t pml3_phys = entry_phys(pml4[pml4_idx]);
-    haddr_t* pml3 = walk_to_child_table(
-        pml4, pml4_idx, VIRT_SCRATCH_L3, pml4_idx << 39, 0, false);
-    if (pml3 == NULL) { return false; }
-
     for (haddr_t pml3_idx = 0; pml3_idx <= PD_ENTRIES; ++pml3_idx) {
+      haddr_t* pml3 = scratch_map_table(VIRT_SCRATCH_L3, pml3_phys);
+      if (pml3 == NULL) { return false; }
+
       if (!entry_is_present(pml3[pml3_idx])) { continue; }
 
       haddr_t pd_phys = entry_phys(pml3[pml3_idx]);
-      haddr_t* pd = walk_to_child_table(pml3,
-                                        pml3_idx,
-                                        VIRT_SCRATCH_L2,
-                                        (pml4_idx << 39) | (pml3_idx << 30),
-                                        0,
-                                        false);
-      if (pd == NULL) { return false; }
-
       for (haddr_t pd_idx = 0; pd_idx <= PD_ENTRIES; ++pd_idx) {
+        haddr_t* pd = scratch_map_table(VIRT_SCRATCH_L2, pd_phys);
+        if (pd == NULL) { return false; }
+
         if (!entry_is_present(pd[pd_idx])) { continue; }
 
         haddr_t pt_phys = entry_phys(pd[pd_idx]);
-        haddr_t* pt = walk_to_child_table(
-            pd,
-            pd_idx,
-            VIRT_SCRATCH_L1,
-            (pml4_idx << 39) | (pml3_idx << 30) | (pd_idx << 21),
-            0,
-            false);
-        if (pt == NULL) { return false; }
-
         for (haddr_t pt_idx = 0; pt_idx <= PD_ENTRIES; ++pt_idx) {
+          haddr_t* pt = scratch_map_table(VIRT_SCRATCH_L1, pt_phys);
+          if (pt == NULL) { return false; }
+
           haddr_t pt_entry = pt[pt_idx];
           if (!entry_is_present(pt_entry)) { continue; }
 

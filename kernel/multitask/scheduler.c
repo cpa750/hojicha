@@ -8,6 +8,7 @@
 #include <multitask/elf.h>
 #include <multitask/scheduler.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -324,99 +325,58 @@ long sched_fork(process_block_t* process, interrupt_frame_t* frame) {
   uint64_t child_slot = 0;
   if (!sched_pb_child_find_null(process, &child_slot)) { return -EAGAIN; }
 
-  process_block_t* new_proc =
-      (process_block_t*)calloc(1, sizeof(process_block_t));
-  vfs_file_t** fds = (vfs_file_t**)calloc(1, sizeof(vfs_file_t*) * MAX_FDS);
-  process_block_t** children =
-      (process_block_t**)calloc(1, sizeof(process_block_t*) * MAX_CHILDREN);
-  uint8_t* stack_end = (uint8_t*)calloc(1, STACK_SIZE);
-  hlogger_t* logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
+  haddr_t parent_stack_bottom = (haddr_t)process->stack_end;
+  haddr_t parent_stack_base = parent_stack_bottom + STACK_SIZE;
+  haddr_t parent_frame = (haddr_t)frame;
+  if (parent_frame < parent_stack_bottom ||
+      parent_frame + sizeof(interrupt_frame_t) > parent_stack_base) {
+    return -EINVAL;
+  }
+
+  const size_t switch_saved_reg_count = 15;
+  size_t switch_frame_size = (switch_saved_reg_count + 1) * sizeof(haddr_t);
+  if (sizeof(interrupt_frame_t) + switch_frame_size > STACK_SIZE) {
+    return -EINVAL;
+  }
+
   vmm_t* new_vmm = vmm_copy(process->vmm);
-  char* new_name = process->name == NULL
-                       ? NULL
-                       : proc_name_new(process->name, strlen(process->name));
-  if (new_proc == NULL || fds == NULL || children == NULL ||
-      stack_end == NULL || logger == NULL || new_vmm == NULL ||
-      new_name == NULL) {
-    free(new_proc);
-    free(fds);
-    free(children);
-    free(stack_end);
-    if (new_vmm != NULL) { vmm_free(new_vmm); }
-    free(new_name);
-    if (logger != NULL) { hlog_free_logger(logger); }
+  if (new_vmm == NULL) {
     hlog_write(HLOG_ERROR,
                "Could not fork new process %s: out of memory.",
                process->name);
     return -ENOMEM;
   }
 
+  process_block_t* new_proc =
+      new_proc_shared(process->name, vmm_get_cr3(new_vmm));
+  if (new_proc == NULL) {
+    vmm_free(new_vmm);
+    return -ENOMEM;
+  }
+
   new_proc->vmm = new_vmm;
-  new_proc->cr3 = vmm_get_cr3(new_proc->vmm);
 
-  haddr_t parent_stack_bottom = (haddr_t)process->stack_end;
-  haddr_t parent_stack_base = parent_stack_bottom + STACK_SIZE;
-  haddr_t parent_frame = (haddr_t)frame;
-  if (parent_frame < parent_stack_bottom ||
-      parent_frame + sizeof(interrupt_frame_t) > parent_stack_base) {
-    vmm_free(new_proc->vmm);
-    free(new_proc);
-    free(fds);
-    free(children);
-    free(stack_end);
-    free(new_name);
-    if (logger != NULL) { hlog_free_logger(logger); }
-    return -EINVAL;
-  }
-
-  memcpy(stack_end, process->stack_end, STACK_SIZE);
-
-  haddr_t child_stack_bottom = (haddr_t)stack_end;
-  haddr_t child_stack_base = child_stack_bottom + STACK_SIZE;
-  haddr_t frame_offset_from_base = parent_stack_base - parent_frame;
-  haddr_t child_frame_addr = child_stack_base - frame_offset_from_base;
-  const size_t switch_saved_reg_count = 15;
-  size_t switch_frame_size = (switch_saved_reg_count + 1) * sizeof(haddr_t);
-  if (child_frame_addr < child_stack_bottom + switch_frame_size) {
-    vmm_free(new_proc->vmm);
-    free(new_proc);
-    free(fds);
-    free(children);
-    free(stack_end);
-    free(new_name);
-    if (logger != NULL) { hlog_free_logger(logger); }
-    return -EINVAL;
-  }
-
+  haddr_t child_stack_base = (haddr_t)new_proc->stack_end + STACK_SIZE;
+  haddr_t child_frame_addr = child_stack_base - sizeof(interrupt_frame_t);
   interrupt_frame_t* child_frame = (interrupt_frame_t*)child_frame_addr;
+  memcpy(child_frame, frame, sizeof(interrupt_frame_t));
   child_frame->rax = 0;
 
   haddr_t switch_rsp = child_frame_addr - switch_frame_size;
-  memset((void*)switch_rsp, 0, switch_frame_size);
-  // switch_to pops 15 saved registers, then ret jumps to the fork epilogue.
-  // *(haddr_t*)(child_frame_addr - sizeof(haddr_t)) =
-  // (haddr_t)make_fork_kstack;
+  haddr_t* switch_frame = (haddr_t*)switch_rsp;
+  memset(switch_frame, 0, switch_frame_size);
+  // switch_to pops this dummy kernel context and ret jumps to the fork
+  // epilogue. make_fork_kstack then restores the copied interrupt frame above
+  // it.
+  switch_frame[15] = (haddr_t)make_fork_kstack;
 
-  ++(g_kernel.sched->total_processes_added);
-  ++(g_kernel.sched->process_count);
-
-  new_proc->parent = process;
-
-  new_proc->stack_end = stack_end;
-  haddr_t stack_base = (haddr_t)(new_proc->stack_end + STACK_SIZE);
-  new_proc->rsp0 = (void*)stack_base;
-  new_proc->fds = fds;
-  new_proc->children = children;
   for (uint64_t fd = 0; fd < MAX_FDS; ++fd) {
     new_proc->fds[fd] = process->fds[fd];
     vfs_file_borrow(new_proc->fds[fd]);
   }
 
-  new_proc->pid = g_kernel.sched->total_processes_added;
-
-  new_proc->name = new_name;
-  new_proc->logger = logger;
-
+  new_proc->rsp = (void*)switch_rsp;
+  new_proc->parent = process;
   new_proc->is_kernel_proc = process->is_kernel_proc;
   new_proc->entry = process->entry;
   new_proc->elf = process->elf;
@@ -709,10 +669,12 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
   haddr_t stack_base = (haddr_t)(stack_end + STACK_SIZE);
   new_proc->rsp0 = (void*)stack_base;
   stack_base &= ~0xFULL;
-  stack_base -= 8;
-  *(haddr_t*)stack_base = (haddr_t)proc_prelude;
-  stack_base -= 8 * 6;
-  *(haddr_t*)stack_base = (haddr_t)new_proc;
+  haddr_t return_slot = stack_base - 16;
+  haddr_t switch_rsp = return_slot - (15 * sizeof(haddr_t));
+  haddr_t* switch_frame = (haddr_t*)switch_rsp;
+  memset(switch_frame, 0, (15 + 1) * sizeof(haddr_t));
+  switch_frame[9] = (haddr_t)new_proc;
+  switch_frame[15] = (haddr_t)proc_prelude;
   new_proc->fds = fds;
   new_proc->children = children;
 
@@ -722,10 +684,7 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
   ++(g_kernel.sched->process_count);
   new_proc->logger = logger;
 
-  // Because we pop 15 registers from the newly allocated stack
-  // in switch_to()
-  stack_base -= 8 * 9;
-  new_proc->rsp = (void*)stack_base;
+  new_proc->rsp = (void*)switch_rsp;
   new_proc->status = PROC_STATUS_UNINITIALIZED;
   return new_proc;
 }

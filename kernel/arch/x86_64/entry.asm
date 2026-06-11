@@ -10,6 +10,6 @@ _start:
   mov rax, __stack_end
   and rax, -16
   mov rsp, rax
+  sub rsp, 8
   xor rbp, rbp
   jmp kernel_main
-

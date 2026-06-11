@@ -62,6 +62,7 @@ void handle_fault(interrupt_frame_t* frame) {
              sched_pb_get_name(g_kernel.current_process),
              sched_pb_get_pid(g_kernel.current_process));
     hlog_add(HLOG_DEBUG, "Error code: %b", frame->err_code);
+    g_kernel_dump();
     if (frame->int_no == 14) {
       uint64_t cr2 = 0;
       asm volatile("\t movq %%cr2,%0" : "=r"(cr2));
@@ -71,8 +72,8 @@ void handle_fault(interrupt_frame_t* frame) {
     sched_proc_terminate(g_kernel.current_process);
   }
   if (frame->int_no < 19) {
-    printf("%s exception.\n", error_messages[frame->int_no]);
+    hlog_write(HLOG_ERROR, "%s exception.\n", error_messages[frame->int_no]);
   } else if (frame->int_no < 32) {
-    printf("Reserved exception.\n");
+    hlog_write(HLOG_ERROR, "Reserved exception.\n");
   }
 }

@@ -226,29 +226,52 @@ block_header_t* find_first_fit_block(block_header_t* block, size_t size) {
 }
 
 block_header_t* get_next(block_header_t* block) {
-  if (block == NULL || block->footer == NULL) { return NULL; }
-
-  haddr_t footer_addr = (haddr_t)block->footer;
-  if (footer_addr < first_available_vaddr || footer_addr >= last_footer) {
+  if (!is_block_header_in_heap(block) || !is_footer_in_heap(block->footer)) {
     return NULL;
   }
 
+  haddr_t footer_addr = (haddr_t)block->footer;
+
   haddr_t next_addr = footer_addr + SIZEOF_FOOTER;
   if (next_addr >= last_footer) { return NULL; }
-  return (block_header_t*)next_addr;
+
+  block_header_t* next = (block_header_t*)next_addr;
+  if (!is_block_header_in_heap(next) || !is_footer_in_heap(next->footer)) {
+    return NULL;
+  }
+  if (next->footer->header != next) { return NULL; }
+  return next;
 }
 
 block_header_t* get_previous(block_header_t* block) {
-  if ((haddr_t)block - SIZEOF_HEADER - SIZEOF_FOOTER < first_available_vaddr) {
+  if (!is_block_header_in_heap(block)) { return NULL; }
+  if ((haddr_t)block < first_available_vaddr + SIZEOF_HEADER + SIZEOF_FOOTER) {
     return NULL;
   }
 
   block_footer_t* previous_footer =
       (block_footer_t*)((haddr_t)block - SIZEOF_FOOTER);
-  return previous_footer->header;
+  if (!is_footer_in_heap(previous_footer)) { return NULL; }
+
+  block_header_t* previous = previous_footer->header;
+  if (!is_block_header_in_heap(previous)) { return NULL; }
+  if ((haddr_t)previous >= (haddr_t)block) { return NULL; }
+  if (previous->footer != previous_footer) { return NULL; }
+  return previous;
 }
 
 block_header_t* grow_heap() { return grow_heap_by(kernel_heap_grow_size++); }
+
+bool is_block_header_in_heap(block_header_t* block) {
+  return block != NULL && (haddr_t)block >= first_available_vaddr &&
+         (haddr_t)block + SIZEOF_HEADER <= last_footer;
+}
+
+bool is_footer_in_heap(block_footer_t* footer) {
+  return footer != NULL && (haddr_t)footer >= first_available_vaddr &&
+         (haddr_t)footer <= last_footer;
+}
+
 block_header_t* grow_heap_by(size_t size) {
   haddr_t addr_to_map =
       ((haddr_t)last_footer + sizeof(last_footer) + 4095) & ~((uint64_t)4095);
