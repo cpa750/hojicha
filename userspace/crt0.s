@@ -4,12 +4,24 @@
 .extern exit
 
 _start:
+  mov (%rsp), %rdi
+  lea 8(%rsp), %rsi
+  mov %rsi, %rdx
+
+1:
+  cmpq $0, (%rdx)
+  je 2f
+  add $8, %rdx
+  jmp 1b
+
+2:
+  add $8, %rdx
   call main
   mov %rax, %rdi
   call exit
 
-1:
-  jmp 1b
+3:
+  jmp 3b
 
 .size _start, . - _start
 

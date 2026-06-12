@@ -33,12 +33,13 @@ char* syscall_utok_strcpy(const char* src, size_t max_len) {
 
   size_t len = 0;
   while (len < max_len && src[len] != '\0') { len++; }
-  if (len == (size_t)-1) { return NULL; }
 
-  char* dst = calloc(1, len + 1);
+  size_t alloc_len = len < max_len ? len + 1 : max_len;
+  size_t copy_len = len < max_len ? len : max_len - 1;
+  char* dst = calloc(1, alloc_len);
   if (dst == NULL) { return NULL; }
 
-  if (len > 0) { memcpy(dst, src, len); }
+  if (copy_len > 0) { memcpy(dst, src, copy_len); }
   return dst;
 }
 

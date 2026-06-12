@@ -31,7 +31,11 @@ bool elf_map(elf_t* elf, vmm_t* vmm);
  * Copies the executable's binary to the necessary locations, sets up the user
  * stack, enters user mode, and jumps to the entry point.
  */
-void elf_launch(elf_t* elf, vmm_t* vmm);
+void elf_launch(elf_t* elf,
+                vmm_t* vmm,
+                uint64_t argc,
+                char** argv,
+                char** envp);
 
 /*
  * Free the handle to an ELF executable and all its owned resources. This will
@@ -42,4 +46,3 @@ void elf_launch(elf_t* elf, vmm_t* vmm);
 void elf_free(elf_t* elf);
 
 #endif  // ELF_H
-

@@ -64,6 +64,9 @@ struct process_block {
 
   vmm_t* vmm;
   elf_t* elf;
+  uint64_t argc;
+  char** argv;
+  char** envp;
 
   vfs_file_t** fds;
   process_block_t** children;
@@ -165,6 +168,7 @@ void mark_proc_range(process_block_t* start,
 process_block_t* new_proc_shared(char* name, void* cr3);
 char* proc_name_new(const char* name, uint64_t name_len);
 void proc_prelude(process_block_t* p);
+void proc_strings_free(char** strings);
 void set_last_ready_to_run(sched_state_t* mt,
                            process_block_t* first_ready_to_run);
 void remove_proc(process_block_t* p);
@@ -186,7 +190,7 @@ void sched_initialize(void) {
   kernel_process->next = NULL;
   kernel_process->status = PROC_STATUS_RUNNING;
   kernel_process->is_kernel_proc = true;
-  kernel_process->pid = UINT64_MAX;
+  kernel_process->pid = 0;
   kernel_process->name = proc_name_new("hojicha", strlen("hojicha"));
   kernel_process->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
   kernel_process->vmm = g_kernel.vmm;
@@ -268,9 +272,14 @@ process_block_t* sched_uproc_new(char* name, elf_t* elf) {
 long sched_execve(process_block_t* process,
                   elf_t* elf,
                   char* name,
-                  uint64_t name_len) {
+                  uint64_t name_len,
+                  uint64_t argc,
+                  char** argv,
+                  char** envp) {
   if (process == NULL || process != g_kernel.current_process || elf == NULL ||
       process->fds == NULL) {
+    proc_strings_free(argv);
+    proc_strings_free(envp);
     return -EINVAL;
   }
 
@@ -281,6 +290,8 @@ long sched_execve(process_block_t* process,
     if (logger != NULL) { hlog_free_logger(logger); }
     if (vmm != NULL) { vmm_free(vmm); }
     free(proc_name);
+    proc_strings_free(argv);
+    proc_strings_free(envp);
     return -ENOMEM;
   }
 
@@ -298,12 +309,17 @@ long sched_execve(process_block_t* process,
   hlogger_t* old_logger = process->logger;
   vmm_t* old_vmm = process->vmm;
   elf_t* old_elf = process->elf;
+  char** old_argv = process->argv;
+  char** old_envp = process->envp;
 
   process->name = proc_name;
   process->logger = logger;
   process->vmm = vmm;
   process->cr3 = vmm_get_cr3(vmm);
   process->elf = elf;
+  process->argc = argc;
+  process->argv = argv;
+  process->envp = envp;
   process->is_kernel_proc = false;
 
   load_pd(process->cr3);
@@ -311,8 +327,16 @@ long sched_execve(process_block_t* process,
   free(old_name);
   if (old_logger != NULL) { hlog_free_logger(old_logger); }
   if (old_elf != NULL && old_elf != elf) { elf_free(old_elf); }
+  proc_strings_free(old_argv);
+  proc_strings_free(old_envp);
 
-  elf_launch(process->elf, process->vmm);
+  elf_launch(
+      process->elf, process->vmm, process->argc, process->argv, process->envp);
+  proc_strings_free(process->argv);
+  proc_strings_free(process->envp);
+  process->argc = 0;
+  process->argv = NULL;
+  process->envp = NULL;
   return -EINVAL;
 }
 
@@ -698,6 +722,13 @@ char* proc_name_new(const char* name, uint64_t name_len) {
   return ret;
 }
 
+void proc_strings_free(char** strings) {
+  if (strings == NULL) { return; }
+
+  for (uint64_t i = 0; strings[i] != NULL; ++i) { free(strings[i]); }
+  free(strings);
+}
+
 void proc_prelude(process_block_t* p) {
   if (p == NULL) { return; }
   if (p->status == PROC_STATUS_UNINITIALIZED) {
@@ -708,7 +739,7 @@ void proc_prelude(process_block_t* p) {
   if (p->is_kernel_proc) {
     p->entry();
   } else {
-    elf_launch(p->elf, p->vmm);
+    elf_launch(p->elf, p->vmm, p->argc, p->argv, p->envp);
   }
   sched_proc_terminate(p);
 }
@@ -849,6 +880,8 @@ void terminator(void) {
           free(p->fds);
         }
         free(p->name);
+        proc_strings_free(p->argv);
+        proc_strings_free(p->envp);
         if (p->vmm != NULL && p->vmm != g_kernel.vmm) { vmm_free(p->vmm); }
         free(p->stack_end);
         free(p);

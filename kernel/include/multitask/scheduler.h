@@ -93,7 +93,10 @@ process_block_t* sched_uproc_new(char* name, elf_t* elf);
 long sched_execve(process_block_t* process,
                   elf_t* elf,
                   char* name,
-                  uint64_t name_len);
+                  uint64_t name_len,
+                  uint64_t argc,
+                  char** argv,
+                  char** envp);
 
 /*
  * Forks the given `process`.

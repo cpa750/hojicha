@@ -81,6 +81,13 @@ typedef struct elf elf_t;
 extern void enter_ring3(haddr_t rsp, haddr_t rip);
 
 bool is_valid_header(elf_header_t* header);
+static haddr_t align_down(haddr_t addr, haddr_t align);
+static uint64_t string_array_count(char** strings);
+static haddr_t prepare_user_stack(haddr_t stack_bottom,
+                                  haddr_t stack_top,
+                                  uint64_t argc,
+                                  char** argv,
+                                  char** envp);
 
 elf_t* elf_read(void* buffer, uint64_t size) {
   if (size < sizeof(elf_header_t)) {
@@ -146,7 +153,11 @@ bool elf_map(elf_t* elf, vmm_t* vmm) {
   return true;
 }
 
-void elf_launch(elf_t* elf, vmm_t* vmm) {
+void elf_launch(elf_t* elf,
+                vmm_t* vmm,
+                uint64_t argc,
+                char** argv,
+                char** envp) {
   elf_map(elf, vmm);
   haddr_t highest_loaded_addr = USER_SPACE_MIN_VADDR;
   for (uint16_t i = 0; i < elf->header->count_prog_header_table_entry; ++i) {
@@ -185,8 +196,105 @@ void elf_launch(elf_t* elf, vmm_t* vmm) {
           PAGE_USER_ACCESIBLE | PAGE_PRESENT | PAGE_WRITABLE);
 
   user_stack_top = user_stack_location + pmm_page_to_addr_base(stack_size);
-  enter_ring3(user_stack_top, elf->header->offset_entry);
+  haddr_t user_stack_start =
+      prepare_user_stack(user_stack_location, user_stack_top, argc, argv, envp);
+  enter_ring3(user_stack_start, elf->header->offset_entry);
   return;
+}
+
+static haddr_t align_down(haddr_t addr, haddr_t align) {
+  return addr & ~(align - 1);
+}
+
+static uint64_t string_array_count(char** strings) {
+  if (strings == NULL) { return 0; }
+
+  uint64_t count = 0;
+  while (strings[count] != NULL) { count++; }
+  return count;
+}
+
+static haddr_t prepare_user_stack(haddr_t stack_bottom,
+                                  haddr_t stack_top,
+                                  uint64_t argc,
+                                  char** argv,
+                                  char** envp) {
+  uint64_t envc = string_array_count(envp);
+  haddr_t* argv_user = calloc(argc + 1, sizeof(haddr_t));
+  haddr_t* envp_user = calloc(envc + 1, sizeof(haddr_t));
+  if (argv_user == NULL || envp_user == NULL) {
+    free(argv_user);
+    free(envp_user);
+    hlog_write(HLOG_ERROR,
+               "%s out of memory preparing user stack.",
+               load_error_msg_prefix);
+    abort();
+  }
+
+  haddr_t strings_top = stack_top;
+  for (uint64_t i = 0; i < argc; ++i) {
+    if (argv == NULL || argv[i] == NULL) {
+      hlog_write(HLOG_ERROR, "%s invalid argv while preparing user stack.",
+                 load_error_msg_prefix);
+      abort();
+    }
+
+    size_t len = strlen(argv[i]) + 1;
+    if (len > strings_top - stack_bottom) {
+      hlog_write(HLOG_ERROR,
+                 "%s argv does not fit on user stack.",
+                 load_error_msg_prefix);
+      abort();
+    }
+
+    strings_top -= len;
+    memcpy((void*)strings_top, argv[i], len);
+    argv_user[i] = strings_top;
+  }
+
+  for (uint64_t i = 0; i < envc; ++i) {
+    size_t len = strlen(envp[i]) + 1;
+    if (len > strings_top - stack_bottom) {
+      hlog_write(HLOG_ERROR,
+                 "%s envp does not fit on user stack.",
+                 load_error_msg_prefix);
+      abort();
+    }
+
+    strings_top -= len;
+    memcpy((void*)strings_top, envp[i], len);
+    envp_user[i] = strings_top;
+  }
+
+  uint64_t stack_slots = 1 + argc + 1 + envc + 1 + 1;
+  uint64_t frame_size = stack_slots * sizeof(haddr_t);
+  if (frame_size > strings_top - stack_bottom) {
+    hlog_write(HLOG_ERROR,
+               "%s argument frame does not fit on user stack.",
+               load_error_msg_prefix);
+    abort();
+  }
+
+  haddr_t stack_start = align_down(strings_top - frame_size, 16);
+  if (stack_start < stack_bottom) {
+    hlog_write(HLOG_ERROR,
+               "%s aligned argument frame does not fit.",
+               load_error_msg_prefix);
+    abort();
+  }
+
+  haddr_t* stack = (haddr_t*)stack_start;
+  uint64_t slot = 0;
+  stack[slot++] = argc;
+  for (uint64_t i = 0; i < argc; ++i) { stack[slot++] = argv_user[i]; }
+  stack[slot++] = 0;
+  for (uint64_t i = 0; i < envc; ++i) { stack[slot++] = envp_user[i]; }
+  stack[slot++] = 0;
+  stack[slot++] = 0;
+
+  free(argv_user);
+  free(envp_user);
+  return stack_start;
 }
 
 void elf_free(elf_t* elf) {
