@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <fs/vfs.h>
 #include <multitask/syscall_callbacks.h>
+#include <multitask/syscall_utils.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -31,9 +32,17 @@ static long copy_vfs_stat(vfs_stat_t* vfs_stat_buf, stat_t* stat_buf) {
 
 long syscall_stat(const char* path, stat_t* stat_buf) {
   if (path == NULL || stat_buf == NULL) { return -EINVAL; }
+  if (!syscall_is_uaddr(path, SYSCALL_USER_STRING_MAX)) {
+    return -EINVAL;
+  }
+  if (!syscall_is_uaddr(stat_buf, sizeof(stat_t))) { return -EINVAL; }
+
+  char* path_copy = syscall_utok_strcpy(path, SYSCALL_USER_STRING_MAX);
+  if (path_copy == NULL) { return -ENOMEM; }
 
   vfs_stat_t* vfs_stat_buf = NULL;
-  vfs_status_t status = vfs_stat(path, &vfs_stat_buf);
+  vfs_status_t status = vfs_stat(path_copy, &vfs_stat_buf);
+  free(path_copy);
   if (status != VFS_STATUS_OK) { return -vfs_status_to_errno(status); }
 
   long ret = copy_vfs_stat(vfs_stat_buf, stat_buf);
@@ -44,6 +53,7 @@ long syscall_stat(const char* path, stat_t* stat_buf) {
 
 long syscall_fstat(long fd, stat_t* stat_buf) {
   if (stat_buf == NULL) { return -EINVAL; }
+  if (!syscall_is_uaddr(stat_buf, sizeof(stat_t))) { return -EINVAL; }
 
   vfs_file_t* file = NULL;
   vfs_status_t status = vfs_resolve_fd(fd, &file);

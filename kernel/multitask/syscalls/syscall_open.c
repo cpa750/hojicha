@@ -2,7 +2,9 @@
 #include <fcntl.h>
 #include <fs/vfs.h>
 #include <multitask/syscall_callbacks.h>
+#include <multitask/syscall_utils.h>
 #include <stddef.h>
+#include <stdlib.h>
 
 static long translate_open_flags(unsigned int userspace_flags,
                                  uint32_t* vfs_flags_out) {
@@ -38,13 +40,25 @@ static long translate_open_flags(unsigned int userspace_flags,
 }
 
 long syscall_open(const char* absolute_path, unsigned int flags) {
+  if (absolute_path == NULL) { return -EINVAL; }
+  if (!syscall_is_uaddr(absolute_path, SYSCALL_USER_STRING_MAX)) {
+    return -EINVAL;
+  }
+
+  char* path = syscall_utok_strcpy(absolute_path, SYSCALL_USER_STRING_MAX);
+  if (path == NULL) { return -ENOMEM; }
+
   uint32_t vfs_flags = 0;
   long translate_status = translate_open_flags(flags, &vfs_flags);
-  if (translate_status != 0) { return translate_status; }
+  if (translate_status != 0) {
+    free(path);
+    return translate_status;
+  }
 
   vfs_file_t* file = NULL;
   long out_fd;
-  vfs_status_t open_stat = vfs_open(absolute_path, vfs_flags, &file, &out_fd);
+  vfs_status_t open_stat = vfs_open(path, vfs_flags, &file, &out_fd);
+  free(path);
   if (open_stat != VFS_STATUS_OK) {
     return (long)-vfs_status_to_errno(open_stat);
   }
