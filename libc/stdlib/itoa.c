@@ -4,12 +4,6 @@
 #include <stdlib.h>
 
 char* itoa(int64_t num, char* dst, int base) {
-  if (num == 0) {
-    dst[0] = '0';
-    dst[1] = '\0';
-    return dst;
-  }
-
   bool is_negative = false;
   if (num < 0 && base == 10) {
     num = -num;
@@ -17,10 +11,14 @@ char* itoa(int64_t num, char* dst, int base) {
   }
 
   size_t i = 0;
-  while (num != 0) {
-    int remainder = num % base;
-    dst[i++] = (remainder > 9) ? (remainder - 10) + 'a' : remainder + '0';
-    num /= base;
+  if (num == 0) {
+    dst[i++] = '0';
+  } else {
+    while (num != 0) {
+      int remainder = num % base;
+      dst[i++] = (remainder > 9) ? (remainder - 10) + 'a' : remainder + '0';
+      num /= base;
+    }
   }
 
   switch (base) {

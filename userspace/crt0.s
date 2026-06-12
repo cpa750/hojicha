@@ -5,7 +5,7 @@
 
 _start:
   call main
-  mov %eax, %edi
+  mov %rax, %rdi
   call exit
 
 1:
