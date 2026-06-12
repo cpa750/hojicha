@@ -30,18 +30,19 @@ struct block_footer {
   block_header_t* header;
 } __attribute__((packed));
 
-void add_to_free_list(block_header_t* prev, block_header_t* current);
-bool are_contiguous(block_header_t* first, block_header_t* second);
 block_header_t* find_first_fit_block(block_header_t* free_regions, size_t size);
 block_header_t* get_next(block_header_t* block);
-block_header_t* get_next_free(block_header_t* block);
 block_header_t* get_previous(block_header_t* block);
-block_header_t* get_previous_free(block_header_t* block);
 block_header_t* grow_heap();
 block_header_t* grow_heap_by(size_t size);
+void insert_free_block(block_header_t* block);
+bool is_block_header_in_heap(block_header_t* block);
+bool is_footer_in_heap(block_footer_t* footer);
 void merge_blocks(block_header_t* first, block_header_t* second);
 void occupy_block(block_header_t* block, size_t size);
 void remove_from_free_list(block_header_t* block);
+void replace_free_list_block(block_header_t* old_block,
+                             block_header_t* new_block);
 block_header_t* split_region(block_header_t* block, size_t size);
 void set_footer_at(block_header_t* block, haddr_t addr);
 
@@ -87,6 +88,10 @@ void* kmalloc_page_aligned(size_t size) {
     return 0;
   }
   block_header_t* new_block = grow_heap_by(pmm_addr_to_page(size) + 1);
+  if (new_block == NULL) {
+    irq_load(irq_state);
+    return NULL;
+  }
   occupy_block(new_block, size);
   irq_load(irq_state);
   return new_block;
@@ -102,6 +107,10 @@ void* kmalloc(size_t size) {
 
   if (size > (kernel_heap_grow_size)*PAGE_SIZE) {
     block_header_t* new_block = grow_heap_by(pmm_addr_to_page(size) + 1);
+    if (new_block == NULL) {
+      irq_load(irq_state);
+      return NULL;
+    }
     occupy_block(new_block, size);
     irq_load(irq_state);
     return (void*)((haddr_t)new_block + SIZEOF_HEADER);
@@ -138,69 +147,74 @@ void kfree(void* ptr) {
     return;
   }
 
-  if (current_block->footer == NULL) {
+  if (!is_footer_in_heap(current_block->footer) ||
+      current_block->footer->header != current_block) {
+    irq_load(irq_state);
+    return;
+  }
+
+  if (current_block->is_free) {
     irq_load(irq_state);
     return;
   }
 
   current_block->is_free = true;
-  // Special case to handle when the first available block is freed
-  if ((haddr_t)current_block == first_available_vaddr) {
-    block_header_t* first_free = get_next_free(current_block);
-    if (first_free != NULL) {
-      if (are_contiguous(current_block, first_free)) {
-        merge_blocks(current_block, first_free);
-      } else {
-        current_block->next = first_free;
-      }
-    }
+  current_block->next = NULL;
+
+  block_header_t* previous_block = get_previous(current_block);
+  if (previous_block != NULL && previous_block->is_free) {
+    remove_from_free_list(previous_block);
+    merge_blocks(previous_block, current_block);
+    current_block = previous_block;
   }
 
-  block_header_t* previous_free = get_previous_free(current_block);
-  block_header_t* next_free;
-  if (previous_free != NULL && previous_free->next != NULL) {
-    next_free = previous_free->next;
-  } else {
-    next_free = get_next_free(current_block);
+  block_header_t* next_block = get_next(current_block);
+  if (next_block != NULL && next_block->is_free) {
+    remove_from_free_list(next_block);
+    merge_blocks(current_block, next_block);
   }
-  current_block->next = next_free;
 
-  // TODO make this clearer
-  if (are_contiguous(previous_free, current_block)) {
-    if (are_contiguous(current_block, next_free)) {
-      merge_blocks(previous_free, current_block);
-      merge_blocks(previous_free, next_free);
-    } else {
-      merge_blocks(previous_free, current_block);
-    }
-  } else if (are_contiguous(current_block, next_free)) {
-    merge_blocks(current_block, next_free);
-    if (previous_free != NULL) { previous_free->next = current_block; }
-  } else {
-    add_to_free_list(previous_free, current_block);
-  }
+  insert_free_block(current_block);
   irq_load(irq_state);
 }
 
-void add_to_free_list(block_header_t* prev, block_header_t* current) {
-  if (current == NULL) { return; }
+#if defined(__stress_kmalloc)
+uint64_t kmalloc_debug_last_footer(void) { return last_footer; }
 
-  if (prev != NULL) {
-    current->next = prev->next;
-    prev->next = current;
-  } else {
-    block_header_t* next_free = get_next_free(current);
-    if (next_free != NULL) { current->next = next_free; }
-  }
+void* kmalloc_debug_last_block_user(void) {
+  block_header_t* last_block = ((block_footer_t*)last_footer)->header;
+  return (void*)((haddr_t)last_block + SIZEOF_HEADER);
 }
 
-bool are_contiguous(block_header_t* first, block_header_t* second) {
-  if (first == NULL || second == NULL) { return false; }
+size_t kmalloc_debug_last_block_size(void) {
+  block_header_t* last_block = ((block_footer_t*)last_footer)->header;
+  return last_block->size_bytes;
+}
 
-  if ((haddr_t)first->footer == (haddr_t)second - SIZEOF_FOOTER) {
-    return true;
+bool kmalloc_debug_last_block_is_free(void) {
+  block_header_t* last_block = ((block_footer_t*)last_footer)->header;
+  return last_block->is_free;
+}
+#endif
+
+void insert_free_block(block_header_t* block) {
+  if (block == NULL) { return; }
+
+  block->is_free = true;
+
+  if (free_regions == NULL || (haddr_t)block < (haddr_t)free_regions) {
+    block->next = free_regions;
+    free_regions = block;
+    return;
   }
-  return false;
+
+  block_header_t* prev = free_regions;
+  while (prev->next != NULL && (haddr_t)prev->next < (haddr_t)block) {
+    prev = prev->next;
+  }
+
+  block->next = prev->next;
+  prev->next = block;
 }
 
 block_header_t* find_first_fit_block(block_header_t* block, size_t size) {
@@ -224,15 +238,6 @@ block_header_t* get_next(block_header_t* block) {
   return (block_header_t*)next_addr;
 }
 
-block_header_t* get_next_free(block_header_t* block) {
-  block_header_t* next = get_next(block);
-  while (next != NULL) {
-    if (next->is_free) { return next; }
-    next = get_next(next);
-  }
-  return NULL;
-}
-
 block_header_t* get_previous(block_header_t* block) {
   if ((haddr_t)block - SIZEOF_HEADER - SIZEOF_FOOTER < first_available_vaddr) {
     return NULL;
@@ -241,12 +246,6 @@ block_header_t* get_previous(block_header_t* block) {
   block_footer_t* previous_footer =
       (block_footer_t*)((haddr_t)block - SIZEOF_FOOTER);
   return previous_footer->header;
-}
-
-block_header_t* get_previous_free(block_header_t* block) {
-  block_header_t* prev = get_previous(block);
-  while (prev != NULL && !prev->is_free) { prev = get_previous(prev); }
-  return prev;
 }
 
 block_header_t* grow_heap() { return grow_heap_by(kernel_heap_grow_size++); }
@@ -271,12 +270,12 @@ block_header_t* grow_heap_by(size_t size) {
   new_block_footer->header = new_block;
   new_block->footer = new_block_footer;
   last_footer = (haddr_t)new_block_footer;
-  block_header_t* prev_free = get_previous_free(new_block);
-  if (prev_free != NULL) { prev_free->next = new_block; }
   if (last_block->is_free) {
+    remove_from_free_list(last_block);
     merge_blocks(last_block, new_block);
     new_block = last_block;
   }
+  insert_free_block(new_block);
   return new_block;
 }
 
@@ -297,15 +296,53 @@ void __attribute__((noinline)) occupy_block(block_header_t* block,
     remove_from_free_list(block);
   } else {
     block_header_t* leftover = split_region(block, size);
-    block->next = leftover;
     block->size_bytes = size;
-    remove_from_free_list(block);
+    replace_free_list_block(block, leftover);
   }
+  block->next = NULL;
 }
 
 void remove_from_free_list(block_header_t* block) {
-  block_header_t* previous_header = get_previous_free(block);
-  if (previous_header != NULL) { previous_header->next = block->next; }
+  if (block == NULL || free_regions == NULL) { return; }
+
+  if (free_regions == block) {
+    free_regions = block->next;
+    block->next = NULL;
+    return;
+  }
+
+  block_header_t* prev = free_regions;
+  while (prev->next != NULL && prev->next != block) { prev = prev->next; }
+
+  if (prev->next == block) {
+    prev->next = block->next;
+    block->next = NULL;
+  }
+}
+
+void replace_free_list_block(block_header_t* old_block,
+                             block_header_t* new_block) {
+  if (old_block == NULL || new_block == NULL) { return; }
+
+  if (free_regions == old_block) {
+    new_block->next = old_block->next;
+    free_regions = new_block;
+    old_block->next = NULL;
+    return;
+  }
+
+  block_header_t* prev = free_regions;
+  while (prev != NULL && prev->next != old_block) { prev = prev->next; }
+
+  if (prev != NULL) {
+    new_block->next = old_block->next;
+    prev->next = new_block;
+    old_block->next = NULL;
+    return;
+  }
+
+  insert_free_block(new_block);
+  old_block->next = NULL;
 }
 
 void set_footer_at(block_header_t* block, haddr_t addr) {

@@ -1,10 +1,166 @@
 #include <haddr.h>
 #include <memory/kmalloc.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define HTEST_USE_PRINTF
 #include <utils/test.h>
+
+#if defined(__stress_kmalloc)
+#define STRESS_KMALLOC_BLOCK_OVERHEAD     33
+#define STRESS_KMALLOC_INITIAL_HEAP_PAGES 5
+#define STRESS_KMALLOC_PAGE_SIZE          4096
+#define STRESS_KMALLOC_INITIAL_HEAP_USABLE                                     \
+  ((STRESS_KMALLOC_INITIAL_HEAP_PAGES * STRESS_KMALLOC_PAGE_SIZE) -            \
+   STRESS_KMALLOC_BLOCK_OVERHEAD)
+#define STRESS_KMALLOC_INITIAL_EDGE_CAP 256
+#define STRESS_KMALLOC_INITIAL_PREFIX_ALLOC                                    \
+  (STRESS_KMALLOC_INITIAL_HEAP_USABLE - STRESS_KMALLOC_BLOCK_OVERHEAD -        \
+   STRESS_KMALLOC_INITIAL_EDGE_CAP)
+#define STRESS_KMALLOC_INITIAL_EDGE_ALLOC                                      \
+  (STRESS_KMALLOC_INITIAL_EDGE_CAP - STRESS_KMALLOC_BLOCK_OVERHEAD)
+#define STRESS_KMALLOC_INITIAL_GROW_PAGES 10
+#define STRESS_KMALLOC_GROWN_HEAP_USABLE                                       \
+  ((STRESS_KMALLOC_INITIAL_GROW_PAGES * STRESS_KMALLOC_PAGE_SIZE) -            \
+   STRESS_KMALLOC_BLOCK_OVERHEAD)
+#define STRESS_KMALLOC_BORDER_ALLOC  192
+#define STRESS_KMALLOC_LAST_FREE_CAP 256
+#define STRESS_KMALLOC_POST_BORDER_FREE                                        \
+  (STRESS_KMALLOC_GROWN_HEAP_USABLE - STRESS_KMALLOC_BORDER_ALLOC -            \
+   STRESS_KMALLOC_BLOCK_OVERHEAD)
+#define STRESS_KMALLOC_TAIL_FILLER_ALLOC                                       \
+  (STRESS_KMALLOC_POST_BORDER_FREE - STRESS_KMALLOC_BLOCK_OVERHEAD -           \
+   STRESS_KMALLOC_LAST_FREE_CAP)
+#define STRESS_KMALLOC_TAIL_GROW_ALLOC                                         \
+  (STRESS_KMALLOC_LAST_FREE_CAP + STRESS_KMALLOC_BORDER_ALLOC)
+#define STRESS_KMALLOC_SCAN_SIZE         768
+#define STRESS_KMALLOC_SCAN_MAX          192
+#define STRESS_KMALLOC_CHURN_ROUNDS      16
+#define STRESS_KMALLOC_GROW_ALLOCS       384
+#define STRESS_KMALLOC_REUSE_ALLOCS      96
+#define STRESS_KMALLOC_MIN_GROW_DISTANCE (32 * 4096)
+
+typedef struct st_kmalloc_border_scan st_kmalloc_border_scan_t;
+struct st_kmalloc_border_scan {
+  char* before;
+  char* after;
+  size_t before_size;
+  size_t after_size;
+  uint8_t before_pattern;
+  uint8_t after_pattern;
+  char* allocations[STRESS_KMALLOC_SCAN_MAX];
+  uint64_t count;
+};
+
+static size_t st_kmalloc_grow_size(int idx) {
+  static const size_t sizes[] = {1536, 2048, 3072, 3584, 1024, 2560};
+  return sizes[idx % (sizeof(sizes) / sizeof(sizes[0]))];
+}
+
+static uint8_t st_kmalloc_pattern(int idx) {
+  return (uint8_t)(0x31 + ((idx * 17) & 0x3F));
+}
+
+static void st_kmalloc_fill(char* ptr, size_t size, uint8_t pattern) {
+  memset(ptr, pattern, size);
+}
+
+static bool st_kmalloc_verify(char* ptr, size_t size, uint8_t pattern) {
+  for (size_t idx = 0; idx < size; ++idx) {
+    if ((uint8_t)ptr[idx] != pattern) { return false; }
+  }
+  return true;
+}
+
+static haddr_t st_kmalloc_next_user_addr(char* ptr, size_t block_size) {
+  return (haddr_t)ptr + block_size + STRESS_KMALLOC_BLOCK_OVERHEAD;
+}
+
+static void st_kmalloc_occupy_tail(htest_ctx_t* ctx,
+                                   size_t desired_size,
+                                   uint8_t pattern) {
+  for (int attempt = 0; attempt < STRESS_KMALLOC_SCAN_MAX; ++attempt) {
+    if (!kmalloc_debug_last_block_is_free()) {
+      char* tail = (char*)kmalloc_debug_last_block_user();
+      st_kmalloc_fill(tail, kmalloc_debug_last_block_size(), pattern);
+      return;
+    }
+
+    char* tail_before = (char*)kmalloc_debug_last_block_user();
+    size_t tail_size = kmalloc_debug_last_block_size();
+    size_t alloc_size = tail_size < desired_size ? tail_size : desired_size;
+
+    if (tail_size > desired_size + STRESS_KMALLOC_BLOCK_OVERHEAD) {
+      alloc_size = tail_size - desired_size - STRESS_KMALLOC_BLOCK_OVERHEAD;
+    }
+    if (alloc_size == 0) { alloc_size = 1; }
+
+    char* allocation = (char*)malloc(alloc_size);
+    HTEST_ASSERT(ctx, allocation != NULL);
+
+    if (allocation == tail_before) {
+      size_t fill_size =
+          kmalloc_debug_last_block_is_free() ? alloc_size
+                                             : kmalloc_debug_last_block_size();
+      st_kmalloc_fill(allocation, fill_size, pattern);
+    } else {
+      st_kmalloc_fill(allocation, alloc_size, (uint8_t)(pattern - 1));
+    }
+  }
+
+  HTEST_ASSERT(ctx, !kmalloc_debug_last_block_is_free());
+}
+
+static void st_kmalloc_find_growth_border(htest_ctx_t* ctx,
+                                          st_kmalloc_border_scan_t* scan,
+                                          uint8_t pattern_base) {
+  scan->before = NULL;
+  scan->after = NULL;
+  scan->before_size = 0;
+  scan->after_size = 0;
+  scan->before_pattern = (uint8_t)(pattern_base + 0x3E);
+  scan->after_pattern = 0;
+  scan->count = 0;
+
+  st_kmalloc_occupy_tail(ctx,
+                         STRESS_KMALLOC_SCAN_SIZE,
+                         scan->before_pattern);
+
+  for (int idx = 0; idx < STRESS_KMALLOC_SCAN_MAX; ++idx) {
+    uint64_t footer_before = kmalloc_debug_last_footer();
+    char* tail_before = (char*)kmalloc_debug_last_block_user();
+    size_t tail_before_size = kmalloc_debug_last_block_size();
+
+    char* current = (char*)malloc(STRESS_KMALLOC_SCAN_SIZE);
+    HTEST_ASSERT(ctx, current != NULL);
+
+    scan->allocations[idx] = current;
+    scan->count++;
+    uint8_t current_pattern = (uint8_t)(pattern_base + (idx & 0x1F));
+    st_kmalloc_fill(current,
+                    STRESS_KMALLOC_SCAN_SIZE,
+                    current_pattern);
+
+    if (kmalloc_debug_last_footer() != footer_before) {
+      scan->before = tail_before;
+      scan->after = current;
+      scan->before_size = tail_before_size;
+      scan->after_size = STRESS_KMALLOC_SCAN_SIZE;
+      scan->after_pattern = current_pattern;
+      HTEST_ASSERT(ctx,
+                   (haddr_t)scan->after ==
+                       st_kmalloc_next_user_addr(scan->before,
+                                                 scan->before_size));
+      return;
+    }
+  }
+
+  HTEST_ASSERT(ctx, scan->before != NULL);
+  HTEST_ASSERT(ctx, scan->after != NULL);
+}
+#endif
 
 void kmalloc_test() {
   htest_ctx_t ctx = {0};
@@ -112,3 +268,245 @@ void kmalloc_test() {
 
   htest_suite_pass(&ctx);
 }
+
+#if defined(__stress_kmalloc)
+void kmalloc_stress_test() {
+  htest_ctx_t ctx = {0};
+  htest_suite_begin(&ctx, "kmalloc stress");
+
+  htest_case_begin(&ctx, "initial heap growth border");
+  char* initial_prefix = (char*)malloc(STRESS_KMALLOC_INITIAL_PREFIX_ALLOC);
+  HTEST_ASSERT(&ctx, initial_prefix != NULL);
+  st_kmalloc_fill(initial_prefix, STRESS_KMALLOC_INITIAL_PREFIX_ALLOC, 0xB0);
+
+  char* old_edge = (char*)malloc(STRESS_KMALLOC_INITIAL_EDGE_ALLOC);
+  HTEST_ASSERT(&ctx, old_edge != NULL);
+  HTEST_ASSERT(&ctx,
+               (haddr_t)old_edge ==
+                   st_kmalloc_next_user_addr(
+                       initial_prefix, STRESS_KMALLOC_INITIAL_PREFIX_ALLOC));
+  st_kmalloc_fill(old_edge, STRESS_KMALLOC_INITIAL_EDGE_ALLOC, 0xB1);
+
+  char* new_edge = (char*)malloc(STRESS_KMALLOC_BORDER_ALLOC);
+  HTEST_ASSERT(&ctx, new_edge != NULL);
+  HTEST_ASSERT(
+      &ctx,
+      (haddr_t)new_edge ==
+          st_kmalloc_next_user_addr(old_edge, STRESS_KMALLOC_INITIAL_EDGE_CAP));
+  st_kmalloc_fill(new_edge, STRESS_KMALLOC_BORDER_ALLOC, 0xB2);
+
+  HTEST_ASSERT(&ctx,
+               st_kmalloc_verify(
+                   initial_prefix, STRESS_KMALLOC_INITIAL_PREFIX_ALLOC, 0xB0));
+  HTEST_ASSERT(
+      &ctx,
+      st_kmalloc_verify(old_edge, STRESS_KMALLOC_INITIAL_EDGE_ALLOC, 0xB1));
+  HTEST_ASSERT(&ctx,
+               st_kmalloc_verify(new_edge, STRESS_KMALLOC_BORDER_ALLOC, 0xB2));
+
+  free(old_edge);
+  char* old_edge_reuse = (char*)malloc(STRESS_KMALLOC_INITIAL_EDGE_ALLOC);
+  HTEST_ASSERT(&ctx, old_edge_reuse != NULL);
+  HTEST_ASSERT(&ctx, (haddr_t)old_edge_reuse == (haddr_t)old_edge);
+  st_kmalloc_fill(old_edge_reuse, STRESS_KMALLOC_INITIAL_EDGE_ALLOC, 0xB3);
+  HTEST_ASSERT(&ctx,
+               st_kmalloc_verify(new_edge, STRESS_KMALLOC_BORDER_ALLOC, 0xB2));
+
+  free(new_edge);
+  char* new_edge_reuse = (char*)malloc(STRESS_KMALLOC_BORDER_ALLOC);
+  HTEST_ASSERT(&ctx, new_edge_reuse != NULL);
+  HTEST_ASSERT(&ctx, (haddr_t)new_edge_reuse == (haddr_t)new_edge);
+  st_kmalloc_fill(new_edge_reuse, STRESS_KMALLOC_BORDER_ALLOC, 0xB4);
+  HTEST_ASSERT(&ctx,
+               st_kmalloc_verify(
+                   old_edge_reuse, STRESS_KMALLOC_INITIAL_EDGE_ALLOC, 0xB3));
+
+  char* tail_filler = (char*)malloc(STRESS_KMALLOC_TAIL_FILLER_ALLOC);
+  HTEST_ASSERT(&ctx, tail_filler != NULL);
+  HTEST_ASSERT(
+      &ctx,
+      (haddr_t)tail_filler == st_kmalloc_next_user_addr(
+                                  new_edge_reuse, STRESS_KMALLOC_BORDER_ALLOC));
+  st_kmalloc_fill(tail_filler, STRESS_KMALLOC_TAIL_FILLER_ALLOC, 0xB6);
+
+  char* tail_grown = (char*)malloc(STRESS_KMALLOC_TAIL_GROW_ALLOC);
+  HTEST_ASSERT(&ctx, tail_grown != NULL);
+  HTEST_ASSERT(&ctx,
+               (haddr_t)tail_grown ==
+                   st_kmalloc_next_user_addr(tail_filler,
+                                             STRESS_KMALLOC_TAIL_FILLER_ALLOC));
+  st_kmalloc_fill(tail_grown, STRESS_KMALLOC_TAIL_GROW_ALLOC, 0xB7);
+  HTEST_ASSERT(
+      &ctx,
+      st_kmalloc_verify(tail_filler, STRESS_KMALLOC_TAIL_FILLER_ALLOC, 0xB6));
+  HTEST_ASSERT(&ctx,
+               st_kmalloc_verify(
+                   old_edge_reuse, STRESS_KMALLOC_INITIAL_EDGE_ALLOC, 0xB3));
+
+  free(old_edge_reuse);
+  free(new_edge_reuse);
+  char* merged_initial_border = (char*)malloc(
+      STRESS_KMALLOC_INITIAL_EDGE_ALLOC + STRESS_KMALLOC_BORDER_ALLOC +
+      STRESS_KMALLOC_BLOCK_OVERHEAD);
+  HTEST_ASSERT(&ctx, merged_initial_border != NULL);
+  HTEST_ASSERT(&ctx, (haddr_t)merged_initial_border == (haddr_t)old_edge);
+  st_kmalloc_fill(merged_initial_border,
+                  STRESS_KMALLOC_INITIAL_EDGE_ALLOC +
+                      STRESS_KMALLOC_BORDER_ALLOC +
+                      STRESS_KMALLOC_BLOCK_OVERHEAD,
+                  0xB5);
+  HTEST_ASSERT(&ctx,
+               st_kmalloc_verify(
+                   initial_prefix, STRESS_KMALLOC_INITIAL_PREFIX_ALLOC, 0xB0));
+
+  htest_case_begin(&ctx, "growth border free new then old");
+  static st_kmalloc_border_scan_t new_then_old_scan = {0};
+  st_kmalloc_find_growth_border(&ctx, &new_then_old_scan, 0xC0);
+  HTEST_ASSERT(&ctx, new_then_old_scan.before != NULL);
+  HTEST_ASSERT(&ctx, new_then_old_scan.after != NULL);
+  free(new_then_old_scan.after);
+  free(new_then_old_scan.before);
+  size_t new_then_old_merged_size = new_then_old_scan.before_size +
+                                    new_then_old_scan.after_size +
+                                    STRESS_KMALLOC_BLOCK_OVERHEAD;
+  char* new_then_old_merged = (char*)malloc(new_then_old_merged_size);
+  HTEST_ASSERT(&ctx, new_then_old_merged != NULL);
+  HTEST_ASSERT(
+      &ctx, (haddr_t)new_then_old_merged == (haddr_t)new_then_old_scan.before);
+  st_kmalloc_fill(new_then_old_merged, new_then_old_merged_size, 0xC1);
+
+  htest_case_begin(&ctx, "growth border free old then new");
+  static st_kmalloc_border_scan_t old_then_new_scan = {0};
+  st_kmalloc_find_growth_border(&ctx, &old_then_new_scan, 0xD0);
+  HTEST_ASSERT(&ctx, old_then_new_scan.before != NULL);
+  HTEST_ASSERT(&ctx, old_then_new_scan.after != NULL);
+  free(old_then_new_scan.before);
+  free(old_then_new_scan.after);
+  size_t old_then_new_merged_size = old_then_new_scan.before_size +
+                                    old_then_new_scan.after_size +
+                                    STRESS_KMALLOC_BLOCK_OVERHEAD;
+  char* old_then_new_merged = (char*)malloc(old_then_new_merged_size);
+  HTEST_ASSERT(&ctx, old_then_new_merged != NULL);
+  HTEST_ASSERT(
+      &ctx, (haddr_t)old_then_new_merged == (haddr_t)old_then_new_scan.before);
+  st_kmalloc_fill(old_then_new_merged, old_then_new_merged_size, 0xD1);
+
+  htest_case_begin(&ctx, "growth border split and remerge");
+  static st_kmalloc_border_scan_t split_scan = {0};
+  st_kmalloc_find_growth_border(&ctx, &split_scan, 0xE0);
+  HTEST_ASSERT(&ctx, split_scan.before != NULL);
+  HTEST_ASSERT(&ctx, split_scan.after != NULL);
+  free(split_scan.before);
+  size_t split_old_size = split_scan.before_size / 2;
+  if (split_old_size == 0) { split_old_size = 1; }
+  char* split_old_edge = (char*)malloc(split_old_size);
+  HTEST_ASSERT(&ctx, split_old_edge != NULL);
+  HTEST_ASSERT(&ctx, (haddr_t)split_old_edge == (haddr_t)split_scan.before);
+  st_kmalloc_fill(split_old_edge, split_old_size, 0xE1);
+  free(split_scan.after);
+  HTEST_ASSERT(&ctx, st_kmalloc_verify(split_old_edge, split_old_size, 0xE1));
+  free(split_old_edge);
+  size_t split_remerged_size =
+      split_scan.before_size + split_scan.after_size +
+      STRESS_KMALLOC_BLOCK_OVERHEAD;
+  char* split_remerged = (char*)malloc(split_remerged_size);
+  HTEST_ASSERT(&ctx, split_remerged != NULL);
+  HTEST_ASSERT(&ctx, (haddr_t)split_remerged == (haddr_t)split_scan.before);
+  st_kmalloc_fill(split_remerged, split_remerged_size, 0xE2);
+
+  htest_case_begin(&ctx, "growth border repeated edge churn");
+  static st_kmalloc_border_scan_t churn_scan = {0};
+  st_kmalloc_find_growth_border(&ctx, &churn_scan, 0xF0);
+  HTEST_ASSERT(&ctx, churn_scan.before != NULL);
+  HTEST_ASSERT(&ctx, churn_scan.after != NULL);
+  uint8_t churn_before_pattern = churn_scan.before_pattern;
+  size_t churn_before_size = churn_scan.before_size;
+  size_t churn_after_size = churn_scan.after_size;
+  for (int round = 0; round < STRESS_KMALLOC_CHURN_ROUNDS; ++round) {
+    free(churn_scan.after);
+    char* after_reuse = (char*)malloc(churn_after_size);
+    HTEST_ASSERT(&ctx, after_reuse != NULL);
+    HTEST_ASSERT(&ctx, (haddr_t)after_reuse == (haddr_t)churn_scan.after);
+    st_kmalloc_fill(after_reuse, churn_after_size, (uint8_t)(0x70 + round));
+    HTEST_ASSERT(
+        &ctx,
+        st_kmalloc_verify(churn_scan.before, churn_before_size,
+                          churn_before_pattern));
+
+    free(churn_scan.before);
+    char* before_reuse = (char*)malloc(churn_before_size);
+    HTEST_ASSERT(&ctx, before_reuse != NULL);
+    HTEST_ASSERT(&ctx, (haddr_t)before_reuse == (haddr_t)churn_scan.before);
+    st_kmalloc_fill(before_reuse, churn_before_size, (uint8_t)(0x90 + round));
+    churn_before_pattern = (uint8_t)(0x90 + round);
+    HTEST_ASSERT(
+        &ctx,
+        st_kmalloc_verify(after_reuse, churn_after_size,
+                          (uint8_t)(0x70 + round)));
+
+    churn_scan.before = before_reuse;
+    churn_scan.after = after_reuse;
+  }
+
+  free(churn_scan.before);
+  free(churn_scan.after);
+  size_t churn_merged_size =
+      churn_before_size + churn_after_size + STRESS_KMALLOC_BLOCK_OVERHEAD;
+  char* churn_merged = (char*)malloc(churn_merged_size);
+  HTEST_ASSERT(&ctx, churn_merged != NULL);
+  HTEST_ASSERT(&ctx, (haddr_t)churn_merged == (haddr_t)churn_scan.before);
+  st_kmalloc_fill(churn_merged, churn_merged_size, 0xF1);
+
+  htest_case_begin(&ctx, "heap growing");
+  static char* allocations[STRESS_KMALLOC_GROW_ALLOCS] = {0};
+  static size_t sizes[STRESS_KMALLOC_GROW_ALLOCS] = {0};
+  static uint8_t patterns[STRESS_KMALLOC_GROW_ALLOCS] = {0};
+
+  for (int idx = 0; idx < STRESS_KMALLOC_GROW_ALLOCS; ++idx) {
+    sizes[idx] = st_kmalloc_grow_size(idx);
+    patterns[idx] = st_kmalloc_pattern(idx);
+    allocations[idx] = (char*)malloc(sizes[idx]);
+
+    HTEST_ASSERT(&ctx, allocations[idx] != NULL);
+    if (idx > 0) {
+      HTEST_ASSERT(&ctx,
+                   (haddr_t)allocations[idx] > (haddr_t)allocations[idx - 1]);
+    }
+    st_kmalloc_fill(allocations[idx], sizes[idx], patterns[idx]);
+  }
+
+  HTEST_ASSERT(&ctx,
+               (haddr_t)allocations[STRESS_KMALLOC_GROW_ALLOCS - 1] -
+                       (haddr_t)allocations[0] >
+                   STRESS_KMALLOC_MIN_GROW_DISTANCE);
+
+  for (int idx = 0; idx < STRESS_KMALLOC_GROW_ALLOCS; ++idx) {
+    HTEST_ASSERT(
+        &ctx, st_kmalloc_verify(allocations[idx], sizes[idx], patterns[idx]));
+  }
+
+  htest_case_begin(&ctx, "grown heap free list reuse");
+  static haddr_t freed_addrs[STRESS_KMALLOC_REUSE_ALLOCS] = {0};
+  for (int idx = 0; idx < STRESS_KMALLOC_REUSE_ALLOCS; ++idx) {
+    int allocation_idx = idx * 2;
+    freed_addrs[idx] = (haddr_t)allocations[allocation_idx];
+    free(allocations[allocation_idx]);
+    allocations[allocation_idx] = NULL;
+  }
+
+  for (int idx = 0; idx < STRESS_KMALLOC_REUSE_ALLOCS; ++idx) {
+    int allocation_idx = idx * 2;
+    char* reused = (char*)malloc(sizes[allocation_idx]);
+    HTEST_ASSERT(&ctx, reused != NULL);
+    HTEST_ASSERT(&ctx, (haddr_t)reused == freed_addrs[idx]);
+    memset(reused, 0xA5, sizes[allocation_idx]);
+  }
+
+  for (int idx = 1; idx < STRESS_KMALLOC_GROW_ALLOCS; idx += 2) {
+    HTEST_ASSERT(
+        &ctx, st_kmalloc_verify(allocations[idx], sizes[idx], patterns[idx]));
+  }
+
+  htest_suite_pass(&ctx);
+}
+#endif

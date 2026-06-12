@@ -28,7 +28,7 @@
 #if defined(__test_chardev)
 #include <dev/chardev_test.h>
 #endif
-#if defined(__test_kmalloc)
+#if defined(__test_kmalloc) || defined(__stress_kmalloc)
 #include <memory/kmalloc_test.h>
 #endif
 #if defined(__test_initrd)
@@ -101,6 +101,9 @@ void kernel_main() {
 
 #if defined(__test_kmalloc)
   kmalloc_test();
+#endif
+#if defined(__stress_kmalloc)
+  kmalloc_stress_test();
 #endif
 
   if (!bootmodule_cache_finalize()) {
