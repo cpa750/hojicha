@@ -33,6 +33,13 @@ void vmm_initialize();
 vmm_t* vmm_new(haddr_t flags);
 
 /*
+ * Creates a new VMM with the same lower-half mappings as `src`. Each mapped
+ * page receives a newly allocated physical page containing a copy of the
+ * source page, and leaf flags are preserved.
+ */
+vmm_t* vmm_copy(vmm_t* src);
+
+/*
  * Frees a VMM created with `vmm_new()`. This should not be called until after
  * the process using the VMM exits.
  */

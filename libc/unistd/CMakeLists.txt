@@ -1,5 +1,7 @@
 set(LIBC_UNISTD_SOURCES
   close.c
+  execve.c
+  fork.c
   lseek.c
   rmdir.c
   sleep.c

@@ -1,6 +1,8 @@
 target_sources(kernel_objects PRIVATE
   syscall_close.c
+  syscall_execve.c
   syscall_exit.c
+  syscall_fork.c
   syscall_getdents.c
   syscall_ioctl.c
   syscall_lseek.c

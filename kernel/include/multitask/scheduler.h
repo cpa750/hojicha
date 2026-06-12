@@ -1,6 +1,7 @@
 #ifndef MULTITASK_H
 #define MULTITASK_H
 
+#include <cpu/isr.h>
 #include <fs/vfs.h>
 #include <haddr.h>
 #include <hlog.h>
@@ -8,7 +9,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define STACK_SIZE 16384  // 4 pages
+#define STACK_SIZE   16384  // 4 pages
+#define MAX_CHILDREN 256
 
 typedef enum proc_status {
   PROC_STATUS_RUNNING = 0b00000001,
@@ -48,6 +50,7 @@ void* sched_pb_get_cr3(process_block_t* p);
  * descriptor, `false` if not.
  */
 bool sched_pb_fd_find_null(process_block_t* p, uint64_t* idx_out);
+bool sched_pb_child_find_null(process_block_t* p, uint64_t* idx_out);
 
 /*
  * Gets the entry in the processe's file descriptor table at `idx`.
@@ -83,6 +86,22 @@ process_block_t* sched_kproc_new(char* name, proc_entry_t entry, void* cr3);
  * on the process handle manually.
  */
 process_block_t* sched_uproc_new(char* name, elf_t* elf);
+
+/*
+ * Replaces the current running executable with a new one.
+ */
+long sched_execve(process_block_t* process,
+                  elf_t* elf,
+                  char* name,
+                  uint64_t name_len,
+                  uint64_t argc,
+                  char** argv,
+                  char** envp);
+
+/*
+ * Forks the given `process`.
+ */
+long sched_fork(process_block_t* process, interrupt_frame_t* frame);
 
 /*
  * Adds a proc to the scheduler's queue.

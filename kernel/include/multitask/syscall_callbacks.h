@@ -1,11 +1,16 @@
 #ifndef SYSCALL_CALLBACKS_H
 #define SYSCALL_CALLBACKS_H
 
+#include <cpu/isr.h>
 #include <dirent.h>
 #include <sys/stat.h>
 
 long syscall_close(long fd);
+long syscall_execve(const char* pathname,
+                    char* const argv[],
+                    char* const envp[]);
 long syscall_exit(int code);
+long syscall_fork(interrupt_frame_t* frame);
 long syscall_getdents(unsigned long fd,
                       linux_dirent_t* dirent_buf,
                       unsigned int count);

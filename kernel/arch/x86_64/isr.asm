@@ -60,6 +60,7 @@ isr_common:
     push r8
     push rsi
     push rdi
+    push rbp
     push rdx
     push rcx
     push rbx
@@ -79,6 +80,7 @@ isr_common:
     pop rbx
     pop rcx
     pop rdx
+    pop rbp
     pop rdi
     pop rsi
     pop r8

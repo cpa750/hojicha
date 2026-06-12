@@ -10,6 +10,7 @@ struct interrupt_frame {
   haddr_t rbx;
   haddr_t rcx;
   haddr_t rdx;
+  haddr_t rbp;
   haddr_t rdi;
   haddr_t rsi;
   haddr_t r8;

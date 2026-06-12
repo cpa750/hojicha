@@ -7,6 +7,7 @@ target_sources(kernel_objects PRIVATE
   load_tss.asm
   isr.asm
   irq.asm
+  make_fork_kstack.asm
   switch_to.asm
   vga.c
 )

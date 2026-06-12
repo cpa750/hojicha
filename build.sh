@@ -19,6 +19,13 @@ case "$*" in
     ;;
 esac
 
+STRESS_KMALLOC=0
+case "$*" in
+  *--stress-kmalloc*)
+    STRESS_KMALLOC=1
+    ;;
+esac
+
 TEST_INITRD=0
 case "$*" in
   *--test-initrd*)
@@ -114,6 +121,7 @@ echo "Calling CMake:"
     -DHOJICHA_BUILD_FLAVOR="$BUILD_FLAVOR" \
     -DHOJICHA_DEBUG_QEMU="$DEBUG_QEMU" \
     -DHOJICHA_TEST_KMALLOC="$TEST_KMALLOC" \
+    -DHOJICHA_STRESS_KMALLOC="$STRESS_KMALLOC" \
     -DHOJICHA_TEST_INITRD="$TEST_INITRD" \
     -DHOJICHA_TEST_VFS="$TEST_VFS" \
     -DHOJICHA_TEST_CHARDEV="$TEST_CHARDEV" \

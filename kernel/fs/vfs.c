@@ -357,10 +357,16 @@ vfs_status_t vfs_fstat(vfs_file_t* file, vfs_stat_t** out) {
 
 vfs_status_t vfs_close(vfs_file_t* file) {
   if (file == NULL) { return VFS_STATUS_OK; }
-  if (HVFS_FOP_MISSING(file, close)) { return VFS_STATUS_NOT_IMPLEMENTED; }
+  if (file->refcount == 0) { return VFS_STATUS_INVALID_ARG; }
 
   vfs_node_t* vnode = file->vnode;
   clear_process_fd(file);
+  if (file->refcount > 1) {
+    vfs_file_release(file);
+    return VFS_STATUS_OK;
+  }
+
+  if (HVFS_FOP_MISSING(file, close)) { return VFS_STATUS_NOT_IMPLEMENTED; }
   vfs_status_t status = file->ops->close(file);
   vfs_vnode_release(vnode);
   return status;
@@ -384,6 +390,15 @@ vfs_status_t vfs_resolve_fd(uint64_t fd, vfs_file_t** out) {
   if (ret == NULL) { return VFS_STATUS_BAD_FD; }
   SET_OUT(out, ret);
   return VFS_STATUS_OK;
+}
+
+void vfs_file_borrow(vfs_file_t* file) {
+  if (file != NULL) { file->refcount++; }
+}
+
+void vfs_file_release(vfs_file_t* file) {
+  if (file == NULL || file->refcount == 0) { return; }
+  file->refcount--;
 }
 
 void vfs_vnode_borrow(vfs_node_t* vnode) {

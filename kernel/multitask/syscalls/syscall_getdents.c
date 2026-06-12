@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <fs/vfs.h>
 #include <multitask/syscall_callbacks.h>
+#include <multitask/syscall_utils.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -25,6 +26,7 @@ long syscall_getdents(unsigned long fd,
                       linux_dirent_t* dirent_buf,
                       unsigned int count) {
   if (dirent_buf == NULL) { return -EINVAL; }
+  if (!syscall_is_uaddr(dirent_buf, count)) { return -EINVAL; }
 
   vfs_file_t* file = NULL;
   vfs_status_t status = vfs_resolve_fd(fd, &file);

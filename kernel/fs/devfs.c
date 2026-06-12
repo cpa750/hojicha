@@ -202,6 +202,7 @@ vfs_status_t devfs_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
 
     dir->current = ((devfs_node_t*)(vnode->fs_data))->first_child;
     vfile->flags = flags;
+    vfile->refcount = 1;
     vfile->fs_data = (void*)dir;
     vfile->offset = 0;
     vfile->vnode = vnode;
@@ -549,6 +550,7 @@ static devfs_device_t* get_device(devfs_node_t* node) {
 
 static void init_vfile(vfs_file_t* vfile, vfs_node_t* vnode, uint32_t flags) {
   vfile->flags = flags;
+  vfile->refcount = 1;
   vfile->fs_data = NULL;
   vfile->offset = 0;
   vfile->vnode = vnode;

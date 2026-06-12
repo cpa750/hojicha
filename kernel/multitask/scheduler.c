@@ -1,4 +1,5 @@
 #include <drivers/pit.h>
+#include <errno.h>
 #include <fs/vfs.h>
 #include <haddr.h>
 #include <hlog.h>
@@ -7,10 +8,11 @@
 #include <multitask/elf.h>
 #include <multitask/scheduler.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define QUANTUM_LENGTH 50000000  // 50 ms
+#define QUANTUM_LENGTH 20000000  // 20 ms
 
 struct sched_state {
   process_block_t* first_ready_to_run;
@@ -62,8 +64,13 @@ struct process_block {
 
   vmm_t* vmm;
   elf_t* elf;
+  uint64_t argc;
+  char** argv;
+  char** envp;
 
   vfs_file_t** fds;
+  process_block_t** children;
+  process_block_t* parent;
 };
 
 process_block_t* sched_pb_get_next(process_block_t* p) { return p->next; }
@@ -118,6 +125,18 @@ bool sched_pb_fd_find_null(process_block_t* p, uint64_t* idx_out) {
   return false;
 }
 
+bool sched_pb_child_find_null(process_block_t* p, uint64_t* idx_out) {
+  if (p == NULL || p->children == NULL) { return false; }
+
+  for (uint64_t i = 1; i < MAX_CHILDREN; ++i) {
+    if (p->children[i] == NULL) {
+      if (idx_out != NULL) { *idx_out = i; }
+      return true;
+    }
+  }
+  return false;
+}
+
 vfs_file_t* sched_pb_fd_get(process_block_t* p, uint64_t idx) {
   if (idx >= MAX_FDS) { return NULL; }
   return p->fds[idx];
@@ -131,10 +150,13 @@ static sched_state_t mt = {0};
 static pit_callback_t pit_callback = {0};
 
 extern void switch_to(process_block_t* process, bool is_ctx_switch);
+extern void make_fork_kstack(void);
+extern void load_pd(haddr_t* pd_addr);
 
 void multitask_switch(process_block_t* process);
 
 void block_process(process_block_t* p, uint8_t reason);
+void enqueue_ready_process(process_block_t* process);
 process_block_t* find_last_sleep_timestamp_less_than_equal(
     process_block_t* process,
     uint64_t timestamp);
@@ -144,7 +166,9 @@ void mark_proc_range(process_block_t* start,
                      process_block_t* end,
                      proc_status_t status);
 process_block_t* new_proc_shared(char* name, void* cr3);
+char* proc_name_new(const char* name, uint64_t name_len);
 void proc_prelude(process_block_t* p);
+void proc_strings_free(char** strings);
 void set_last_ready_to_run(sched_state_t* mt,
                            process_block_t* first_ready_to_run);
 void remove_proc(process_block_t* p);
@@ -166,11 +190,24 @@ void sched_initialize(void) {
   kernel_process->next = NULL;
   kernel_process->status = PROC_STATUS_RUNNING;
   kernel_process->is_kernel_proc = true;
-  kernel_process->name = "hojicha";
+  kernel_process->pid = 0;
+  kernel_process->name = proc_name_new("hojicha", strlen("hojicha"));
   kernel_process->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
-  kernel_process->pid = UINT64_MAX;
   kernel_process->vmm = g_kernel.vmm;
   kernel_process->fds = (vfs_file_t**)calloc(1, sizeof(vfs_file_t*) * MAX_FDS);
+  kernel_process->children =
+      (process_block_t**)calloc(1, sizeof(process_block_t*) * MAX_CHILDREN);
+  if (kernel_process->name == NULL || kernel_process->logger == NULL ||
+      kernel_process->fds == NULL || kernel_process->children == NULL) {
+    free(kernel_process->name);
+    if (kernel_process->logger != NULL) {
+      hlog_free_logger(kernel_process->logger);
+    }
+    free(kernel_process->fds);
+    free(kernel_process->children);
+    free(kernel_process);
+    abort();
+  }
   mt.kernel_pid = kernel_process->pid;
 
   mt.first_ready_to_run = NULL;
@@ -232,21 +269,150 @@ process_block_t* sched_uproc_new(char* name, elf_t* elf) {
   return new_proc;
 }
 
-void sched_add_proc(process_block_t* process) {
-  sched_postpone();
-  process->next = NULL;
-  if (g_kernel.sched->first_ready_to_run == NULL) {
-    g_kernel.sched->first_ready_to_run = process;
-    g_kernel.sched->last_ready_to_run = process;
-    sched_resume();
-    return;
+long sched_execve(process_block_t* process,
+                  elf_t* elf,
+                  char* name,
+                  uint64_t name_len,
+                  uint64_t argc,
+                  char** argv,
+                  char** envp) {
+  if (process == NULL || process != g_kernel.current_process || elf == NULL ||
+      process->fds == NULL) {
+    proc_strings_free(argv);
+    proc_strings_free(envp);
+    return -EINVAL;
   }
 
-  if (g_kernel.sched->last_ready_to_run == NULL) {
-    set_last_ready_to_run(g_kernel.sched, g_kernel.sched->first_ready_to_run);
+  hlogger_t* logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
+  vmm_t* vmm = vmm_new(PAGE_USER_ACCESIBLE);
+  char* proc_name = proc_name_new(name, name_len);
+  if (logger == NULL || vmm == NULL || proc_name == NULL) {
+    if (logger != NULL) { hlog_free_logger(logger); }
+    if (vmm != NULL) { vmm_free(vmm); }
+    free(proc_name);
+    proc_strings_free(argv);
+    proc_strings_free(envp);
+    return -ENOMEM;
   }
-  g_kernel.sched->last_ready_to_run->next = process;
-  g_kernel.sched->last_ready_to_run = process;
+
+  for (uint64_t fd = 0; fd < MAX_FDS; ++fd) {
+    vfs_file_t* file = process->fds[fd];
+    if (file == NULL) { continue; }
+
+    if (file->flags & VFS_OPEN_CLOEXEC) {
+      process->fds[fd] = NULL;
+      vfs_close(file);
+    }
+  }
+
+  char* old_name = process->name;
+  hlogger_t* old_logger = process->logger;
+  vmm_t* old_vmm = process->vmm;
+  elf_t* old_elf = process->elf;
+  char** old_argv = process->argv;
+  char** old_envp = process->envp;
+
+  process->name = proc_name;
+  process->logger = logger;
+  process->vmm = vmm;
+  process->cr3 = vmm_get_cr3(vmm);
+  process->elf = elf;
+  process->argc = argc;
+  process->argv = argv;
+  process->envp = envp;
+  process->is_kernel_proc = false;
+
+  load_pd(process->cr3);
+  if (old_vmm != NULL && old_vmm != g_kernel.vmm) { vmm_free(old_vmm); }
+  free(old_name);
+  if (old_logger != NULL) { hlog_free_logger(old_logger); }
+  if (old_elf != NULL && old_elf != elf) { elf_free(old_elf); }
+  proc_strings_free(old_argv);
+  proc_strings_free(old_envp);
+
+  elf_launch(
+      process->elf, process->vmm, process->argc, process->argv, process->envp);
+  proc_strings_free(process->argv);
+  proc_strings_free(process->envp);
+  process->argc = 0;
+  process->argv = NULL;
+  process->envp = NULL;
+  return -EINVAL;
+}
+
+long sched_fork(process_block_t* process, interrupt_frame_t* frame) {
+  if (process == NULL || frame == NULL || process->stack_end == NULL ||
+      process->fds == NULL || process->children == NULL) {
+    return -EINVAL;
+  }
+
+  uint64_t child_slot = 0;
+  if (!sched_pb_child_find_null(process, &child_slot)) { return -EAGAIN; }
+
+  haddr_t parent_stack_bottom = (haddr_t)process->stack_end;
+  haddr_t parent_stack_base = parent_stack_bottom + STACK_SIZE;
+  haddr_t parent_frame = (haddr_t)frame;
+  if (parent_frame < parent_stack_bottom ||
+      parent_frame + sizeof(interrupt_frame_t) > parent_stack_base) {
+    return -EINVAL;
+  }
+
+  const size_t switch_saved_reg_count = 15;
+  size_t switch_frame_size = (switch_saved_reg_count + 1) * sizeof(haddr_t);
+  if (sizeof(interrupt_frame_t) + switch_frame_size > STACK_SIZE) {
+    return -EINVAL;
+  }
+
+  vmm_t* new_vmm = vmm_copy(process->vmm);
+  if (new_vmm == NULL) {
+    hlog_write(HLOG_ERROR,
+               "Could not fork new process %s: out of memory.",
+               process->name);
+    return -ENOMEM;
+  }
+
+  process_block_t* new_proc =
+      new_proc_shared(process->name, vmm_get_cr3(new_vmm));
+  if (new_proc == NULL) {
+    vmm_free(new_vmm);
+    return -ENOMEM;
+  }
+
+  new_proc->vmm = new_vmm;
+
+  haddr_t child_stack_base = (haddr_t)new_proc->stack_end + STACK_SIZE;
+  haddr_t child_frame_addr = child_stack_base - sizeof(interrupt_frame_t);
+  interrupt_frame_t* child_frame = (interrupt_frame_t*)child_frame_addr;
+  memcpy(child_frame, frame, sizeof(interrupt_frame_t));
+  child_frame->rax = 0;
+
+  haddr_t switch_rsp = child_frame_addr - switch_frame_size;
+  haddr_t* switch_frame = (haddr_t*)switch_rsp;
+  memset(switch_frame, 0, switch_frame_size);
+  // switch_to pops this dummy kernel context and ret jumps to the fork
+  // epilogue. make_fork_kstack then restores the copied interrupt frame above
+  // it.
+  switch_frame[15] = (haddr_t)make_fork_kstack;
+
+  for (uint64_t fd = 0; fd < MAX_FDS; ++fd) {
+    new_proc->fds[fd] = process->fds[fd];
+    vfs_file_borrow(new_proc->fds[fd]);
+  }
+
+  new_proc->rsp = (void*)switch_rsp;
+  new_proc->parent = process;
+  new_proc->is_kernel_proc = process->is_kernel_proc;
+  new_proc->entry = process->entry;
+  new_proc->elf = process->elf;
+  new_proc->status = PROC_STATUS_READY_TO_RUN;
+  process->children[child_slot] = new_proc;
+  enqueue_ready_process(new_proc);
+  return new_proc->pid;
+}
+
+void sched_add_proc(process_block_t* process) {
+  sched_postpone();
+  enqueue_ready_process(process);
   sched_resume();
 }
 
@@ -435,6 +601,21 @@ void block_process(process_block_t* p, uint8_t reason) {
   sched_unlock();
 }
 
+void enqueue_ready_process(process_block_t* process) {
+  process->next = NULL;
+  if (g_kernel.sched->first_ready_to_run == NULL) {
+    g_kernel.sched->first_ready_to_run = process;
+    g_kernel.sched->last_ready_to_run = process;
+    return;
+  }
+
+  if (g_kernel.sched->last_ready_to_run == NULL) {
+    set_last_ready_to_run(g_kernel.sched, g_kernel.sched->first_ready_to_run);
+  }
+  g_kernel.sched->last_ready_to_run->next = process;
+  g_kernel.sched->last_ready_to_run = process;
+}
+
 /*
  * Finds the last process needing to be woken.
  */
@@ -481,44 +662,71 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
   process_block_t* new_proc =
       (process_block_t*)calloc(1, sizeof(process_block_t));
   vfs_file_t** fds = (vfs_file_t**)calloc(1, sizeof(vfs_file_t*) * MAX_FDS);
+  process_block_t** children =
+      (process_block_t**)calloc(1, sizeof(process_block_t*) * MAX_CHILDREN);
   uint8_t* stack_end = (uint8_t*)calloc(1, STACK_SIZE);
   hlogger_t* logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
-  if (new_proc == NULL || fds == NULL || stack_end == NULL || logger == NULL) {
+  uint64_t pid = g_kernel.sched->total_processes_added + 1;
+  char pid_name[21] = {0};
+  if (name == NULL) {
+    itoa(pid, pid_name, 10);
+    name = pid_name;
+  }
+  char* proc_name = proc_name_new(name, strlen(name));
+  if (new_proc == NULL || fds == NULL || children == NULL ||
+      stack_end == NULL || logger == NULL || proc_name == NULL) {
     free(new_proc);
     free(fds);
+    free(children);
     free(stack_end);
-    hlog_write(HLOG_ERROR, "Could not create new process %s: out of memory.");
+    free(proc_name);
+    if (logger != NULL) { hlog_free_logger(logger); }
+    hlog_write(HLOG_ERROR,
+               "Could not create new process %s: out of memory.",
+               name == NULL ? "" : name);
     return NULL;
   }
 
-  ++(g_kernel.sched->total_processes_added);
-  ++(g_kernel.sched->process_count);
+  new_proc->pid = pid;
   new_proc->cr3 = cr3;
   new_proc->stack_end = stack_end;
   haddr_t stack_base = (haddr_t)(stack_end + STACK_SIZE);
   new_proc->rsp0 = (void*)stack_base;
   stack_base &= ~0xFULL;
-  stack_base -= 8;
-  *(haddr_t*)stack_base = (haddr_t)proc_prelude;
-  stack_base -= 8 * 6;
-  *(haddr_t*)stack_base = (haddr_t)new_proc;
+  haddr_t return_slot = stack_base - 16;
+  haddr_t switch_rsp = return_slot - (15 * sizeof(haddr_t));
+  haddr_t* switch_frame = (haddr_t*)switch_rsp;
+  memset(switch_frame, 0, (15 + 1) * sizeof(haddr_t));
+  switch_frame[9] = (haddr_t)new_proc;
+  switch_frame[15] = (haddr_t)proc_prelude;
   new_proc->fds = fds;
+  new_proc->children = children;
 
-  new_proc->pid = g_kernel.sched->total_processes_added;
-  if (name != NULL) {
-    new_proc->name = name;
-  } else {
-    itoa(new_proc->pid, new_proc->name, 10);
-  }
+  new_proc->name = proc_name;
 
+  ++(g_kernel.sched->total_processes_added);
+  ++(g_kernel.sched->process_count);
   new_proc->logger = logger;
 
-  // Because we pop 15 registers from the newly allocated stack
-  // in switch_to()
-  stack_base -= 8 * 9;
-  new_proc->rsp = (void*)stack_base;
+  new_proc->rsp = (void*)switch_rsp;
   new_proc->status = PROC_STATUS_UNINITIALIZED;
   return new_proc;
+}
+
+char* proc_name_new(const char* name, uint64_t name_len) {
+  if (name == NULL) { return NULL; }
+  char* ret = (char*)calloc(name_len + 1, sizeof(char));
+  if (ret == NULL) { return NULL; }
+  memcpy(ret, name, name_len);
+  ret[name_len] = '\0';
+  return ret;
+}
+
+void proc_strings_free(char** strings) {
+  if (strings == NULL) { return; }
+
+  for (uint64_t i = 0; strings[i] != NULL; ++i) { free(strings[i]); }
+  free(strings);
 }
 
 void proc_prelude(process_block_t* p) {
@@ -531,7 +739,7 @@ void proc_prelude(process_block_t* p) {
   if (p->is_kernel_proc) {
     p->entry();
   } else {
-    elf_launch(p->elf, p->vmm);
+    elf_launch(p->elf, p->vmm, p->argc, p->argv, p->envp);
   }
   sched_proc_terminate(p);
 }
@@ -642,7 +850,39 @@ void terminator(void) {
         next = p->next;
         // TODO: we ideally need to hand the logs committing off to a
         // dedicated task
+        if (p->parent != NULL && p->parent->children != NULL) {
+          for (uint64_t child_slot = 1; child_slot < MAX_CHILDREN;
+               ++child_slot) {
+            if (p->parent->children[child_slot] == p) {
+              p->parent->children[child_slot] = NULL;
+              break;
+            }
+          }
+        }
+        if (p->children != NULL) {
+          for (uint64_t child_slot = 1; child_slot < MAX_CHILDREN;
+               ++child_slot) {
+            if (p->children[child_slot] != NULL) {
+              p->children[child_slot]->parent = NULL;
+            }
+          }
+          free(p->children);
+        }
         hlog_free_logger(p->logger);
+        if (p->fds != NULL) {
+          for (uint64_t fd = 0; fd < MAX_FDS; ++fd) {
+            if (p->fds[fd] != NULL) {
+              vfs_file_t* file = p->fds[fd];
+              p->fds[fd] = NULL;
+              vfs_close(file);
+            }
+          }
+          free(p->fds);
+        }
+        free(p->name);
+        proc_strings_free(p->argv);
+        proc_strings_free(p->envp);
+        if (p->vmm != NULL && p->vmm != g_kernel.vmm) { vmm_free(p->vmm); }
         free(p->stack_end);
         free(p);
         p = next;

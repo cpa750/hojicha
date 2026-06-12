@@ -10,6 +10,8 @@ extern "C" {
 #endif
 
 int close(int fd);
+int execve(const char* pathname, char* const argv[], char* const envp[]);
+int fork(void);
 long lseek(int fd, long offset, int whence);
 int rmdir(const char* path);
 unsigned int sleep(unsigned int seconds);
