@@ -2,7 +2,6 @@
 #include <haddr.h>
 #include <kernel/g_kernel.h>
 #include <limine.h>
-#include <memory/kmalloc.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
 #include <stdbool.h>

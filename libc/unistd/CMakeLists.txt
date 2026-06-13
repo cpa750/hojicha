@@ -1,10 +1,12 @@
 set(LIBC_UNISTD_SOURCES
+  brk.c
   close.c
   execve.c
   fork.c
   lseek.c
   rmdir.c
   sleep.c
+  sbrk.c
   unlink.c
 )
 

@@ -71,7 +71,7 @@
           "-DHOJICHA_SYSROOT=${workspaceRoot}/sysroot",
           "-DHOJICHA_BUILD_FLAVOR=release",
           "-DHOJICHA_DEBUG_QEMU=0",
-          "-DHOJICHA_TEST_KMALLOC=0",
+          "-DHOJICHA_TEST_HMALLOC=0",
           "-DHOJICHA_TEST_INITRD=0",
           "-DHOJICHA_TEST_VFS=0",
           "-DHOJICHA_TEST_CHARDEV=0",
