@@ -1,5 +1,5 @@
-#ifndef __HOJICHA_SYS_HLIBC_PROLOGUE_H
-#define __HOJICHA_SYS_HLIBC_PROLOGUE_H
+#ifndef __HOJICHA_INTERNAL_HLIBC_PROLOGUE_H
+#define __HOJICHA_INTERNAL_HLIBC_PROLOGUE_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -11,5 +11,5 @@ void __hlibc_prologue(void);
 }
 #endif
 
-#endif  // __HOJICHA_SYS_HLIBC_PROLOGUE_H
+#endif  // __HOJICHA_INTERNAL_HLIBC_PROLOGUE_H
 
