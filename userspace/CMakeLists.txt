@@ -2,7 +2,11 @@ file(GLOB USERSPACE_SOURCES CONFIGURE_DEPENDS *.c)
 
 foreach(source ${USERSPACE_SOURCES})
   get_filename_component(program "${source}" NAME_WE)
-  add_executable("userspace_${program}" crt0.s "${source}")
+  add_executable(
+    "userspace_${program}"
+    "${HOJICHA_PROJECT_ROOT}/libc/internal/crt0.s"
+    "${source}"
+  )
   set_target_properties("userspace_${program}" PROPERTIES
     OUTPUT_NAME "${program}"
     SUFFIX ""

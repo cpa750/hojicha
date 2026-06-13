@@ -1,9 +1,12 @@
 .global _start
 .type _start, @function
+.extern __hlibc_prologue
 .extern main
 .extern exit
 
 _start:
+  call __hlibc_prologue
+
   mov (%rsp), %rdi
   lea 8(%rsp), %rsi
   mov %rsi, %rdx

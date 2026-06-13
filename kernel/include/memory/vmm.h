@@ -47,7 +47,7 @@ void vmm_free(vmm_t* vmm);
 
 haddr_t vmm_map_at_paddr(vmm_t* vmm, haddr_t virt, haddr_t phys, haddr_t flags);
 haddr_t vmm_map_single(vmm_t* vmm, haddr_t virt, haddr_t flags);
-haddr_t vmm_map(vmm_t* vmm, haddr_t virt, haddr_t size, haddr_t flags);
+haddr_t vmm_map(vmm_t* vmm, haddr_t virt, haddr_t page_count, haddr_t flags);
 haddr_t vmm_unmap(vmm_t* vmm, haddr_t virt);
 
 #endif  // VMM_H

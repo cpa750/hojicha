@@ -1,5 +1,5 @@
 #include <errno.h>
-#include <sys/__syscalls.h>
+#include <internal/__syscalls.h>
 #include <sys/ioctl.h>
 
 int ioctl(int fd, unsigned long request, void* arg) {

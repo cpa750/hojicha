@@ -4,7 +4,7 @@
 #include <hlog.h>
 #include <multitask/syscall.h>
 #include <multitask/syscall_callbacks.h>
-#include <sys/__syscalls.h>
+#include <internal/__syscalls.h>
 
 struct syscall {
   syscall_callback_t callback;
@@ -31,10 +31,9 @@ void syscall_handle(interrupt_frame_t* frame) {
       ret = syscall_fork(frame);
       break;
     case __HOJICHA_SYS_SYSCALL_EXECVE:
-      ret = syscall_execve(
-          (const char*)frame->rdi,
-          (char* const*)frame->rsi,
-          (char* const*)frame->rdx);
+      ret = syscall_execve((const char*)frame->rdi,
+                           (char* const*)frame->rsi,
+                           (char* const*)frame->rdx);
       break;
     case __HOJICHA_SYS_SYSCALL_STAT:
       ret = syscall_stat((const char*)frame->rdi, (stat_t*)frame->rsi);
@@ -49,8 +48,8 @@ void syscall_handle(interrupt_frame_t* frame) {
       ret = syscall_ioctl(frame->rdi, frame->rsi, (void*)frame->rdx);
       break;
     case __HOJICHA_SYS_SYSCALL_GETDENTS:
-      ret = syscall_getdents(
-          frame->rdi, (linux_dirent_t*)frame->rsi, frame->rdx);
+      ret =
+          syscall_getdents(frame->rdi, (linux_dirent_t*)frame->rsi, frame->rdx);
       break;
     case __HOJICHA_SYS_SYSCALL_MKDIR:
       ret = syscall_mkdir((const char*)frame->rdi);
@@ -66,6 +65,9 @@ void syscall_handle(interrupt_frame_t* frame) {
       break;
     case __HOJICHA_SYS_SYSCALL_NANOSLEEP:
       ret = syscall_nanosleep((unsigned long)frame->rdi);
+      break;
+    case __HOJICHA_SYS_SYSCALL_BRK:
+      ret = syscall_brk((unsigned long)frame->rdi);
       break;
     default:
       hlog_write(HLOG_WARN, "Syscall %d is invalid.", frame->rax);

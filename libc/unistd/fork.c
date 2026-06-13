@@ -1,5 +1,5 @@
 #include <errno.h>
-#include <sys/__syscalls.h>
+#include <internal/__syscalls.h>
 #include <unistd.h>
 
 int fork(void) {

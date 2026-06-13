@@ -82,6 +82,7 @@ extern void enter_ring3(haddr_t rsp, haddr_t rip);
 
 bool is_valid_header(elf_header_t* header);
 static haddr_t align_down(haddr_t addr, haddr_t align);
+static haddr_t align_up(haddr_t addr, haddr_t align);
 static uint64_t string_array_count(char** strings);
 static haddr_t prepare_user_stack(haddr_t stack_bottom,
                                   haddr_t stack_top,
@@ -154,10 +155,17 @@ bool elf_map(elf_t* elf, vmm_t* vmm) {
 }
 
 void elf_launch(elf_t* elf,
-                vmm_t* vmm,
+                process_mem_t* mem,
                 uint64_t argc,
                 char** argv,
                 char** envp) {
+  if (mem == NULL || mem->vmm == NULL) {
+    hlog_write(HLOG_ERROR, "%s process does not have memory state.",
+               load_error_msg_prefix);
+    abort();
+  }
+
+  vmm_t* vmm = mem->vmm;
   elf_map(elf, vmm);
   haddr_t highest_loaded_addr = USER_SPACE_MIN_VADDR;
   for (uint16_t i = 0; i < elf->header->count_prog_header_table_entry; ++i) {
@@ -182,13 +190,18 @@ void elf_launch(elf_t* elf,
   haddr_t user_stack_top = USER_SPACE_MAX_VADDR;
   haddr_t user_stack_location =
       user_stack_top - pmm_page_to_addr_base(stack_size);
+  haddr_t initial_brk = align_up(highest_loaded_addr, PAGE_SIZE) + PAGE_SIZE;
 
-  if (user_stack_location <= highest_loaded_addr + PAGE_SIZE) {
+  if (user_stack_location <= initial_brk) {
     hlog_write(HLOG_ERROR,
                "%s no room for user stack in lower-half userspace range.",
                load_error_msg_prefix);
     abort();
   }
+
+  mem->brk_start = initial_brk;
+  mem->brk = initial_brk;
+  mem->stack_start = user_stack_location;
 
   vmm_map(vmm,
           user_stack_location,
@@ -204,6 +217,10 @@ void elf_launch(elf_t* elf,
 
 static haddr_t align_down(haddr_t addr, haddr_t align) {
   return addr & ~(align - 1);
+}
+
+static haddr_t align_up(haddr_t addr, haddr_t align) {
+  return (addr + align - 1) & ~(align - 1);
 }
 
 static uint64_t string_array_count(char** strings) {

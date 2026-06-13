@@ -1,4 +1,4 @@
-#include <sys/__syscalls.h>
+#include <internal/__syscalls.h>
 #include <time.h>
 
 unsigned long nanosleep(unsigned long ns) {

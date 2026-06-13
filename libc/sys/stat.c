@@ -1,5 +1,5 @@
 #include <errno.h>
-#include <sys/__syscalls.h>
+#include <internal/__syscalls.h>
 #include <sys/stat.h>
 
 int stat(const char* path, stat_t* stat_buf) {

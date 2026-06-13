@@ -24,6 +24,7 @@ target_compile_definitions(libk_objects PRIVATE __is_libc __is_libk __printf_ser
 target_include_directories(libk_objects PRIVATE include "${HOJICHA_KERNEL_INCLUDE_DIR}")
 
 add_subdirectory(arch)
+add_subdirectory(internal)
 add_subdirectory(dirent)
 add_subdirectory(fcntl)
 add_subdirectory(stdio)

@@ -1,4 +1,4 @@
-#include <sys/__syscalls.h>
+#include <internal/__syscalls.h>
 #include <unistd.h>
 
 #define __HOJICHA_NANOSLEEP_NS_MULTIPLIER 1000000000ULL

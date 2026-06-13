@@ -79,6 +79,9 @@ uint8_t get_lowest_zero_bit(uint8_t num);
 void mark_page(haddr_t idx);
 
 haddr_t pmm_addr_to_page(haddr_t addr) { return align_to_prev_page(addr); }
+haddr_t pmm_addr_to_page_ceil(haddr_t addr) {
+  return (addr + PAGE_SIZE - 1) >> 12;
+}
 haddr_t pmm_page_to_addr_base(haddr_t page) { return page << 12; }
 
 pmm_state_t pmm;

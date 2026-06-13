@@ -1,4 +1,5 @@
 target_sources(kernel_objects PRIVATE
+  syscall_brk.c
   syscall_close.c
   syscall_execve.c
   syscall_exit.c

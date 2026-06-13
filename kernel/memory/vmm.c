@@ -262,9 +262,9 @@ vmm_t* vmm_copy(vmm_t* src) {
   return dst;
 }
 
-haddr_t vmm_map(vmm_t* vmm, haddr_t virt, haddr_t size, haddr_t flags) {
+haddr_t vmm_map(vmm_t* vmm, haddr_t virt, haddr_t page_count, haddr_t flags) {
   haddr_t base = virt;
-  while (size-- > 0) {
+  while (page_count-- > 0) {
     haddr_t res = vmm_map_single(vmm, virt, flags);
     //  OOM
     if (res == 0) { return res; }
