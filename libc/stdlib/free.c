@@ -1,13 +1,6 @@
 #include <stdlib.h>
-#if defined(__is_libk)
-#include <memory/kmalloc.h>
-#endif
+#include <hmalloc.h>
 
 void free(void* ptr) {
-#if defined(__is_libk)
-  return kfree(ptr);
-#else
-  // TODO userspace free()
-  return;
-#endif
+  hfree(ptr);
 }

@@ -1,9 +1,9 @@
 #include <errno.h>
-#include <sys/__syscalls.h>
+#include <internal/__syscalls.h>
 #include <unistd.h>
 
 int execve(const char* pathname, char* const argv[], char* const envp[]) {
-  int ret = __syscall3(__HOJICHA_SYS_SYSCALL_EXECVE,
+  int ret = __syscall3(__HOJICHA_INTERNAL_SYSCALL_EXECVE,
                        (long)pathname,
                        (long)argv,
                        (long)envp);

@@ -23,6 +23,14 @@ typedef enum proc_status {
 
 typedef struct elf elf_t;
 
+typedef struct process_mem process_mem_t;
+struct process_mem {
+  vmm_t* vmm;
+  haddr_t brk_start;
+  haddr_t brk;
+  haddr_t stack_start;
+};
+
 /*
  * The entry point of the process. Must take no parameters and return void.
  */
@@ -40,7 +48,7 @@ void sched_pb_set_next(process_block_t* p, process_block_t* next);
 hlogger_t* sched_pb_get_logger(process_block_t* p);
 char* sched_pb_get_name(process_block_t* p);
 uint64_t sched_pb_get_pid(process_block_t* p);
-vmm_t* sched_pb_get_vmm(process_block_t* p);
+process_mem_t* sched_pb_get_mem(process_block_t* p);
 void sched_pb_set_elf(process_block_t* p, elf_t* elf);
 void* sched_pb_get_cr3(process_block_t* p);
 

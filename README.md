@@ -9,8 +9,8 @@ Preparation work for proper init and shell programs:
 - [X] VFS exposed as syscalls
 - [x] TTY configuration via devfs
 - [x] stdin/stdout/stderr
-- [ ] fork()/exec()
-- [ ] Userland malloc()/free(), mmap(), sbrk()
+- [x] fork()/exec()
+- [x] brk()/sbrk()/userspace malloc()
 
 ## MVP Done:
 - [x] Babysteps
@@ -44,6 +44,8 @@ Preparation work for proper init and shell programs:
   - [x] devfs machinery prototype
   - [ ] Ext2
 - [ ] Userspace
+  - [x] malloc and friends
+  - [ ] basic init and shell
   - [ ] ls/touch/mkdir/rm/cat etc.
   - [ ] Brainfuck interpreter/compiler
   - [ ] DOOM port
@@ -64,7 +66,7 @@ It then should be as simple as `./run_virtual.sh` from the project root - see be
 ### Build Flags
 - You can set the default kernel log level by passing `--hlog-level=INFO` (or `WARN`, `ERROR`, `FATAL`, `DEBUG`, `VERBOSE`) to `./build.sh` or `./run_virtual.sh`.
 - You can enable debugging via QEMU by passing `--debug-qemu` to `./build.sh` and `./run_virtual.sh`.
-- Tests can be run with: `--test-chardev`, `--test-kmalloc`, `--test-initrd`, `--test-vfs`, `--test-ringbuffer`, or `--test-all`
-- Kmalloc stress tests can be run with: `--stress-kmalloc`
+- Tests can be run with: `--test-chardev`, `--test-hmalloc`, `--test-initrd`, `--test-vfs`, `--test-ringbuffer`, or `--test-all`
+- Hmalloc stress tests can be run with: `--stress-hmalloc`
 - Automated system tests can be enabled with `--ast-scheduler`. The results can be verified with `scripts/verify_scheduler_ast.py`.
 - `./run_virtual.sh` writes QEMU serial output to `logs/serial.log` by default. Override `QEMU_ARGS` to choose a different location.

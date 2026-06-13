@@ -46,6 +46,7 @@ int main(void) {
 
   if (launch("ls", "/usr/bin/ls") < 0) { return 1; }
   if (launch_bigmaths() < 0) { return 1; }
+  if (launch("hmalloc_test", "/usr/bin/hmalloc_test") < 0) { return 1; }
 
   return 0;
 }

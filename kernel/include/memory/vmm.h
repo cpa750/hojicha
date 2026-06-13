@@ -27,7 +27,7 @@ void vmm_initialize();
  * which will be used in the mapping of the page directories. The page
  * directories will always be mapped as PAGE_PRESENT and PAGE_WRITABLE,
  * regardless of the value of this argument.
- * Can only be called after initializing kmalloc.
+ * Can only be called after initializing hmalloc.
  * The caller is responsible for freeing the handle with `vmm_free()`.
  */
 vmm_t* vmm_new(haddr_t flags);
@@ -47,7 +47,7 @@ void vmm_free(vmm_t* vmm);
 
 haddr_t vmm_map_at_paddr(vmm_t* vmm, haddr_t virt, haddr_t phys, haddr_t flags);
 haddr_t vmm_map_single(vmm_t* vmm, haddr_t virt, haddr_t flags);
-haddr_t vmm_map(vmm_t* vmm, haddr_t virt, haddr_t size, haddr_t flags);
+haddr_t vmm_map(vmm_t* vmm, haddr_t virt, haddr_t page_count, haddr_t flags);
 haddr_t vmm_unmap(vmm_t* vmm, haddr_t virt);
 
 #endif  // VMM_H

@@ -62,7 +62,7 @@ struct process_block {
   uint64_t sleep_until;
   uint64_t switch_timestamp;
 
-  vmm_t* vmm;
+  process_mem_t* mem;
   elf_t* elf;
   uint64_t argc;
   char** argv;
@@ -80,11 +80,14 @@ void sched_pb_set_next(process_block_t* p, process_block_t* next) {
 hlogger_t* sched_pb_get_logger(process_block_t* p) { return p->logger; }
 char* sched_pb_get_name(process_block_t* p) { return p->name; }
 uint64_t sched_pb_get_pid(process_block_t* p) { return p->pid; }
-vmm_t* sched_pb_get_vmm(process_block_t* p) { return p->vmm; }
+process_mem_t* sched_pb_get_mem(process_block_t* p) { return p->mem; }
 void sched_pb_set_elf(process_block_t* p, elf_t* elf) { p->elf = elf; }
 void multitask_pb_dump(process_block_t* p, hlog_level_t log_level) {
   haddr_t vmm_cr3 = 0;
-  if (p->vmm != NULL) { vmm_cr3 = (haddr_t)vmm_get_cr3(p->vmm); }
+  process_mem_t* mem = sched_pb_get_mem(p);
+  if (mem != NULL && mem->vmm != NULL) {
+    vmm_cr3 = (haddr_t)vmm_get_cr3(mem->vmm);
+  }
   hlog_write(log_level,
              "Process block for \"%s\" (at %x):\n"
              "CR3:\t\t\t%x\n"
@@ -98,6 +101,9 @@ void multitask_pb_dump(process_block_t* p, hlog_level_t log_level) {
              "Stack end:\t\t%x\n"
              "VMM:\t\t\t%x\n"
              "VMM->pml4_phy:\t%x\n"
+             "brk_start:\t\t%x\n"
+             "brk:\t\t\t%x\n"
+             "stack_start:\t%x\n"
              "elf:\t\t\t%x\n",
              p->name,
              (haddr_t)p,
@@ -110,8 +116,11 @@ void multitask_pb_dump(process_block_t* p, hlog_level_t log_level) {
              (haddr_t)p->pid,
              (haddr_t)p->next,
              (haddr_t)p->stack_end,
-             (haddr_t)p->vmm,
+             mem == NULL ? 0 : (haddr_t)mem->vmm,
              vmm_cr3,
+             mem == NULL ? 0 : mem->brk_start,
+             mem == NULL ? 0 : mem->brk,
+             mem == NULL ? 0 : mem->stack_start,
              (haddr_t)p->elf);
 }
 
@@ -166,6 +175,8 @@ void mark_proc_range(process_block_t* start,
                      process_block_t* end,
                      proc_status_t status);
 process_block_t* new_proc_shared(char* name, void* cr3);
+process_mem_t* process_mem_new(vmm_t* vmm);
+void process_mem_free(process_mem_t* mem);
 char* proc_name_new(const char* name, uint64_t name_len);
 void proc_prelude(process_block_t* p);
 void proc_strings_free(char** strings);
@@ -193,18 +204,20 @@ void sched_initialize(void) {
   kernel_process->pid = 0;
   kernel_process->name = proc_name_new("hojicha", strlen("hojicha"));
   kernel_process->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
-  kernel_process->vmm = g_kernel.vmm;
+  kernel_process->mem = process_mem_new(g_kernel.vmm);
   kernel_process->fds = (vfs_file_t**)calloc(1, sizeof(vfs_file_t*) * MAX_FDS);
   kernel_process->children =
       (process_block_t**)calloc(1, sizeof(process_block_t*) * MAX_CHILDREN);
   if (kernel_process->name == NULL || kernel_process->logger == NULL ||
-      kernel_process->fds == NULL || kernel_process->children == NULL) {
+      kernel_process->mem == NULL || kernel_process->fds == NULL ||
+      kernel_process->children == NULL) {
     free(kernel_process->name);
     if (kernel_process->logger != NULL) {
       hlog_free_logger(kernel_process->logger);
     }
     free(kernel_process->fds);
     free(kernel_process->children);
+    process_mem_free(kernel_process->mem);
     free(kernel_process);
     abort();
   }
@@ -236,14 +249,19 @@ process_block_t* sched_kproc_new(char* name, proc_entry_t entry, void* cr3) {
 
   new_proc->is_kernel_proc = true;
   new_proc->entry = entry;
-  new_proc->vmm = g_kernel.vmm;
+  new_proc->mem->vmm = g_kernel.vmm;
   return new_proc;
 }
 
 process_block_t* sched_uproc_new(char* name, elf_t* elf) {
   vmm_t* vmm = vmm_new(PAGE_USER_ACCESIBLE);
+  if (vmm == NULL) { return NULL; }
+
   process_block_t* new_proc = new_proc_shared(name, vmm_get_cr3(vmm));
-  if (vmm == NULL || new_proc == NULL) { return NULL; }
+  if (new_proc == NULL) {
+    vmm_free(vmm);
+    return NULL;
+  }
 
   for (uint64_t fd = 0; fd < 3; ++fd) {
     vfs_file_t* tty = NULL;
@@ -265,7 +283,7 @@ process_block_t* sched_uproc_new(char* name, elf_t* elf) {
 
   new_proc->is_kernel_proc = false;
   new_proc->elf = elf;
-  new_proc->vmm = vmm;
+  new_proc->mem->vmm = vmm;
   return new_proc;
 }
 
@@ -277,7 +295,7 @@ long sched_execve(process_block_t* process,
                   char** argv,
                   char** envp) {
   if (process == NULL || process != g_kernel.current_process || elf == NULL ||
-      process->fds == NULL) {
+      process->fds == NULL || process->mem == NULL) {
     proc_strings_free(argv);
     proc_strings_free(envp);
     return -EINVAL;
@@ -307,14 +325,17 @@ long sched_execve(process_block_t* process,
 
   char* old_name = process->name;
   hlogger_t* old_logger = process->logger;
-  vmm_t* old_vmm = process->vmm;
+  vmm_t* old_vmm = process->mem->vmm;
   elf_t* old_elf = process->elf;
   char** old_argv = process->argv;
   char** old_envp = process->envp;
 
   process->name = proc_name;
   process->logger = logger;
-  process->vmm = vmm;
+  process->mem->vmm = vmm;
+  process->mem->brk_start = 0;
+  process->mem->brk = 0;
+  process->mem->stack_start = 0;
   process->cr3 = vmm_get_cr3(vmm);
   process->elf = elf;
   process->argc = argc;
@@ -331,7 +352,7 @@ long sched_execve(process_block_t* process,
   proc_strings_free(old_envp);
 
   elf_launch(
-      process->elf, process->vmm, process->argc, process->argv, process->envp);
+      process->elf, process->mem, process->argc, process->argv, process->envp);
   proc_strings_free(process->argv);
   proc_strings_free(process->envp);
   process->argc = 0;
@@ -363,7 +384,9 @@ long sched_fork(process_block_t* process, interrupt_frame_t* frame) {
     return -EINVAL;
   }
 
-  vmm_t* new_vmm = vmm_copy(process->vmm);
+  if (process->mem == NULL) { return -EINVAL; }
+
+  vmm_t* new_vmm = vmm_copy(process->mem->vmm);
   if (new_vmm == NULL) {
     hlog_write(HLOG_ERROR,
                "Could not fork new process %s: out of memory.",
@@ -378,7 +401,10 @@ long sched_fork(process_block_t* process, interrupt_frame_t* frame) {
     return -ENOMEM;
   }
 
-  new_proc->vmm = new_vmm;
+  new_proc->mem->vmm = new_vmm;
+  new_proc->mem->brk_start = process->mem->brk_start;
+  new_proc->mem->brk = process->mem->brk;
+  new_proc->mem->stack_start = process->mem->stack_start;
 
   haddr_t child_stack_base = (haddr_t)new_proc->stack_end + STACK_SIZE;
   haddr_t child_frame_addr = child_stack_base - sizeof(interrupt_frame_t);
@@ -666,6 +692,7 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
       (process_block_t**)calloc(1, sizeof(process_block_t*) * MAX_CHILDREN);
   uint8_t* stack_end = (uint8_t*)calloc(1, STACK_SIZE);
   hlogger_t* logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
+  process_mem_t* mem = process_mem_new(NULL);
   uint64_t pid = g_kernel.sched->total_processes_added + 1;
   char pid_name[21] = {0};
   if (name == NULL) {
@@ -673,12 +700,13 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
     name = pid_name;
   }
   char* proc_name = proc_name_new(name, strlen(name));
-  if (new_proc == NULL || fds == NULL || children == NULL ||
+  if (new_proc == NULL || mem == NULL || fds == NULL || children == NULL ||
       stack_end == NULL || logger == NULL || proc_name == NULL) {
     free(new_proc);
     free(fds);
     free(children);
     free(stack_end);
+    process_mem_free(mem);
     free(proc_name);
     if (logger != NULL) { hlog_free_logger(logger); }
     hlog_write(HLOG_ERROR,
@@ -690,6 +718,7 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
   new_proc->pid = pid;
   new_proc->cr3 = cr3;
   new_proc->stack_end = stack_end;
+  new_proc->mem = mem;
   haddr_t stack_base = (haddr_t)(stack_end + STACK_SIZE);
   new_proc->rsp0 = (void*)stack_base;
   stack_base &= ~0xFULL;
@@ -722,6 +751,19 @@ char* proc_name_new(const char* name, uint64_t name_len) {
   return ret;
 }
 
+process_mem_t* process_mem_new(vmm_t* vmm) {
+  process_mem_t* mem = calloc(1, sizeof(process_mem_t));
+  if (mem == NULL) { return NULL; }
+  mem->vmm = vmm;
+  return mem;
+}
+
+void process_mem_free(process_mem_t* mem) {
+  if (mem == NULL) { return; }
+  if (mem->vmm != NULL && mem->vmm != g_kernel.vmm) { vmm_free(mem->vmm); }
+  free(mem);
+}
+
 void proc_strings_free(char** strings) {
   if (strings == NULL) { return; }
 
@@ -739,7 +781,7 @@ void proc_prelude(process_block_t* p) {
   if (p->is_kernel_proc) {
     p->entry();
   } else {
-    elf_launch(p->elf, p->vmm, p->argc, p->argv, p->envp);
+    elf_launch(p->elf, p->mem, p->argc, p->argv, p->envp);
   }
   sched_proc_terminate(p);
 }
@@ -882,7 +924,7 @@ void terminator(void) {
         free(p->name);
         proc_strings_free(p->argv);
         proc_strings_free(p->envp);
-        if (p->vmm != NULL && p->vmm != g_kernel.vmm) { vmm_free(p->vmm); }
+        process_mem_free(p->mem);
         free(p->stack_end);
         free(p);
         p = next;

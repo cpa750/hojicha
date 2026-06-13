@@ -3,6 +3,7 @@
 #include <limine.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
+#include <multitask/spinlock.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -79,9 +80,14 @@ uint8_t get_lowest_zero_bit(uint8_t num);
 void mark_page(haddr_t idx);
 
 haddr_t pmm_addr_to_page(haddr_t addr) { return align_to_prev_page(addr); }
+haddr_t pmm_addr_to_page_ceil(haddr_t addr) {
+  return (addr + PAGE_SIZE - 1) >> 12;
+}
 haddr_t pmm_page_to_addr_base(haddr_t page) { return page << 12; }
 
 pmm_state_t pmm;
+
+static spinlock_t pmm_spinlock = {0};
 
 void pmm_initialize() {
   pmm.page_size = PAGE_SIZE;
@@ -144,6 +150,8 @@ void pmm_initialize() {
   pmm.first_early_alloc_addr =
       pmm_page_to_addr_base(align_to_next_page(pmm.max_section_start_addr));
   pmm.last_early_alloc_addr = pmm.first_early_alloc_addr;
+
+  spinlock_init(&pmm_spinlock);
 }
 
 void pmm_initialize_bitmap() {
@@ -186,20 +194,27 @@ void pmm_initialize_bitmap() {
 haddr_t pmm_alloc_frame() {
   if (!pmm.memmap_is_initialized) { return early_alloc(); }
 
+  uint64_t lock_count = spinlock_lock(&pmm_spinlock);
   haddr_t bitmap_idx;
   for (bitmap_idx = 0; bitmap_idx <= pmm.bitmap_size; ++bitmap_idx) {
     haddr_t base_page_idx = bitmap_idx << 3;
     if (mem_bitmap[bitmap_idx] != 0xFF) {
       uint8_t offset = get_lowest_zero_bit(mem_bitmap[bitmap_idx]);
       mark_page(base_page_idx + offset);
+      spinlock_unlock(&pmm_spinlock, lock_count);
       return pmm_page_to_addr_base(base_page_idx + offset);
     }
   }
   // OOM
+  spinlock_unlock(&pmm_spinlock, lock_count);
   return 0;
 }
 
-void pmm_free_frame(haddr_t addr) { clear_page(pmm_addr_to_page(addr)); }
+void pmm_free_frame(haddr_t addr) {
+  uint64_t lock_count = spinlock_lock(&pmm_spinlock);
+  clear_page(pmm_addr_to_page(addr));
+  spinlock_unlock(&pmm_spinlock, lock_count);
+}
 
 haddr_t align_to_next_page(haddr_t addr) { return (addr >> 12) + 1; }
 

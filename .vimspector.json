@@ -1,4 +1,12 @@
 {
+  "inputs": [
+    {
+      "id": "userspaceProgram",
+      "type": "promptString",
+      "description": "Userspace executable ELF image",
+      "default": "${workspaceRoot}/userspace/bin/init"
+    }
+  ],
   "configurations": {
     "Attach to QEMU": {
       "adapter": "vscode-cpptools",
@@ -9,6 +17,26 @@
         "MIMode": "gdb",
         "miDebuggerServerAddress": "127.0.0.1:1234",
         "program": "${workspaceRoot}/build/x86_64/debug/hojicha.kernel",
+        "cwd": "${workspaceRoot}",
+        "externalConsole": false,
+        "setupCommands": [
+          {
+            "description": "Enable pretty-printing for gdb",
+            "text": "-enable-pretty-printing",
+            "ignoreFailures": true
+          }
+        ]
+      }
+    },
+    "Attach to QEMU Userspace": {
+      "adapter": "vscode-cpptools",
+      "configuration": {
+        "name": "Attach Remote GDB Userspace",
+        "type": "cppdbg",
+        "request": "launch",
+        "MIMode": "gdb",
+        "miDebuggerServerAddress": "127.0.0.1:1234",
+        "program": "${workspaceRoot}/userspace/bin/${input:userspaceProgram}",
         "cwd": "${workspaceRoot}",
         "externalConsole": false,
         "setupCommands": [
@@ -43,7 +71,7 @@
           "-DHOJICHA_SYSROOT=${workspaceRoot}/sysroot",
           "-DHOJICHA_BUILD_FLAVOR=release",
           "-DHOJICHA_DEBUG_QEMU=0",
-          "-DHOJICHA_TEST_KMALLOC=0",
+          "-DHOJICHA_TEST_HMALLOC=0",
           "-DHOJICHA_TEST_INITRD=0",
           "-DHOJICHA_TEST_VFS=0",
           "-DHOJICHA_TEST_CHARDEV=0",

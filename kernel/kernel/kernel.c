@@ -13,7 +13,7 @@
 #include <hlog.h>
 #include <kernel/g_kernel.h>
 #include <limine.h>
-#include <memory/kmalloc.h>
+#include <hmalloc.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
 #include <multitask/bootmodule.h>
@@ -28,8 +28,8 @@
 #if defined(__test_chardev)
 #include <dev/chardev_test.h>
 #endif
-#if defined(__test_kmalloc) || defined(__stress_kmalloc)
-#include <memory/kmalloc_test.h>
+#if defined(__test_hmalloc) || defined(__stress_hmalloc)
+#include <memory/hmalloc_test.h>
 #endif
 #if defined(__test_initrd)
 #include <fs/initrd_test.h>
@@ -96,14 +96,14 @@ void kernel_main() {
   }
   vmm_initialize();
   print_ok("VMM");
-  kmalloc_initialize();
-  print_ok("kmalloc");
+  hmalloc_initialize();
+  print_ok("hmalloc");
 
-#if defined(__test_kmalloc)
-  kmalloc_test();
+#if defined(__test_hmalloc)
+  hmalloc_test();
 #endif
-#if defined(__stress_kmalloc)
-  kmalloc_stress_test();
+#if defined(__stress_hmalloc)
+  hmalloc_stress_test();
 #endif
 
   if (!bootmodule_cache_finalize()) {

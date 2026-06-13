@@ -1,7 +1,7 @@
 #include <fcntl.h>
 #include <stddef.h>
 #include <stdio.h>
-#include <sys/__syscalls.h>
+#include <internal/__syscalls.h>
 
 #if defined(__is_libk)
 #include <drivers/tty.h>

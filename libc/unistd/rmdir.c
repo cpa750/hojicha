@@ -1,9 +1,9 @@
 #include <errno.h>
-#include <sys/__syscalls.h>
+#include <internal/__syscalls.h>
 #include <unistd.h>
 
 int rmdir(const char* path) {
-  int ret = __syscall1(__HOJICHA_SYS_SYSCALL_RMDIR, (long)path);
+  int ret = __syscall1(__HOJICHA_INTERNAL_SYSCALL_RMDIR, (long)path);
   if (ret < 0) {
     errno = -ret;
     return -1;

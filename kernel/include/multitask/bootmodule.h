@@ -17,7 +17,7 @@ bool bootmodule_initialize();
 /*
  * Maps captured Limine response pages and deep-copies module names and bytes
  * into kernel-owned structures.
- * Must be called after VMM and kmalloc initialization.
+ * Must be called after VMM and hmalloc initialization.
  */
 bool bootmodule_cache_finalize();
 
