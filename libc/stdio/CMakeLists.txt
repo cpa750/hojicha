@@ -1,7 +1,12 @@
 set(LIBC_STDIO_SOURCES
+  fgetc.c
+  fgets.c
+  fputc.c
+  getchar.c
   printf.c
   putchar.c
   puts.c
+  streams.c
   vprintf.c
   vsnprintf.c
 )
