@@ -7,12 +7,14 @@
 #include <memory/vmm.h>
 #include <multitask/elf.h>
 #include <multitask/scheduler.h>
+#include <multitask/wait_queue.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define QUANTUM_LENGTH 20000000  // 20 ms
+#define SCHED_WAITPID_WNOHANG 1
 
 struct sched_state {
   process_block_t* first_ready_to_run;
@@ -71,6 +73,9 @@ struct process_block {
   vfs_file_t** fds;
   process_block_t** children;
   process_block_t* parent;
+  wait_queue_t child_waiters;
+  wait_queue_t exit_waiters;
+  int exit_code;
 };
 
 process_block_t* sched_pb_get_next(process_block_t* p) { return p->next; }
@@ -180,11 +185,23 @@ void process_mem_free(process_mem_t* mem);
 char* proc_name_new(const char* name, uint64_t name_len);
 void proc_prelude(process_block_t* p);
 void proc_strings_free(char** strings);
+void process_free(process_block_t* p);
+void process_fd_release(vfs_file_t* file);
+long process_wait_collect(process_block_t* parent,
+                          process_block_t* child,
+                          uint64_t child_slot,
+                          int* wstatus);
+void ready_to_die_remove(process_block_t* target);
 void set_last_ready_to_run(sched_state_t* mt,
                            process_block_t* first_ready_to_run);
 void remove_proc(process_block_t* p);
 void sleep_proc_until(process_block_t* process, uint64_t timestamp);
 void terminator(void);
+static bool wait_child_find(process_block_t* parent,
+                            long pid,
+                            process_block_t** child_out,
+                            uint64_t* child_slot_out);
+static void wait_queue_sleep_postponed(wait_queue_t* q);
 void wake_procs_before_timestamp(uint64_t timestamp);
 
 void sched_initialize(void) {
@@ -208,6 +225,8 @@ void sched_initialize(void) {
   kernel_process->fds = (vfs_file_t**)calloc(1, sizeof(vfs_file_t*) * MAX_FDS);
   kernel_process->children =
       (process_block_t**)calloc(1, sizeof(process_block_t*) * MAX_CHILDREN);
+  wait_queue_init(&kernel_process->child_waiters);
+  wait_queue_init(&kernel_process->exit_waiters);
   if (kernel_process->name == NULL || kernel_process->logger == NULL ||
       kernel_process->mem == NULL || kernel_process->fds == NULL ||
       kernel_process->children == NULL) {
@@ -429,11 +448,59 @@ long sched_fork(process_block_t* process, interrupt_frame_t* frame) {
   new_proc->parent = process;
   new_proc->is_kernel_proc = process->is_kernel_proc;
   new_proc->entry = process->entry;
-  new_proc->elf = process->elf;
+  new_proc->elf = NULL;
   new_proc->status = PROC_STATUS_READY_TO_RUN;
   process->children[child_slot] = new_proc;
   enqueue_ready_process(new_proc);
   return new_proc->pid;
+}
+
+long sched_waitpid(process_block_t* process,
+                   long pid,
+                   int* wstatus,
+                   int options) {
+  if (process == NULL || process->children == NULL) { return -ECHILD; }
+  if ((options & ~SCHED_WAITPID_WNOHANG) != 0 || pid == 0 || pid < -1) {
+    return -EINVAL;
+  }
+
+  sched_postpone();
+
+  process_block_t* child = NULL;
+  uint64_t child_slot = 0;
+  bool has_child = wait_child_find(process, pid, &child, &child_slot);
+
+  if (!has_child) {
+    sched_resume();
+    return -ECHILD;
+  }
+
+  if (child->status == PROC_STATUS_READY_TO_DIE) {
+    long ret = process_wait_collect(process, child, child_slot, wstatus);
+    sched_resume();
+    return ret;
+  }
+
+  if ((options & SCHED_WAITPID_WNOHANG) != 0) {
+    sched_resume();
+    return 0;
+  }
+
+  if (pid == -1) {
+    wait_queue_sleep_postponed(&process->child_waiters);
+    has_child = wait_child_find(process, pid, &child, &child_slot);
+  } else {
+    wait_queue_sleep_postponed(&child->exit_waiters);
+  }
+
+  if (!has_child || child == NULL || child->status != PROC_STATUS_READY_TO_DIE) {
+    sched_resume();
+    return -ECHILD;
+  }
+
+  long ret = process_wait_collect(process, child, child_slot, wstatus);
+  sched_resume();
+  return ret;
 }
 
 void sched_add_proc(process_block_t* process) {
@@ -600,6 +667,10 @@ void sched_current_sleep_ns(uint64_t ns) {
 }
 
 void sched_proc_terminate(process_block_t* p) {
+  sched_proc_exit(p, 0);
+}
+
+void sched_proc_exit(process_block_t* p, int code) {
   if (p == NULL) { return; }
   sched_postpone();
 
@@ -609,6 +680,7 @@ void sched_proc_terminate(process_block_t* p) {
     sched_resume();
     return;
   }
+  p->exit_code = code;
   if (p != g_kernel.current_process) { remove_proc(p); }
   p->next = g_kernel.sched->ready_to_die;
   g_kernel.sched->ready_to_die = p;
@@ -730,6 +802,8 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
   switch_frame[15] = (haddr_t)proc_prelude;
   new_proc->fds = fds;
   new_proc->children = children;
+  wait_queue_init(&new_proc->child_waiters);
+  wait_queue_init(&new_proc->exit_waiters);
 
   new_proc->name = proc_name;
 
@@ -784,6 +858,96 @@ void proc_prelude(process_block_t* p) {
     elf_launch(p->elf, p->mem, p->argc, p->argv, p->envp);
   }
   sched_proc_terminate(p);
+}
+
+void process_free(process_block_t* p) {
+  if (p == NULL) { return; }
+
+  if (p->parent != NULL && p->parent->children != NULL) {
+    for (uint64_t child_slot = 1; child_slot < MAX_CHILDREN; ++child_slot) {
+      if (p->parent->children[child_slot] == p) {
+        p->parent->children[child_slot] = NULL;
+        break;
+      }
+    }
+  }
+
+  if (p->children != NULL) {
+    for (uint64_t child_slot = 1; child_slot < MAX_CHILDREN; ++child_slot) {
+      if (p->children[child_slot] != NULL) {
+        p->children[child_slot]->parent = NULL;
+      }
+    }
+    free(p->children);
+  }
+  hlog_free_logger(p->logger);
+  if (p->fds != NULL) {
+    for (uint64_t fd = 0; fd < MAX_FDS; ++fd) {
+      if (p->fds[fd] != NULL) {
+        vfs_file_t* file = p->fds[fd];
+        p->fds[fd] = NULL;
+        process_fd_release(file);
+      }
+    }
+    free(p->fds);
+  }
+  free(p->name);
+  proc_strings_free(p->argv);
+  proc_strings_free(p->envp);
+  process_mem_free(p->mem);
+  free(p->stack_end);
+  free(p);
+}
+
+void process_fd_release(vfs_file_t* file) {
+  if (file == NULL) { return; }
+
+  if (file->refcount > 1) {
+    vfs_file_release(file);
+    return;
+  }
+
+  vfs_close(file);
+}
+
+long process_wait_collect(process_block_t* parent,
+                          process_block_t* child,
+                          uint64_t child_slot,
+                          int* wstatus) {
+  if (parent == NULL || child == NULL || parent->children == NULL) {
+    return -ECHILD;
+  }
+  if (child->status != PROC_STATUS_READY_TO_DIE) { return -ECHILD; }
+
+  long child_pid = child->pid;
+  if (wstatus != NULL) { *wstatus = (child->exit_code & 0xFF) << 8; }
+
+  parent->children[child_slot] = NULL;
+  child->parent = NULL;
+  ready_to_die_remove(child);
+  process_free(child);
+  return child_pid;
+}
+
+void ready_to_die_remove(process_block_t* target) {
+  if (target == NULL) { return; }
+
+  process_block_t* prev = NULL;
+  for (process_block_t* p = g_kernel.sched->ready_to_die; p != NULL;
+       p = p->next) {
+    if (p != target) {
+      prev = p;
+      continue;
+    }
+
+    if (prev == NULL) {
+      g_kernel.sched->ready_to_die = p->next;
+    } else {
+      prev->next = p->next;
+    }
+    p->next = NULL;
+    return;
+  }
 }
 
 void remove_proc(process_block_t* p) {
@@ -887,52 +1051,76 @@ void terminator(void) {
       sched_unlock();
     } else {
       sched_postpone();
+      process_block_t* waiting_for_parent = NULL;
       process_block_t* next;
+      bool freed_process = false;
       for (process_block_t* p = g_kernel.sched->ready_to_die; p != NULL;) {
         next = p->next;
-        // TODO: we ideally need to hand the logs committing off to a
-        // dedicated task
-        if (p->parent != NULL && p->parent->children != NULL) {
-          for (uint64_t child_slot = 1; child_slot < MAX_CHILDREN;
-               ++child_slot) {
-            if (p->parent->children[child_slot] == p) {
-              p->parent->children[child_slot] = NULL;
-              break;
-            }
-          }
+        p->next = NULL;
+
+        if (p->parent != NULL) {
+          wait_queue_wake_all(&p->exit_waiters);
+          wait_queue_wake_all(&p->parent->child_waiters);
+          p->next = waiting_for_parent;
+          waiting_for_parent = p;
+        } else {
+          // TODO: we ideally need to hand the logs committing off to a
+          // dedicated task
+          process_free(p);
+          freed_process = true;
         }
-        if (p->children != NULL) {
-          for (uint64_t child_slot = 1; child_slot < MAX_CHILDREN;
-               ++child_slot) {
-            if (p->children[child_slot] != NULL) {
-              p->children[child_slot]->parent = NULL;
-            }
-          }
-          free(p->children);
-        }
-        hlog_free_logger(p->logger);
-        if (p->fds != NULL) {
-          for (uint64_t fd = 0; fd < MAX_FDS; ++fd) {
-            if (p->fds[fd] != NULL) {
-              vfs_file_t* file = p->fds[fd];
-              p->fds[fd] = NULL;
-              vfs_close(file);
-            }
-          }
-          free(p->fds);
-        }
-        free(p->name);
-        proc_strings_free(p->argv);
-        proc_strings_free(p->envp);
-        process_mem_free(p->mem);
-        free(p->stack_end);
-        free(p);
         p = next;
       }
-      g_kernel.sched->ready_to_die = NULL;
+      g_kernel.sched->ready_to_die = waiting_for_parent;
       sched_resume();
+      if (!freed_process) { sched_yield(); }
     }
   }
+}
+
+static bool wait_child_find(process_block_t* parent,
+                            long pid,
+                            process_block_t** child_out,
+                            uint64_t* child_slot_out) {
+  if (parent == NULL || parent->children == NULL) { return false; }
+
+  process_block_t* first_matching_child = NULL;
+  uint64_t first_matching_child_slot = 0;
+  for (uint64_t child_slot = 1; child_slot < MAX_CHILDREN; ++child_slot) {
+    process_block_t* child = parent->children[child_slot];
+    if (child == NULL) { continue; }
+    if (pid != -1 && child->pid != (uint64_t)pid) { continue; }
+
+    if (child->status == PROC_STATUS_READY_TO_DIE) {
+      if (child_out != NULL) { *child_out = child; }
+      if (child_slot_out != NULL) { *child_slot_out = child_slot; }
+      return true;
+    }
+
+    if (first_matching_child == NULL) {
+      first_matching_child = child;
+      first_matching_child_slot = child_slot;
+    }
+  }
+
+  if (first_matching_child == NULL) { return false; }
+
+  if (child_out != NULL) { *child_out = first_matching_child; }
+  if (child_slot_out != NULL) { *child_slot_out = first_matching_child_slot; }
+  return true;
+}
+
+static void wait_queue_sleep_postponed(wait_queue_t* q) {
+  if (q == NULL || g_kernel.current_process == NULL) { return; }
+
+  sched_pb_set_next(g_kernel.current_process, NULL);
+  if (q->head == NULL) {
+    q->head = g_kernel.current_process;
+  } else {
+    sched_pb_set_next(q->tail, g_kernel.current_process);
+  }
+  q->tail = g_kernel.current_process;
+  sched_current_block(PROC_STATUS_BLOCKED);
 }
 
 void wake_procs_before_timestamp(uint64_t timestamp) {

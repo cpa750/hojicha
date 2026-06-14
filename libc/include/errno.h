@@ -7,6 +7,7 @@
 extern int __errno;
 
 #define EBADF     9
+#define ECHILD    10
 #define EAGAIN    11
 #define ENOMEM    12
 #define EEXIST    17

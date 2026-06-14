@@ -63,6 +63,9 @@ void syscall_handle(interrupt_frame_t* frame) {
     case __HOJICHA_INTERNAL_SYSCALL_EXIT:
       ret = syscall_exit((int)frame->rdi);
       break;
+    case __HOJICHA_INTERNAL_SYSCALL_WAITPID:
+      ret = syscall_waitpid((long)frame->rdi, (int*)frame->rsi, frame->rdx);
+      break;
     case __HOJICHA_INTERNAL_SYSCALL_NANOSLEEP:
       ret = syscall_nanosleep((unsigned long)frame->rdi);
       break;

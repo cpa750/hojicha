@@ -2,6 +2,7 @@ set(LIBC_SYS_SOURCES
   ioctl.c
   mkdir.c
   stat.c
+  waitpid.c
 )
 
 target_sources(libc_objects PRIVATE ${LIBC_SYS_SOURCES})

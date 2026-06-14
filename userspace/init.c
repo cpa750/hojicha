@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include "sys/wait.h"
+
 static int launch_shell(void) {
   int pid = fork();
   if (pid < 0) {
@@ -17,15 +19,17 @@ static int launch_shell(void) {
     return 1;
   }
 
-  return 0;
+  return pid;
 }
 
 int main(void) {
   printf("Welcome to Hojicha. Pour yourself a cup and let's get started!\n");
 
-  if (launch_shell() < 0) { return 1; }
-
-  // TODO: waitpid here and relaunch sh if needed
+  for (;;) {
+    int shell_pid = launch_shell();
+    if (shell_pid < 0) { return 1; }
+    waitpid(shell_pid, NULL, 0);
+  }
 
   return 0;
 }

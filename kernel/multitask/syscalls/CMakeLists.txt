@@ -15,5 +15,6 @@ target_sources(kernel_objects PRIVATE
   syscall_stat.c
   syscall_unlink.c
   syscall_utils.c
+  syscall_waitpid.c
   syscall_write.c
 )
