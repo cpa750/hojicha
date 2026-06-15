@@ -28,8 +28,12 @@ int getchar(void);
 int printf(const char* restrict, ...);
 int putchar(int);
 int puts(const char*);
+int snprintf(char* restrict buffer, size_t size, const char* restrict format, ...);
 int vprintf(const char* restrict format, va_list parameters);
-int vsnprintf(char* buffer, const char* format, va_list parameters);
+int vsnprintf(char* restrict buffer,
+              size_t size,
+              const char* restrict format,
+              va_list parameters);
 
 #ifdef __cplusplus
 }

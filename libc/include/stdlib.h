@@ -17,6 +17,8 @@ void* malloc(size_t size);
 void* calloc(size_t count, size_t size);
 void free(void* ptr);
 
+char* getenv(const char* name);
+
 __attribute__((__noreturn__)) void exit(int code);
 
 #ifdef __cplusplus

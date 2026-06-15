@@ -6,6 +6,7 @@ set(LIBC_STDIO_SOURCES
   printf.c
   putchar.c
   puts.c
+  snprintf.c
   streams.c
   vprintf.c
   vsnprintf.c

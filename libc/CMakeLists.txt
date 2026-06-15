@@ -28,6 +28,7 @@ endif()
 
 add_subdirectory(arch)
 add_subdirectory(internal)
+add_subdirectory(ctype)
 add_subdirectory(dirent)
 add_subdirectory(fcntl)
 add_subdirectory(hmalloc)
