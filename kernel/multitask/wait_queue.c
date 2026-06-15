@@ -23,6 +23,15 @@ void wait_queue_sleep(wait_queue_t* q) {
   sched_resume();
 }
 
+void wait_queue_sleep_postponed(wait_queue_t* q) {
+  if (q == NULL || g_kernel.current_process == NULL) { return; }
+
+  enqueue_current(q);
+  sched_current_block(PROC_STATUS_BLOCKED);
+  sched_resume();
+  sched_postpone();
+}
+
 process_block_t* wait_queue_wake_one(wait_queue_t* q) {
   if (q == NULL) { return NULL; }
 

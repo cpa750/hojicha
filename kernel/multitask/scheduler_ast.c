@@ -8,8 +8,10 @@
 
 static semaphore_t* ast_scheduler_sem;
 static wait_queue_t ast_scheduler_wait_queue;
+static wait_queue_t ast_scheduler_postponed_wait_queue;
 static volatile bool ast_scheduler_awake_1 = false;
 static volatile bool ast_scheduler_awake_2 = false;
+static volatile bool ast_scheduler_postponed_waiter_woke = false;
 static process_block_t* ast_scheduler_proc_1;
 static process_block_t* ast_scheduler_proc_2;
 
@@ -102,6 +104,35 @@ static void ast_scheduler_waitq_waker(void) {
   wait_queue_wake_all(&ast_scheduler_wait_queue);
 }
 
+static void ast_scheduler_waitq_postponed_waiter(void) {
+  hlog_write(HLOG_INFO, "AST_SCHEDULER: waitq_postponed_waiter sleeping");
+  sched_postpone();
+  wait_queue_sleep_postponed(&ast_scheduler_postponed_wait_queue);
+  sched_resume();
+  ast_scheduler_postponed_waiter_woke = true;
+  hlog_write(HLOG_INFO, "AST_SCHEDULER: waitq_postponed_waiter woke");
+}
+
+static void ast_scheduler_waitq_postponed_waker(void) {
+  sched_current_sleep(3);
+  if (ast_scheduler_postponed_waiter_woke) {
+    hlog_write(HLOG_ERROR,
+               "AST_SCHEDULER: waitq_postponed waiter woke before wake");
+  }
+
+  hlog_write(HLOG_INFO, "AST_SCHEDULER: waitq_postponed wake all");
+  wait_queue_wake_all(&ast_scheduler_postponed_wait_queue);
+
+  sched_current_sleep(1);
+  if (ast_scheduler_postponed_waiter_woke) {
+    hlog_write(HLOG_INFO,
+               "AST_SCHEDULER: waitq_postponed waiter woke after wake");
+  } else {
+    hlog_write(HLOG_ERROR,
+               "AST_SCHEDULER: waitq_postponed waiter did not wake");
+  }
+}
+
 static void ast_scheduler_waker(void) {
   while (1) {
     sched_current_sleep(5);
@@ -142,6 +173,7 @@ void ast_scheduler(void) {
   hlog_write(HLOG_INFO, "AST_SCHEDULER: starting");
   ast_scheduler_sem = semaphore_create(1);
   wait_queue_init(&ast_scheduler_wait_queue);
+  wait_queue_init(&ast_scheduler_postponed_wait_queue);
 
   ast_scheduler_add("ast_sched_waker", ast_scheduler_waker);
   ast_scheduler_add("ast_sched_watch_1", ast_scheduler_watch_1);
@@ -155,6 +187,10 @@ void ast_scheduler(void) {
   ast_scheduler_add("ast_sched_waitq_waiter_1", ast_scheduler_waiter_1);
   ast_scheduler_add("ast_sched_waitq_waiter_2", ast_scheduler_waiter_2);
   ast_scheduler_add("ast_sched_waitq_waker", ast_scheduler_waitq_waker);
+  ast_scheduler_add("ast_sched_waitq_post_waiter",
+                    ast_scheduler_waitq_postponed_waiter);
+  ast_scheduler_add("ast_sched_waitq_post_waker",
+                    ast_scheduler_waitq_postponed_waker);
   ast_scheduler_add("ast_sched_monitor", ast_scheduler_monitor);
   hlog_write(HLOG_INFO, "AST_SCHEDULER: processes added");
 }

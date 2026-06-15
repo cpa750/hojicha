@@ -214,6 +214,41 @@ class SchedulerAstAssertions(unittest.TestCase):
             "wait_queue waiter 2 woke before wake_all",
         )
 
+    def test_postponed_wait_queue_blocks_until_wake(self) -> None:
+        sleeping = self.require("waitq_postponed_waiter sleeping")
+        wake_all = self.require("waitq_postponed wake all", min_tick=3)
+        woke = self.require("waitq_postponed_waiter woke", min_tick=3)
+        verified = self.require(
+            "waitq_postponed waiter woke after wake",
+            min_tick=4,
+        )
+
+        self.assert_before(
+            sleeping,
+            wake_all,
+            "postponed wait_queue waiter should sleep before wake_all",
+        )
+        self.assert_before(
+            wake_all,
+            woke,
+            "postponed wait_queue waiter woke before wake_all",
+        )
+        self.assert_before(
+            woke,
+            verified,
+            "postponed wait_queue wake was not observed after the waiter woke",
+        )
+        self.assertEqual(
+            [],
+            self.analysis.all("waitq_postponed waiter woke before wake"),
+            "postponed wait_queue waiter continued before being woken",
+        )
+        self.assertEqual(
+            [],
+            self.analysis.all("waitq_postponed waiter did not wake"),
+            "postponed wait_queue waiter was not scheduled after wake_all",
+        )
+
     def test_monitor_ticks_increase(self) -> None:
         ticks = self.analysis.monitor_ticks()
         self.assertNotEqual([], ticks, "missing monitor ticks")

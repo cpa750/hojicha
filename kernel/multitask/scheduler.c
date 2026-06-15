@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define QUANTUM_LENGTH 20000000  // 20 ms
+#define QUANTUM_LENGTH        20000000  // 20 ms
 #define SCHED_WAITPID_WNOHANG 1
 
 struct sched_state {
@@ -201,7 +201,6 @@ static bool wait_child_find(process_block_t* parent,
                             long pid,
                             process_block_t** child_out,
                             uint64_t* child_slot_out);
-static void wait_queue_sleep_postponed(wait_queue_t* q);
 void wake_procs_before_timestamp(uint64_t timestamp);
 
 void sched_initialize(void) {
@@ -493,7 +492,8 @@ long sched_waitpid(process_block_t* process,
     wait_queue_sleep_postponed(&child->exit_waiters);
   }
 
-  if (!has_child || child == NULL || child->status != PROC_STATUS_READY_TO_DIE) {
+  if (!has_child || child == NULL ||
+      child->status != PROC_STATUS_READY_TO_DIE) {
     sched_resume();
     return -ECHILD;
   }
@@ -595,7 +595,10 @@ void multitask_switch(process_block_t* process) {
   uint8_t cpl = cs & 0b11;
   bool is_ctx_switch = (!cpl && !process->is_kernel_proc) ||
                        (cpl == 3 && process->is_kernel_proc);
-  hlog_write(HLOG_VERBOSE, "switching to PID %d", process->pid);
+  hlog_write(HLOG_DEBUG,
+             "switching to PID %d from %d",
+             process->pid,
+             g_kernel.current_process->pid);
   switch_to(process, is_ctx_switch);
   asm volatile("sti");
 }
@@ -666,9 +669,7 @@ void sched_current_sleep_ns(uint64_t ns) {
                    pit_get_ns_elapsed_since_init(g_kernel.pit) + ns);
 }
 
-void sched_proc_terminate(process_block_t* p) {
-  sched_proc_exit(p, 0);
-}
+void sched_proc_terminate(process_block_t* p) { sched_proc_exit(p, 0); }
 
 void sched_proc_exit(process_block_t* p, int code) {
   if (p == NULL) { return; }
@@ -687,6 +688,10 @@ void sched_proc_exit(process_block_t* p, int code) {
   sched_unlock();
 
   block_process(p, PROC_STATUS_READY_TO_DIE);
+  if (p->parent != NULL) {
+    wait_queue_wake_all(&p->exit_waiters);
+    wait_queue_wake_all(&p->parent->child_waiters);
+  }
   sched_resume();
 }
 
@@ -1057,10 +1062,7 @@ void terminator(void) {
       for (process_block_t* p = g_kernel.sched->ready_to_die; p != NULL;) {
         next = p->next;
         p->next = NULL;
-
         if (p->parent != NULL) {
-          wait_queue_wake_all(&p->exit_waiters);
-          wait_queue_wake_all(&p->parent->child_waiters);
           p->next = waiting_for_parent;
           waiting_for_parent = p;
         } else {
@@ -1108,19 +1110,6 @@ static bool wait_child_find(process_block_t* parent,
   if (child_out != NULL) { *child_out = first_matching_child; }
   if (child_slot_out != NULL) { *child_slot_out = first_matching_child_slot; }
   return true;
-}
-
-static void wait_queue_sleep_postponed(wait_queue_t* q) {
-  if (q == NULL || g_kernel.current_process == NULL) { return; }
-
-  sched_pb_set_next(g_kernel.current_process, NULL);
-  if (q->head == NULL) {
-    q->head = g_kernel.current_process;
-  } else {
-    sched_pb_set_next(q->tail, g_kernel.current_process);
-  }
-  q->tail = g_kernel.current_process;
-  sched_current_block(PROC_STATUS_BLOCKED);
 }
 
 void wake_procs_before_timestamp(uint64_t timestamp) {
