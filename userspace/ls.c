@@ -2,6 +2,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -19,8 +21,35 @@ static const char* basename(const char* path) {
   return name;
 }
 
-static void list_file(const char* path) {
-  printf("%s\n", basename(path));
+static void print_header(void) {
+  printf("Name\tTime accessed\tTime modified\tTime changed\n");
+}
+
+static void print_entry(const char* name, const stat_t* st) {
+  printf("%s\t%d\t%d\t%d\n",
+         name,
+         (uint64_t)st->st_atime,
+         (uint64_t)st->st_mtime,
+         (uint64_t)st->st_ctime);
+}
+
+static char* join_path(const char* dir, const char* name) {
+  size_t dir_len = strlen(dir);
+  size_t name_len = strlen(name);
+  int needs_slash = dir_len > 0 && dir[dir_len - 1] != '/';
+  char* path = malloc(dir_len + needs_slash + name_len + 1);
+  if (path == NULL) { return NULL; }
+
+  memcpy(path, dir, dir_len);
+  size_t offset = dir_len;
+  if (needs_slash) { path[offset++] = '/'; }
+  memcpy(path + offset, name, name_len);
+  path[offset + name_len] = '\0';
+  return path;
+}
+
+static void list_file(const char* path, const stat_t* st) {
+  print_entry(basename(path), st);
 }
 
 static void list_dir(const char* path) {
@@ -43,7 +72,14 @@ static void list_dir(const char* path) {
     int offset = 0;
     while (offset < bytes) {
       linux_dirent_t* dirent = (linux_dirent_t*)(dirent_buf + offset);
-      printf("%s\n", dirent->d_name);
+      char* entry_path = join_path(path, dirent->d_name);
+      stat_t entry_st;
+      if (entry_path != NULL && stat(entry_path, &entry_st) == 0) {
+        print_entry(dirent->d_name, &entry_st);
+      } else {
+        printf("%s\t?\t?\t?\n", dirent->d_name);
+      }
+      free(entry_path);
       offset += dirent->d_reclen;
     }
   }
@@ -51,7 +87,7 @@ static void list_dir(const char* path) {
   close(fd);
 }
 
-static void list_path(const char* path, int print_header) {
+static void list_path(const char* path, int include_path_header) {
   if (path[0] != '/') {
     printf("ls: relative paths are not supported: %s\n", path);
     return;
@@ -64,12 +100,14 @@ static void list_path(const char* path, int print_header) {
   }
 
   if ((st.st_mode & S_IFMT) == S_IFDIR) {
-    if (print_header) { printf("%s:\n", path); }
+    if (include_path_header) { printf("%s:\n", path); }
+    print_header();
     list_dir(path);
     return;
   }
 
-  list_file(path);
+  print_header();
+  list_file(path, &st);
 }
 
 int main(int argc, char** argv) {

@@ -95,6 +95,9 @@ struct vfs_node {
   vfs_node_type_t type;
   uint32_t refcount;
   uint32_t link_count;
+  int64_t accessed_timestamp;
+  int64_t modified_timestamp;
+  int64_t changed_mdt_timestamp;
   vfs_mount_t* mount;
   void* fs_data;
 };
@@ -146,6 +149,9 @@ struct vfs_node_ops {
 struct vfs_stat {
   vfs_node_type_t type;
   uint64_t size;
+  int64_t accessed_timestamp;
+  int64_t modified_timestamp;
+  int64_t changed_mdt_timestamp;
 };
 
 /*

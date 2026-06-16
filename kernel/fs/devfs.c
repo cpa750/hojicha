@@ -1,5 +1,6 @@
 #include <fs/devfs.h>
 #include <fs/vfs.h>
+#include <kernel/ktime.h>
 #include <utils/set_out.h>
 #include <hlog.h>
 #include <stdbool.h>
@@ -537,6 +538,10 @@ static void init_vnode(vfs_node_t* vnode,
   vnode->link_count = 1;
   vnode->mount = NULL;
   vnode->type = type;
+  int64_t now = unix_time();
+  vnode->accessed_timestamp = now;
+  vnode->modified_timestamp = now;
+  vnode->changed_mdt_timestamp = now;
 }
 
 static devfs_device_t* get_device(devfs_node_t* node) {

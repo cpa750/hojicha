@@ -34,6 +34,8 @@ static void cat_file(const char* path) {
     }
   }
 
+  printf("\n");
+
   close(fd);
 }
 
