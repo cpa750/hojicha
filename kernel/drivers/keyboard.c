@@ -9,57 +9,11 @@
 
 KeyboardStatus keyboard_status;
 
-char keyboard_characters[] = {'1',
-                              '2',
-                              '3',
-                              '4',
-                              '5',
-                              '6',
-                              '7',
-                              '8',
-                              '9',
-                              '0',
-                              '-',
-                              '^',
-                              // TODO: handle backspace
-                              0x08,
-                              '\t',
-                              'q',
-                              'w',
-                              'e',
-                              'r',
-                              't',
-                              'y',
-                              'u',
-                              'i',
-                              'o',
-                              'p',
-                              '@',
-                              '[',
-                              '\n',
-                              'a',
-                              's',
-                              'd',
-                              'f',
-                              'g',
-                              'h',
-                              'j',
-                              'k',
-                              'l',
-                              ';',
-                              ':',
-                              ']',
-                              'z',
-                              'x',
-                              'c',
-                              'v',
-                              'b',
-                              'n',
-                              'm',
-                              ',',
-                              '.',
-                              '/',
-                              ' '};
+char keyboard_characters[] = {
+    '1',  '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '^', 0x08,
+    '\t', 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '@', '[',
+    '\n', 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', ':', ']',
+    'z',  'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', ' '};
 
 char shifted_keyboard_characters[] = {
     '!',  '\"', '#', '$', '%', '&', '\'', '(', ')', 0,   '=', '~', 0x08,
@@ -81,6 +35,8 @@ char lookup_scancode_no_shift(uint8_t scancode) {
     return keyboard_characters[scancode - 0x05];
   } else if (scancode == 0x39) {
     return keyboard_characters[scancode - 0x08];
+  } else if (scancode == 0xF3) {
+    return '\\';
   } else {
     return 0;
   }
@@ -95,6 +51,8 @@ char lookup_scancode_with_shift(uint8_t scancode) {
     return shifted_keyboard_characters[scancode - 0x05];
   } else if (scancode == 0x39) {
     return shifted_keyboard_characters[scancode - 0x08];
+  } else if (scancode == 0xF3) {
+    return '_';
   } else {
     return 0;
   }
