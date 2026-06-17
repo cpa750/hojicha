@@ -11,9 +11,10 @@
 #include <fs/initrd.h>
 #include <fs/vfs.h>
 #include <hlog.h>
-#include <kernel/g_kernel.h>
-#include <limine.h>
 #include <hmalloc.h>
+#include <kernel/g_kernel.h>
+#include <kernel/ktime.h>
+#include <limine.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
 #include <multitask/bootmodule.h>
@@ -86,6 +87,8 @@ void kernel_main() {
   print_ok("PIC");
   pit_initialize();
   print_ok("PIT");
+  ktime_initialize();
+  print_ok("ktime");
   keyboard_initialize();
   print_ok("Keyboard");
   pmm_initialize();

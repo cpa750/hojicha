@@ -1,6 +1,7 @@
 .global _start
 .type _start, @function
 .extern __hlibc_prologue
+.extern environ
 .extern main
 .extern exit
 
@@ -19,6 +20,7 @@ _start:
 
 2:
   add $8, %rdx
+  mov %rdx, environ(%rip)
   call main
   mov %rax, %rdi
   call exit

@@ -91,7 +91,7 @@ void add_log_internal(hlogger_t* logger,
   log->level = level;
   log->next = NULL;
   log->proc = proc;
-  vsnprintf(buf, format, args);
+  vsnprintf(buf, logger->bufsize, format, args);
   log->buf = buf;
 
   if (logger->pending_logs_head == NULL) {
@@ -181,7 +181,7 @@ uint64_t write_log_internal(hlog_level_t level,
   char* buf = (char*)malloc(sizeof(char) * logger->bufsize);
   if (buf == NULL) { return 0; }
 
-  vsnprintf(buf, format, args);
+  vsnprintf(buf, logger->bufsize, format, args);
   uint64_t bytes_written = write_log_record(level, proc, buf);
   free(buf);
   return bytes_written;

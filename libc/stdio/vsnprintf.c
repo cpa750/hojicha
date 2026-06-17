@@ -1,109 +1,116 @@
 #include <limits.h>
 #include <stdarg.h>
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-void print(char* buffer, const char* data, uint64_t len) {
-  memcpy(buffer, data, len);
+static int append(char* buffer,
+                  size_t size,
+                  int* bytes_written,
+                  const char* data,
+                  size_t len) {
+  if ((size_t)(INT_MAX - *bytes_written) < len) { return -1; }
+
+  for (size_t i = 0; i < len; ++i) {
+    if (size > 0 && (size_t)*bytes_written < size - 1) {
+      buffer[*bytes_written] = data[i];
+    }
+    ++*bytes_written;
+  }
+
+  return 0;
 }
 
-// TODO: Figure out how to make vprintf use this instead of re-implementing
-// the same logic
-int vsnprintf(char* buffer, const char* format, va_list parameters) {
+int vsnprintf(char* restrict buffer,
+              size_t size,
+              const char* restrict format,
+              va_list parameters) {
   int bytes_written = 0;
 
   while (*format != '\0') {
-    size_t writeable_bytes = INT_MAX - bytes_written;
     if (format[0] != '%' || format[1] == '%') {
       if (format[0] == '%') { ++format; }
+
       size_t bytes_to_write = 1;
-      while (format[bytes_to_write] && format[bytes_to_write] != '%') {
+      while (format[bytes_to_write] != '\0' && format[bytes_to_write] != '%') {
         ++bytes_to_write;
       }
-      if (writeable_bytes < bytes_to_write) { return -1; }
-      print(buffer, format, bytes_to_write);
-      buffer += bytes_to_write;
+
+      if (append(buffer, size, &bytes_written, format, bytes_to_write) < 0) {
+        return -1;
+      }
 
       format += bytes_to_write;
-      bytes_written += bytes_to_write;
-
-      // Needed to prevent to prevent format reading in bogus values
       if (*format == '\0') { break; }
     }
-    const char* format_delimeter = format++;
+
+    const char* format_delimiter = format++;
     switch (*format) {
       case 'c': {
-        format++;
+        ++format;
         char c = (char)va_arg(parameters, int);
-        if (!writeable_bytes) { return -1; }
-        print(buffer, &c, sizeof(char));
-        buffer++;
-        bytes_written++;
+        if (append(buffer, size, &bytes_written, &c, sizeof(c)) < 0) {
+          return -1;
+        }
         break;
       }
       case 's': {
-        format++;
+        ++format;
         const char* s = (const char*)va_arg(parameters, const char*);
-        size_t len = strlen(s);
-        if (writeable_bytes < len) { return -1; }
-        print(buffer, s, len);
-        buffer += len;
-        bytes_written += len;
+        if (s == NULL) { s = "(null)"; }
+        if (append(buffer, size, &bytes_written, s, strlen(s)) < 0) {
+          return -1;
+        }
         break;
       }
       case 'd': {
-        format++;
+        ++format;
         const uint64_t d = (const uint64_t)va_arg(parameters, const uint64_t);
         char buf[40];
         itoa(d, buf, 10);
-        size_t len = strlen(buf + 2);
-        if (writeable_bytes < len) { return -1; }
-        print(buffer, buf + 2, len);
-        buffer += len;
-        bytes_written += len;
+        if (append(buffer, size, &bytes_written, buf + 2, strlen(buf + 2)) < 0) {
+          return -1;
+        }
         break;
       }
       case 'x': {
-        // TODO: Fix garbled output when parameter is >= 0xF0000000
-        format++;
+        ++format;
         const uint64_t x = (const uint64_t)va_arg(parameters, const uint64_t);
         char buf[40];
         utoa(x, buf, 16);
-        size_t len = strlen(buf);
-        if (writeable_bytes < len) { return -1; }
-        print(buffer, buf, len);
-        buffer += len;
-        bytes_written += len;
+        if (append(buffer, size, &bytes_written, buf, strlen(buf)) < 0) {
+          return -1;
+        }
         break;
       }
       case 'b': {
-        format++;
+        ++format;
         const uint32_t x = (const uint32_t)va_arg(parameters, const uint32_t);
         char buf[40];
         itoa(x, buf, 2);
-        size_t len = strlen(buf);
-        if (writeable_bytes < len) { return -1; }
-        print(buffer, buf, len);
-        buffer += len;
-        bytes_written += len;
+        if (append(buffer, size, &bytes_written, buf, strlen(buf)) < 0) {
+          return -1;
+        }
         break;
       }
       default: {
-        format = format_delimeter;
+        format = format_delimiter;
         size_t len = strlen(format);
-        if (writeable_bytes < len) { return -1; }
-        print(buffer, format, len);
-        buffer += len;
-        bytes_written += len;
+        if (append(buffer, size, &bytes_written, format, len) < 0) {
+          return -1;
+        }
         format += len;
         break;
       }
     }
   }
-  buffer[0] = '\0';
+
+  if (size > 0) {
+    size_t terminator = (size_t)bytes_written < size ? (size_t)bytes_written : size - 1;
+    buffer[terminator] = '\0';
+  }
+
   return bytes_written;
 }

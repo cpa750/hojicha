@@ -112,6 +112,14 @@ long sched_execve(process_block_t* process,
 long sched_fork(process_block_t* process, interrupt_frame_t* frame);
 
 /*
+ * Waits for a child process to exit and reaps it.
+ */
+long sched_waitpid(process_block_t* process,
+                   long pid,
+                   int* wstatus,
+                   int options);
+
+/*
  * Adds a proc to the scheduler's queue.
  * The process will be added in a `READY_TO_RUN` state.
  */
@@ -170,9 +178,14 @@ void sched_current_sleep(uint64_t s);
 void sched_current_sleep_ns(uint64_t ns);
 
 /*
- * Terminates a process. This deallocates all memory given to the process
- * and cleans up the process handle itself.
+ * Terminates a process. Child processes with live parents remain waitable
+ * until the parent calls waitpid().
  */
 void sched_proc_terminate(process_block_t* p);
+
+/*
+ * Terminates a process with an exit status visible to waitpid().
+ */
+void sched_proc_exit(process_block_t* p, int code);
 
 #endif  // MULTITASK_H

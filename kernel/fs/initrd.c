@@ -1,6 +1,7 @@
 #include <fs/initrd.h>
 #include <fs/ustar.h>
 #include <fs/vfs.h>
+#include <kernel/ktime.h>
 #include <utils/set_out.h>
 #include <hlog.h>
 #include <multitask/bootmodule.h>
@@ -21,6 +22,9 @@ struct initrd_inode {
   uint64_t bufsize;
   bool buf_owned;
   uint64_t len;
+  int64_t accessed_timestamp;
+  int64_t modified_timestamp;
+  int64_t changed_mdt_timestamp;
   initrd_inode_t* parent;
   initrd_inode_t* first_child;
   // TODO: currently we have to walk a linked list to get to target,
@@ -39,6 +43,11 @@ initrd_inode_t* create_dir(const char* name,
                            initrd_inode_t* parent);
 initrd_inode_t* create_root();
 void init_vnode(initrd_inode_t* inode, vfs_node_type_t type);
+void sync_vnode_timestamps(initrd_inode_t* inode);
+void set_inode_timestamps(initrd_inode_t* inode,
+                          int64_t accessed_timestamp,
+                          int64_t modified_timestamp,
+                          int64_t changed_mdt_timestamp);
 initrd_inode_t* dir_lookup(const char* path,
                            uint64_t path_len,
                            initrd_inode_t* root);
@@ -158,6 +167,13 @@ vfs_status_t initrd_read(vfs_file_t* vfile,
   if (vfile == NULL || buffer == NULL) { return VFS_STATUS_INVALID_ARG; }
 
   initrd_inode_t* node = (initrd_inode_t*)((vfs_node_t*)vfile->vnode)->fs_data;
+  if (len == 0) {
+    node->accessed_timestamp = vfile->vnode->accessed_timestamp;
+    sync_vnode_timestamps(node);
+    SET_OUT(bytes_read_out, 0);
+    return VFS_STATUS_OK;
+  }
+
   if (vfile->offset >= node->len) {
     SET_OUT(bytes_read_out, 0);
     return VFS_STATUS_OK;
@@ -169,6 +185,10 @@ vfs_status_t initrd_read(vfs_file_t* vfile,
   sched_postpone();
   memcpy(buffer, node->buf + vfile->offset, size_to_copy);
   vfile->offset += size_to_copy;
+  if (size_to_copy > 0) {
+    node->accessed_timestamp = vfile->vnode->accessed_timestamp;
+    sync_vnode_timestamps(node);
+  }
   sched_resume();
 
   if (bytes_read_out != NULL) { *bytes_read_out = size_to_copy; }
@@ -181,6 +201,14 @@ vfs_status_t initrd_write(vfs_file_t* file,
                           uint64_t* bytes_written_out) {
   if (file == NULL || buffer == NULL) { return VFS_STATUS_INVALID_ARG; }
   initrd_inode_t* inode = (initrd_inode_t*)file->vnode->fs_data;
+  if (len == 0) {
+    inode->modified_timestamp = file->vnode->modified_timestamp;
+    inode->changed_mdt_timestamp = file->vnode->changed_mdt_timestamp;
+    sync_vnode_timestamps(inode);
+    SET_OUT(bytes_written_out, 0);
+    return VFS_STATUS_OK;
+  }
+
   uint64_t fsize = inode->len;
   uint64_t bufsize = inode->bufsize;
   uint64_t content_size = file->offset + len;
@@ -204,6 +232,11 @@ vfs_status_t initrd_write(vfs_file_t* file,
     memcpy(inode->buf + file->offset, buffer, len);
     file->offset += len;
     if (file->offset > inode->len) { inode->len = file->offset; }
+    if (len > 0) {
+      inode->modified_timestamp = file->vnode->modified_timestamp;
+      inode->changed_mdt_timestamp = file->vnode->changed_mdt_timestamp;
+      sync_vnode_timestamps(inode);
+    }
     sched_resume();
 
     if (bytes_written_out != NULL) { *bytes_written_out = len; }
@@ -225,6 +258,11 @@ vfs_status_t initrd_write(vfs_file_t* file,
   inode->buf_owned = true;
   file->offset += len;
   if (file->offset > inode->len) { inode->len = file->offset; }
+  if (len > 0) {
+    inode->modified_timestamp = file->vnode->modified_timestamp;
+    inode->changed_mdt_timestamp = file->vnode->changed_mdt_timestamp;
+    sync_vnode_timestamps(inode);
+  }
   if (old_buf_owned) { free(old); }
   sched_resume();
 
@@ -338,6 +376,8 @@ vfs_status_t initrd_create_file(vfs_node_t* dir,
     return VFS_STATUS_NOMEM;
   }
 
+  int64_t now = unix_time();
+  set_inode_timestamps(inode, now, now, now);
   init_vnode(inode, VFS_NODE_FILE);
   inode->name = file_name;
   inode->name_size = name_len;
@@ -350,6 +390,10 @@ vfs_status_t initrd_create_file(vfs_node_t* dir,
   inode->parent = (initrd_inode_t*)dir->fs_data;
 
   add_child((initrd_inode_t*)dir->fs_data, inode);
+  initrd_inode_t* parent = (initrd_inode_t*)dir->fs_data;
+  parent->modified_timestamp = dir->modified_timestamp;
+  parent->changed_mdt_timestamp = dir->changed_mdt_timestamp;
+  sync_vnode_timestamps(parent);
 
   vfs_vnode_borrow(&inode->vnode);
   SET_OUT(out, &inode->vnode);
@@ -379,6 +423,10 @@ vfs_status_t initrd_create_dir(vfs_node_t* dir,
   }
 
   add_child((initrd_inode_t*)dir->fs_data, inode);
+  initrd_inode_t* parent = (initrd_inode_t*)dir->fs_data;
+  parent->modified_timestamp = dir->modified_timestamp;
+  parent->changed_mdt_timestamp = dir->changed_mdt_timestamp;
+  sync_vnode_timestamps(parent);
 
   vfs_vnode_borrow(&inode->vnode);
   SET_OUT(out, &inode->vnode);
@@ -426,6 +474,9 @@ vfs_status_t initrd_stat(vfs_node_t* vnode, vfs_stat_t** out) {
 
   ret->size = ((initrd_inode_t*)vnode->fs_data)->len;
   ret->type = vnode->type;
+  ret->accessed_timestamp = vnode->accessed_timestamp;
+  ret->modified_timestamp = vnode->modified_timestamp;
+  ret->changed_mdt_timestamp = vnode->changed_mdt_timestamp;
   SET_OUT(out, ret);
   return VFS_STATUS_OK;
 }
@@ -467,6 +518,8 @@ initrd_inode_t* create_dir(const char* name,
   dir->parent = parent;
   dir->first_child = NULL;
   dir->next_sibling = NULL;
+  int64_t now = unix_time();
+  set_inode_timestamps(dir, now, now, now);
   init_vnode(dir, VFS_NODE_DIR);
   return dir;
 }
@@ -484,6 +537,9 @@ initrd_inode_t* create_root() {
   root->parent = NULL;
   root->first_child = NULL;
   root->next_sibling = NULL;
+  root->number = inode_count++;
+  int64_t now = unix_time();
+  set_inode_timestamps(root, now, now, now);
   init_vnode(root, VFS_NODE_DIR);
   return root;
 }
@@ -495,6 +551,26 @@ void init_vnode(initrd_inode_t* inode, vfs_node_type_t type) {
   inode->vnode.link_count = 1;
   inode->vnode.mount = NULL;
   inode->vnode.type = type;
+  sync_vnode_timestamps(inode);
+}
+
+void sync_vnode_timestamps(initrd_inode_t* inode) {
+  if (inode == NULL) { return; }
+
+  inode->vnode.accessed_timestamp = inode->accessed_timestamp;
+  inode->vnode.modified_timestamp = inode->modified_timestamp;
+  inode->vnode.changed_mdt_timestamp = inode->changed_mdt_timestamp;
+}
+
+void set_inode_timestamps(initrd_inode_t* inode,
+                          int64_t accessed_timestamp,
+                          int64_t modified_timestamp,
+                          int64_t changed_mdt_timestamp) {
+  if (inode == NULL) { return; }
+
+  inode->accessed_timestamp = accessed_timestamp;
+  inode->modified_timestamp = modified_timestamp;
+  inode->changed_mdt_timestamp = changed_mdt_timestamp;
 }
 
 initrd_inode_t* dir_lookup(const char* path,
@@ -639,6 +715,9 @@ vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out) {
     uint64_t header_size = get_header_size(h);
 
     if (entry_len == 2 && memcmp(h->filename, "./", 2) == 0) {
+      int64_t timestamp = (int64_t)ustar_oct2dec(h->lmut_oct, 12);
+      set_inode_timestamps(root, timestamp, timestamp, timestamp);
+      sync_vnode_timestamps(root);
       buf_pos += header_size;
       continue;
     }
@@ -657,6 +736,8 @@ vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out) {
       new->first_child = NULL;
       new->next_sibling = NULL;
       new->number = inode_count++;
+      int64_t timestamp = (int64_t)ustar_oct2dec(h->lmut_oct, 12);
+      set_inode_timestamps(new, timestamp, timestamp, timestamp);
       init_vnode(new, VFS_NODE_FILE);
 
       initrd_inode_t* parent;
@@ -684,13 +765,16 @@ vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out) {
         }
         if (parent == NULL) { return VFS_STATUS_NOTDIR; }
 
-        if (find_child(parent->first_child,
-                       h->filename + name_offset,
-                       name_len) == NULL) {
-          initrd_inode_t* dir =
-              create_dir(h->filename + name_offset, name_len, parent);
+        initrd_inode_t* dir =
+            find_child(parent->first_child, h->filename + name_offset, name_len);
+        if (dir == NULL) {
+          dir = create_dir(h->filename + name_offset, name_len, parent);
+          if (dir == NULL) { return VFS_STATUS_NOMEM; }
           add_child(parent, dir);
         }
+        int64_t timestamp = (int64_t)ustar_oct2dec(h->lmut_oct, 12);
+        set_inode_timestamps(dir, timestamp, timestamp, timestamp);
+        sync_vnode_timestamps(dir);
       }
 
       buf_pos += header_size;

@@ -183,6 +183,9 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx, mock.stat_calls == 1);
   HTEST_ASSERT(&ctx, stat->type == VFS_NODE_FILE);
   HTEST_ASSERT(&ctx, stat->size == 128);
+  HTEST_ASSERT(&ctx, stat->accessed_timestamp == 1);
+  HTEST_ASSERT(&ctx, stat->modified_timestamp == 1);
+  HTEST_ASSERT(&ctx, stat->changed_mdt_timestamp == 1);
   free(stat);
 
   vfs_file_t* resolved = NULL;
@@ -227,6 +230,8 @@ void vfs_test(void) {
   vfs_vnode_release(parent);
 
   file = NULL;
+  mock.root.vnode.modified_timestamp = -2;
+  mock.root.vnode.changed_mdt_timestamp = -3;
   HTEST_ASSERT(&ctx,
                vfs_open("/etc/vfs_mock/created.txt",
                         VFS_OPEN_READ | VFS_OPEN_WRITE | VFS_OPEN_CREATE,
@@ -237,6 +242,8 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx, mock.last_name_len == strlen("created.txt"));
   HTEST_ASSERT(&ctx, strcmp(mock.last_name, "created.txt") == 0);
   HTEST_ASSERT(&ctx, mock.last_open_flags == (VFS_OPEN_READ | VFS_OPEN_WRITE));
+  HTEST_ASSERT(&ctx, mock.root.vnode.modified_timestamp != -2);
+  HTEST_ASSERT(&ctx, mock.root.vnode.changed_mdt_timestamp != -3);
   HTEST_ASSERT(&ctx, vfs_close(file) == VFS_STATUS_OK);
 
   htest_case_begin(&ctx, "read/write/seek");
@@ -251,6 +258,8 @@ void vfs_test(void) {
 
   char write_buf[] = "payload";
   uint64_t bytes_written = 0;
+  file->vnode->modified_timestamp = -4;
+  file->vnode->changed_mdt_timestamp = -5;
   HTEST_ASSERT(
       &ctx,
       vfs_write(file, write_buf, sizeof(write_buf) - 1, &bytes_written) ==
@@ -259,9 +268,12 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx, mock.last_write_buffer == write_buf);
   HTEST_ASSERT(&ctx, mock.last_write_len == sizeof(write_buf) - 1);
   HTEST_ASSERT(&ctx, bytes_written == sizeof(write_buf) - 1);
+  HTEST_ASSERT(&ctx, file->vnode->modified_timestamp != -4);
+  HTEST_ASSERT(&ctx, file->vnode->changed_mdt_timestamp != -5);
 
   char read_buf[8] = {0};
   uint64_t bytes_read = 0;
+  file->vnode->accessed_timestamp = -6;
   HTEST_ASSERT(
       &ctx,
       vfs_read(file, read_buf, sizeof(read_buf), &bytes_read) == VFS_STATUS_OK);
@@ -269,6 +281,31 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx, mock.last_read_buffer == read_buf);
   HTEST_ASSERT(&ctx, mock.last_read_len == sizeof(read_buf));
   HTEST_ASSERT(&ctx, bytes_read == sizeof(read_buf));
+  HTEST_ASSERT(&ctx, file->vnode->accessed_timestamp != -6);
+
+  vfs_stat_t* rw_stat = NULL;
+  HTEST_ASSERT(&ctx, vfs_fstat(file, &rw_stat) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx,
+               rw_stat->accessed_timestamp == file->vnode->accessed_timestamp);
+  HTEST_ASSERT(&ctx,
+               rw_stat->modified_timestamp == file->vnode->modified_timestamp);
+  HTEST_ASSERT(&ctx,
+               rw_stat->changed_mdt_timestamp ==
+                   file->vnode->changed_mdt_timestamp);
+  free(rw_stat);
+
+  file->vnode->accessed_timestamp = -7;
+  HTEST_ASSERT(&ctx, vfs_read(file, read_buf, 0, &bytes_read) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, bytes_read == 0);
+  HTEST_ASSERT(&ctx, file->vnode->accessed_timestamp != -7);
+
+  file->vnode->modified_timestamp = -8;
+  file->vnode->changed_mdt_timestamp = -9;
+  HTEST_ASSERT(&ctx, vfs_write(file, write_buf, 0, &bytes_written) ==
+                         VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, bytes_written == 0);
+  HTEST_ASSERT(&ctx, file->vnode->modified_timestamp != -8);
+  HTEST_ASSERT(&ctx, file->vnode->changed_mdt_timestamp != -9);
 
   uint64_t new_pos = 0;
   HTEST_ASSERT(&ctx,
@@ -332,6 +369,9 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx, mock.stat_calls == 1);
   HTEST_ASSERT(&ctx, mock.last_stat_vnode == &mock.existing_file.vnode);
   HTEST_ASSERT(&ctx, stat->type == VFS_NODE_FILE);
+  HTEST_ASSERT(&ctx, stat->accessed_timestamp == 1);
+  HTEST_ASSERT(&ctx, stat->modified_timestamp == 1);
+  HTEST_ASSERT(&ctx, stat->changed_mdt_timestamp == 1);
   free(stat);
 
   file = NULL;
@@ -655,6 +695,9 @@ static void mock_node_init(mock_node_t* node,
   node->vnode.refcount = 0;
   node->vnode.link_count = present ? 1 : 0;
   node->vnode.mount = NULL;
+  node->vnode.accessed_timestamp = 1;
+  node->vnode.modified_timestamp = 1;
+  node->vnode.changed_mdt_timestamp = 1;
   node->vnode.fs_data = node;
 }
 

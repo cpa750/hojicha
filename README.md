@@ -5,12 +5,10 @@ This project is a first effort at developing an operating system for the x86_64 
 > try to install it on real hardware - I'm not responsible for what happens if you do.
 
 ## Current Status:
-Preparation work for proper init and shell programs:
-- [X] VFS exposed as syscalls
-- [x] TTY configuration via devfs
-- [x] stdin/stdout/stderr
-- [x] fork()/exec()
-- [x] brk()/sbrk()/userspace malloc()
+Expansion of shell capabilities:
+- [ ] VFS support for linking and relative paths
+- [ ] mkdir/rmdir/link/unlink userspace programs
+- [ ] Redirection (echo foo > bar.txt)
 
 ## MVP Done:
 - [x] Babysteps
@@ -40,12 +38,14 @@ Preparation work for proper init and shell programs:
 - [x] Filesystems
   - [x] VFS prototype
     - [ ] Relative paths
+    - [ ] Linking
   - [x] initrd from bundled USTAR image
   - [x] devfs machinery prototype
   - [ ] Ext2
+  - [ ] Nvme/SATA drivers
 - [ ] Userspace
   - [x] malloc and friends
-  - [ ] basic init and shell
+  - [x] basic init and shell
   - [ ] ls/touch/mkdir/rm/cat etc.
   - [ ] Brainfuck interpreter/compiler
   - [ ] DOOM port

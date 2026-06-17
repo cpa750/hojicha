@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <fs/vfs.h>
 #include <kernel/g_kernel.h>
+#include <kernel/ktime.h>
 #include <multitask/scheduler.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -16,6 +17,7 @@
 static vfs_mount_t* root_mount = NULL;
 
 static void clear_process_fd(vfs_file_t* file);
+static void cache_vnode_stat_timestamps(vfs_node_t* vnode, vfs_stat_t** out);
 static vfs_node_t* traverse_mount(vfs_node_t* vnode);
 static vfs_status_t walk_path(const char* absolute_path,
                               bool stop_at_parent,
@@ -183,9 +185,17 @@ vfs_status_t vfs_create(vfs_node_t* dir,
     return VFS_STATUS_NOT_IMPLEMENTED;
   }
 
+  int64_t old_modified_timestamp = dir->modified_timestamp;
+  int64_t old_changed_mdt_timestamp = dir->changed_mdt_timestamp;
+  int64_t now = unix_time();
+  dir->modified_timestamp = now;
+  dir->changed_mdt_timestamp = now;
+
   vfs_node_t* created = NULL;
   vfs_status_t status = dir->ops->create_file(dir, name, name_len, &created);
   if (status != VFS_STATUS_OK) {
+    dir->modified_timestamp = old_modified_timestamp;
+    dir->changed_mdt_timestamp = old_changed_mdt_timestamp;
     SET_OUT(out, NULL);
     return status;
   }
@@ -217,9 +227,17 @@ vfs_status_t vfs_mkdir(vfs_node_t* dir,
     return VFS_STATUS_NOT_IMPLEMENTED;
   }
 
+  int64_t old_modified_timestamp = dir->modified_timestamp;
+  int64_t old_changed_mdt_timestamp = dir->changed_mdt_timestamp;
+  int64_t now = unix_time();
+  dir->modified_timestamp = now;
+  dir->changed_mdt_timestamp = now;
+
   vfs_node_t* created = NULL;
   vfs_status_t status = dir->ops->create_dir(dir, name, name_len, &created);
   if (status != VFS_STATUS_OK) {
+    dir->modified_timestamp = old_modified_timestamp;
+    dir->changed_mdt_timestamp = old_changed_mdt_timestamp;
     SET_OUT(out, NULL);
     return status;
   }
@@ -267,7 +285,17 @@ vfs_status_t vfs_read(vfs_file_t* file,
     return VFS_STATUS_BAD_FD;
   }
   if (HVFS_FOP_MISSING(file, read)) { return VFS_STATUS_NOT_IMPLEMENTED; }
-  return file->ops->read(file, buffer, len, out_read);
+
+  uint64_t bytes_read = 0;
+  uint64_t* bytes_read_out = out_read == NULL ? &bytes_read : out_read;
+  int64_t old_accessed_timestamp = file->vnode->accessed_timestamp;
+  // TODO: remove this ugly hack once we have a proper utime syscall
+  file->vnode->accessed_timestamp = unix_time();
+  vfs_status_t status = file->ops->read(file, buffer, len, bytes_read_out);
+  if (status != VFS_STATUS_OK || (len > 0 && *bytes_read_out == 0)) {
+    file->vnode->accessed_timestamp = old_accessed_timestamp;
+  }
+  return status;
 }
 
 vfs_status_t vfs_write(vfs_file_t* file,
@@ -291,7 +319,21 @@ vfs_status_t vfs_write(vfs_file_t* file,
     return VFS_STATUS_NOT_IMPLEMENTED;
   }
 
-  return file->ops->write(file, buffer, len, bytes_written_out);
+  uint64_t bytes_written = 0;
+  uint64_t* written_out =
+      bytes_written_out == NULL ? &bytes_written : bytes_written_out;
+  int64_t old_modified_timestamp = file->vnode->modified_timestamp;
+  int64_t old_changed_mdt_timestamp = file->vnode->changed_mdt_timestamp;
+  int64_t now = unix_time();
+  // TODO: remove this ugly hack once we have a proper utime syscall
+  file->vnode->modified_timestamp = now;
+  file->vnode->changed_mdt_timestamp = now;
+  vfs_status_t status = file->ops->write(file, buffer, len, written_out);
+  if (status != VFS_STATUS_OK || (len > 0 && *written_out == 0)) {
+    file->vnode->modified_timestamp = old_modified_timestamp;
+    file->vnode->changed_mdt_timestamp = old_changed_mdt_timestamp;
+  }
+  return status;
 }
 
 vfs_status_t vfs_readdir(vfs_file_t* dir, vfs_dirent_t** out) {
@@ -339,6 +381,7 @@ vfs_status_t vfs_stat(const char* absolute_path, vfs_stat_t** out) {
   }
 
   status = vnode->ops->stat(vnode, out);
+  if (status == VFS_STATUS_OK) { cache_vnode_stat_timestamps(vnode, out); }
   vfs_vnode_release(vnode);
   return status;
 }
@@ -352,7 +395,11 @@ vfs_status_t vfs_fstat(vfs_file_t* file, vfs_stat_t** out) {
     SET_OUT(out, NULL);
     return VFS_STATUS_NOT_IMPLEMENTED;
   }
-  return file->vnode->ops->stat(file->vnode, out);
+  vfs_status_t status = file->vnode->ops->stat(file->vnode, out);
+  if (status == VFS_STATUS_OK) {
+    cache_vnode_stat_timestamps(file->vnode, out);
+  }
+  return status;
 }
 
 vfs_status_t vfs_close(vfs_file_t* file) {
@@ -476,6 +523,14 @@ static void clear_process_fd(vfs_file_t* file) {
       return;
     }
   }
+}
+
+static void cache_vnode_stat_timestamps(vfs_node_t* vnode, vfs_stat_t** out) {
+  if (vnode == NULL || out == NULL || *out == NULL) { return; }
+
+  (*out)->accessed_timestamp = vnode->accessed_timestamp;
+  (*out)->modified_timestamp = vnode->modified_timestamp;
+  (*out)->changed_mdt_timestamp = vnode->changed_mdt_timestamp;
 }
 
 static vfs_node_t* traverse_mount(vfs_node_t* vnode) {

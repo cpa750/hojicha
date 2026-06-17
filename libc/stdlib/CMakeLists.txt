@@ -3,6 +3,7 @@ set(LIBC_STDLIB_SOURCES
   assert.c
   calloc.c
   free.c
+  getenv.c
   itoa.c
   utoa.c
   malloc.c

@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define NS_DIVISOR 1000000000ULL
+
 /*
  * The type of callback to be registered with `pit_register_callback()`. This
  * function is passed the current number of ticks since PIT init.

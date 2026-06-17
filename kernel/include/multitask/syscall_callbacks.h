@@ -23,6 +23,7 @@ long syscall_open(const char* absolute_path, unsigned int flags);
 long syscall_read(long fd, void* buf, long count);
 long syscall_rmdir(const char* path);
 long syscall_unlink(const char* path);
+long syscall_waitpid(long pid, int* wstatus, int options);
 long syscall_write(long fd, void* buf, long count);
 long syscall_stat(const char* path, stat_t* stat_buf);
 long syscall_fstat(long fd, stat_t* stat_buf);
