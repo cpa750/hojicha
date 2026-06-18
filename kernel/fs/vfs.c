@@ -18,8 +18,12 @@ static vfs_mount_t* root_mount = NULL;
 
 static void clear_process_fd(vfs_file_t* file);
 static void cache_vnode_stat_timestamps(vfs_node_t* vnode, vfs_stat_t** out);
+static vfs_status_t component_parent(vfs_node_t** current);
+static bool component_is_dot(const char* component, uint32_t component_len);
+static bool component_is_dotdot(const char* component, uint32_t component_len);
 static vfs_node_t* traverse_mount(vfs_node_t* vnode);
-static vfs_status_t walk_path(const char* absolute_path,
+static vfs_status_t walk_path(vfs_node_t* base,
+                              const char* path,
                               bool stop_at_parent,
                               vfs_node_t** out,
                               const char** name_out,
@@ -81,7 +85,14 @@ vfs_status_t vfs_unmount(vfs_mount_t* mount) {
 
 vfs_status_t vfs_lookup(const char* absolute_path, vfs_node_t** out) {
   if (out == NULL) { return VFS_STATUS_INVALID_ARG; }
-  return walk_path(absolute_path, false, out, NULL, NULL);
+  return vfs_lookup_at(NULL, absolute_path, out);
+}
+
+vfs_status_t vfs_lookup_at(vfs_node_t* base,
+                           const char* path,
+                           vfs_node_t** out) {
+  if (out == NULL) { return VFS_STATUS_INVALID_ARG; }
+  return walk_path(base, path, false, out, NULL, NULL);
 }
 
 vfs_status_t vfs_lookup_parent(const char* absolute_path,
@@ -92,7 +103,20 @@ vfs_status_t vfs_lookup_parent(const char* absolute_path,
     return VFS_STATUS_INVALID_ARG;
   }
 
-  return walk_path(absolute_path, true, parent_out, name_out, name_len_out);
+  return vfs_lookup_parent_at(
+      NULL, absolute_path, parent_out, name_out, name_len_out);
+}
+
+vfs_status_t vfs_lookup_parent_at(vfs_node_t* base,
+                                  const char* path,
+                                  vfs_node_t** parent_out,
+                                  const char** name_out,
+                                  uint32_t* name_len_out) {
+  if (parent_out == NULL || name_out == NULL || name_len_out == NULL) {
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  return walk_path(base, path, true, parent_out, name_out, name_len_out);
 }
 
 vfs_status_t vfs_open(const char* absolute_path,
@@ -533,6 +557,31 @@ static void cache_vnode_stat_timestamps(vfs_node_t* vnode, vfs_stat_t** out) {
   (*out)->changed_mdt_timestamp = vnode->changed_mdt_timestamp;
 }
 
+static vfs_status_t component_parent(vfs_node_t** current) {
+  if (current == NULL || *current == NULL) { return VFS_STATUS_INVALID_ARG; }
+  if (*current == root_mount->root) { return VFS_STATUS_OK; }
+  if (HVFS_VOP_MISSING(*current, parent)) {
+    return VFS_STATUS_NOT_IMPLEMENTED;
+  }
+
+  vfs_node_t* parent = NULL;
+  vfs_status_t status = (*current)->ops->parent(*current, &parent);
+  if (status != VFS_STATUS_OK) { return status; }
+  if (parent == NULL) { return VFS_STATUS_NOENT; }
+
+  vfs_vnode_release(*current);
+  *current = parent;
+  return VFS_STATUS_OK;
+}
+
+static bool component_is_dot(const char* component, uint32_t component_len) {
+  return component_len == 1 && component[0] == '.';
+}
+
+static bool component_is_dotdot(const char* component, uint32_t component_len) {
+  return component_len == 2 && component[0] == '.' && component[1] == '.';
+}
+
 static vfs_node_t* traverse_mount(vfs_node_t* vnode) {
   if (vnode == NULL) { return NULL; }
 
@@ -544,33 +593,38 @@ static vfs_node_t* traverse_mount(vfs_node_t* vnode) {
   return mount->root;
 }
 
-static vfs_status_t walk_path(const char* absolute_path,
+static vfs_status_t walk_path(vfs_node_t* base,
+                              const char* path,
                               bool stop_at_parent,
                               vfs_node_t** out,
                               const char** name_out,
                               uint32_t* name_len_out) {
-  if (absolute_path == NULL || out == NULL || root_mount == NULL ||
-      root_mount->root == NULL || absolute_path[0] != '/') {
+  if (path == NULL || out == NULL || root_mount == NULL ||
+      root_mount->root == NULL) {
     return VFS_STATUS_NOENT;
   }
 
   SET_OUT(name_out, NULL);
   SET_OUT(name_len_out, 0);
 
-  vfs_node_t* current = root_mount->root;
-  bool current_is_root = true;
-  const char* cursor = absolute_path;
+  if (path[0] == '\0') { return VFS_STATUS_NOENT; }
+
+  vfs_node_t* current = path[0] == '/' ? root_mount->root : base;
+  if (current == NULL) { return VFS_STATUS_NOENT; }
+  vfs_vnode_borrow(current);
+  current = traverse_mount(current);
+
+  const char* cursor = path;
 
   while (*cursor == '/') { cursor++; }
   if (*cursor == '\0') {
-    vfs_vnode_borrow(current);
     *out = current;
     return VFS_STATUS_OK;
   }
 
   while (*cursor != '\0') {
     if (current->type != VFS_NODE_DIR || HVFS_VOP_MISSING(current, lookup)) {
-      if (!current_is_root) { vfs_vnode_release(current); }
+      vfs_vnode_release(current);
       return VFS_STATUS_NOTDIR;
     }
 
@@ -583,28 +637,35 @@ static vfs_status_t walk_path(const char* absolute_path,
 
     while (*cursor == '/') { cursor++; }
     if (stop_at_parent && *cursor == '\0') {
-      if (current_is_root) { vfs_vnode_borrow(current); }
       *out = current;
       SET_OUT(name_out, component);
       SET_OUT(name_len_out, component_len);
       return VFS_STATUS_OK;
     }
 
+    if (component_is_dot(component, component_len)) { continue; }
+    if (component_is_dotdot(component, component_len)) {
+      vfs_status_t status = component_parent(&current);
+      if (status != VFS_STATUS_OK) {
+        vfs_vnode_release(current);
+        return status;
+      }
+      continue;
+    }
+
     vfs_node_t* next = NULL;
     vfs_status_t status =
         current->ops->lookup(current, component, component_len, &next);
     if (status != VFS_STATUS_OK) {
-      if (!current_is_root) { vfs_vnode_release(current); }
+      vfs_vnode_release(current);
       return status;
     }
     next = traverse_mount(next);
 
-    if (!current_is_root) { vfs_vnode_release(current); }
+    vfs_vnode_release(current);
     current = next;
-    current_is_root = false;
   }
 
-  if (current_is_root) { vfs_vnode_borrow(current); }
   *out = current;
   return VFS_STATUS_OK;
 }

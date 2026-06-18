@@ -121,10 +121,15 @@ struct vfs_file_ops {
 };
 
 struct vfs_node_ops {
+  /*
+   * Vnode-returning ops return borrowed references on success. The caller owns
+   * that reference and must release it with `vfs_vnode_release()`.
+   */
   vfs_status_t (*lookup)(vfs_node_t* dir,
                          const char* name,
                          uint32_t name_len,
                          vfs_node_t** out);
+  vfs_status_t (*parent)(vfs_node_t* dir, vfs_node_t** out);
   vfs_status_t (*open)(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out);
   vfs_status_t (*create_file)(vfs_node_t* dir,
                               const char* name,
@@ -177,6 +182,13 @@ vfs_status_t vfs_unmount(vfs_mount_t* mount);
 vfs_status_t vfs_lookup(const char* absolute_path, vfs_node_t** out);
 
 /*
+ * Resolves `path` from `base` when relative, or from root when absolute.
+ */
+vfs_status_t vfs_lookup_at(vfs_node_t* base,
+                           const char* path,
+                           vfs_node_t** out);
+
+/*
  * Resolves the parent directory of an absolute path and returns the final path
  * component as a view into `absolute_path`.
  */
@@ -184,6 +196,16 @@ vfs_status_t vfs_lookup_parent(const char* absolute_path,
                                vfs_node_t** parent_out,
                                const char** name_out,
                                uint32_t* name_len_out);
+
+/*
+ * Resolves the parent directory of `path` from `base` when relative, or from
+ * root when absolute. The final component is returned as a view into `path`.
+ */
+vfs_status_t vfs_lookup_parent_at(vfs_node_t* base,
+                                  const char* path,
+                                  vfs_node_t** parent_out,
+                                  const char** name_out,
+                                  uint32_t* name_len_out);
 
 /*
  * Opens a regular file or directory at `absolute_path`. `out_fd` is optional
