@@ -18,10 +18,12 @@ static vfs_mount_t* root_mount = NULL;
 
 static void clear_process_fd(vfs_file_t* file);
 static void cache_vnode_stat_timestamps(vfs_node_t* vnode, vfs_stat_t** out);
-static vfs_status_t component_parent(vfs_node_t** current);
+static vfs_status_t component_parent(vfs_node_t** current,
+                                     vfs_mount_t** current_mount);
 static bool component_is_dot(const char* component, uint32_t component_len);
 static bool component_is_dotdot(const char* component, uint32_t component_len);
-static vfs_node_t* traverse_mount(vfs_node_t* vnode);
+static vfs_node_t* traverse_mount(vfs_node_t* vnode,
+                                  vfs_mount_t** current_mount);
 static vfs_status_t walk_path(vfs_node_t* base,
                               const char* path,
                               bool stop_at_parent,
@@ -557,9 +559,43 @@ static void cache_vnode_stat_timestamps(vfs_node_t* vnode, vfs_stat_t** out) {
   (*out)->changed_mdt_timestamp = vnode->changed_mdt_timestamp;
 }
 
-static vfs_status_t component_parent(vfs_node_t** current) {
+static vfs_status_t component_parent(vfs_node_t** current,
+                                     vfs_mount_t** current_mount) {
   if (current == NULL || *current == NULL) { return VFS_STATUS_INVALID_ARG; }
-  if (*current == root_mount->root) { return VFS_STATUS_OK; }
+  if (*current == root_mount->root) { return VFS_STATUS_NOENT; }
+
+  if (current_mount != NULL && *current_mount != NULL &&
+      *current_mount != root_mount && *current == (*current_mount)->root) {
+    vfs_mount_t* mount = *current_mount;
+    vfs_mount_t* parent_mount =
+        mount->parent == NULL ? root_mount : mount->parent;
+    if (mount->point == NULL || parent_mount == NULL) {
+      return VFS_STATUS_INVALID_ARG;
+    }
+
+    if (mount->point == parent_mount->root) {
+      vfs_vnode_borrow(parent_mount->root);
+      vfs_vnode_release(*current);
+      *current = parent_mount->root;
+      *current_mount = parent_mount;
+      return VFS_STATUS_OK;
+    }
+
+    if (HVFS_VOP_MISSING(mount->point, parent)) {
+      return VFS_STATUS_NOT_IMPLEMENTED;
+    }
+
+    vfs_node_t* parent = NULL;
+    vfs_status_t status = mount->point->ops->parent(mount->point, &parent);
+    if (status != VFS_STATUS_OK) { return status; }
+    if (parent == NULL) { return VFS_STATUS_NOENT; }
+
+    vfs_vnode_release(*current);
+    *current = parent;
+    *current_mount = parent_mount;
+    return VFS_STATUS_OK;
+  }
+
   if (HVFS_VOP_MISSING(*current, parent)) {
     return VFS_STATUS_NOT_IMPLEMENTED;
   }
@@ -582,12 +618,17 @@ static bool component_is_dotdot(const char* component, uint32_t component_len) {
   return component_len == 2 && component[0] == '.' && component[1] == '.';
 }
 
-static vfs_node_t* traverse_mount(vfs_node_t* vnode) {
+static vfs_node_t* traverse_mount(vfs_node_t* vnode,
+                                  vfs_mount_t** current_mount) {
   if (vnode == NULL) { return NULL; }
 
   vfs_mount_t* mount = vnode->mount;
   if (mount == NULL || mount->root == NULL) { return vnode; }
 
+  if (current_mount != NULL) {
+    if (mount->parent == NULL) { mount->parent = *current_mount; }
+    *current_mount = mount;
+  }
   vfs_vnode_borrow(mount->root);
   vfs_vnode_release(vnode);
   return mount->root;
@@ -609,10 +650,12 @@ static vfs_status_t walk_path(vfs_node_t* base,
 
   if (path[0] == '\0') { return VFS_STATUS_NOENT; }
 
+  vfs_mount_t* current_mount = path[0] == '/' ? root_mount : NULL;
   vfs_node_t* current = path[0] == '/' ? root_mount->root : base;
+  if (current == root_mount->root) { current_mount = root_mount; }
   if (current == NULL) { return VFS_STATUS_NOENT; }
   vfs_vnode_borrow(current);
-  current = traverse_mount(current);
+  current = traverse_mount(current, &current_mount);
 
   const char* cursor = path;
 
@@ -645,7 +688,7 @@ static vfs_status_t walk_path(vfs_node_t* base,
 
     if (component_is_dot(component, component_len)) { continue; }
     if (component_is_dotdot(component, component_len)) {
-      vfs_status_t status = component_parent(&current);
+      vfs_status_t status = component_parent(&current, &current_mount);
       if (status != VFS_STATUS_OK) {
         vfs_vnode_release(current);
         return status;
@@ -660,7 +703,7 @@ static vfs_status_t walk_path(vfs_node_t* base,
       vfs_vnode_release(current);
       return status;
     }
-    next = traverse_mount(next);
+    next = traverse_mount(next, &current_mount);
 
     vfs_vnode_release(current);
     current = next;

@@ -101,6 +101,41 @@ void chardev_test(void) {
   HTEST_ASSERT(&ctx, memcmp(child_name, "zero", child_name_len) == 0);
   vfs_vnode_release(parent);
 
+  vfs_node_t* root = NULL;
+  HTEST_ASSERT(&ctx, vfs_lookup("/", &root) == VFS_STATUS_OK);
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx, vfs_lookup("/dev/..", &looked_up) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == root);
+  vfs_vnode_release(looked_up);
+  vfs_vnode_release(root);
+
+  vfs_node_t* direct_test = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup("/etc/test.txt", &direct_test) == VFS_STATUS_OK);
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup("/dev/../etc/test.txt", &looked_up) ==
+                   VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == direct_test);
+  vfs_vnode_release(looked_up);
+  vfs_vnode_release(direct_test);
+
+  vfs_node_t* etc = NULL;
+  HTEST_ASSERT(&ctx, vfs_lookup("/etc", &etc) == VFS_STATUS_OK);
+  parent = NULL;
+  child_name = NULL;
+  child_name_len = 0;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup_parent("/dev/../etc/test.txt",
+                                 &parent,
+                                 &child_name,
+                                 &child_name_len) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, parent == etc);
+  HTEST_ASSERT(&ctx, child_name_len == sizeof("test.txt") - 1);
+  HTEST_ASSERT(&ctx, memcmp(child_name, "test.txt", child_name_len) == 0);
+  vfs_vnode_release(parent);
+  vfs_vnode_release(etc);
+
   HTEST_ASSERT(&ctx,
                vfs_rmdir(dev_dir->vnode,
                          "parent_walk_test",

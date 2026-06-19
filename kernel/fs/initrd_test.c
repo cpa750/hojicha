@@ -118,6 +118,12 @@ void initrd_test(void) {
                    0);
   vfs_vnode_release(parent);
 
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup("/etc/test_mkdir/../../../", &looked_up) ==
+                   VFS_STATUS_NOENT);
+  HTEST_ASSERT(&ctx, looked_up == NULL);
+
   htest_case_begin(&ctx, "seek and write");
   vfs_file_t* test = NULL;
   HTEST_ASSERT(&ctx,

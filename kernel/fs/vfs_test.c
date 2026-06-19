@@ -205,6 +205,10 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx, mock.close_calls == 1);
   HTEST_ASSERT(&ctx, sched_pb_fd_get(g_kernel.current_process, fd) == NULL);
 
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx, vfs_lookup("/..", &looked_up) == VFS_STATUS_NOENT);
+  HTEST_ASSERT(&ctx, looked_up == NULL);
+
   htest_case_begin(&ctx, "relative lookup");
   mock_reset(&mock);
 
