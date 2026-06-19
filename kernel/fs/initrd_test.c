@@ -94,6 +94,30 @@ void initrd_test(void) {
   assert_dir_contains(&ctx, testmkdir, "mkdir_test.txt");
   assert_dir_missing(&ctx, testmkdir, "unlink_test.txt");
 
+  htest_case_begin(&ctx, "parent-relative lookup");
+  vfs_node_t* looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup_at(testmkdir->vnode, "../test_open_create.txt",
+                             &looked_up) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == testcreate->vnode);
+  vfs_vnode_release(looked_up);
+
+  vfs_node_t* parent = NULL;
+  const char* child_name = NULL;
+  uint32_t child_name_len = 0;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup_parent_at(testmkdir->vnode,
+                                    "../test_open_create.txt",
+                                    &parent,
+                                    &child_name,
+                                    &child_name_len) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, parent == etc->vnode);
+  HTEST_ASSERT(&ctx, child_name_len == strlen("test_open_create.txt"));
+  HTEST_ASSERT(&ctx,
+               memcmp(child_name, "test_open_create.txt", child_name_len) ==
+                   0);
+  vfs_vnode_release(parent);
+
   htest_case_begin(&ctx, "seek and write");
   vfs_file_t* test = NULL;
   HTEST_ASSERT(&ctx,

@@ -9,6 +9,7 @@ vfs_status_t initrd_lookup(vfs_node_t* dir,
                            const char* name,
                            uint32_t name_len,
                            vfs_node_t** out);
+vfs_status_t initrd_parent(vfs_node_t* dir, vfs_node_t** out);
 
 vfs_status_t initrd_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out);
 vfs_status_t initrd_close(vfs_file_t* vfile);

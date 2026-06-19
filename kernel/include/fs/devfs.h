@@ -29,6 +29,7 @@ vfs_status_t devfs_lookup(vfs_node_t* dir,
                           const char* name,
                           uint32_t name_len,
                           vfs_node_t** out);
+vfs_status_t devfs_parent(vfs_node_t* dir, vfs_node_t** out);
 
 vfs_status_t devfs_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out);
 vfs_status_t devfs_close(vfs_file_t* vfile);
