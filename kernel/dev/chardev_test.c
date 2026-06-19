@@ -1,6 +1,8 @@
 #include <dev/chardev_test.h>
 
 #include <fs/vfs.h>
+#include <kernel/g_kernel.h>
+#include <multitask/scheduler.h>
 #include <stdint.h>
 #include <string.h>
 #include <utils/test.h>
@@ -134,7 +136,40 @@ void chardev_test(void) {
   HTEST_ASSERT(&ctx, child_name_len == sizeof("test.txt") - 1);
   HTEST_ASSERT(&ctx, memcmp(child_name, "test.txt", child_name_len) == 0);
   vfs_vnode_release(parent);
+
+  vfs_node_t* old_cwd = sched_pb_get_cwd(g_kernel.current_process);
+  HTEST_ASSERT(&ctx, old_cwd != NULL);
+  vfs_vnode_borrow(old_cwd);
+
+  vfs_node_t* dev_cwd = NULL;
+  HTEST_ASSERT(&ctx, vfs_lookup("/dev", &dev_cwd) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, dev_cwd->mount != NULL);
+  HTEST_ASSERT(&ctx, dev_cwd == dev_cwd->mount->root);
+  sched_pb_set_cwd(g_kernel.current_process, dev_cwd);
+  vfs_vnode_release(dev_cwd);
+
+  HTEST_ASSERT(&ctx,
+               vfs_lookup("../etc/test.txt", &direct_test) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, direct_test != NULL);
+  vfs_vnode_release(direct_test);
+
+  parent = NULL;
+  child_name = NULL;
+  child_name_len = 0;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup_parent("../etc/test.txt",
+                                 &parent,
+                                 &child_name,
+                                 &child_name_len) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, parent == etc);
+  HTEST_ASSERT(&ctx, parent->mount == NULL);
+  HTEST_ASSERT(&ctx, child_name_len == sizeof("test.txt") - 1);
+  HTEST_ASSERT(&ctx, memcmp(child_name, "test.txt", child_name_len) == 0);
+  vfs_vnode_release(parent);
   vfs_vnode_release(etc);
+
+  sched_pb_set_cwd(g_kernel.current_process, old_cwd);
+  vfs_vnode_release(old_cwd);
 
   HTEST_ASSERT(&ctx,
                vfs_rmdir(dev_dir->vnode,

@@ -18,12 +18,10 @@ static vfs_mount_t* root_mount = NULL;
 
 static void clear_process_fd(vfs_file_t* file);
 static void cache_vnode_stat_timestamps(vfs_node_t* vnode, vfs_stat_t** out);
-static vfs_status_t component_parent(vfs_node_t** current,
-                                     vfs_mount_t** current_mount);
+static vfs_status_t component_parent(vfs_node_t** current);
 static bool component_is_dot(const char* component, uint32_t component_len);
 static bool component_is_dotdot(const char* component, uint32_t component_len);
-static vfs_node_t* traverse_mount(vfs_node_t* vnode,
-                                  vfs_mount_t** current_mount);
+static vfs_node_t* traverse_mount(vfs_node_t* vnode);
 static vfs_status_t walk_path(vfs_node_t* base,
                               const char* path,
                               bool stop_at_parent,
@@ -45,7 +43,12 @@ vfs_status_t vfs_mount_root(vfs_mount_t* mount) {
   mount->point = NULL;
   mount->parent = NULL;
   root_mount = mount;
+  mount->root->mount = mount;
   vfs_vnode_borrow(mount->root);
+  if (g_kernel.current_process != NULL &&
+      sched_pb_get_cwd(g_kernel.current_process) == NULL) {
+    sched_pb_set_cwd(g_kernel.current_process, mount->root);
+  }
   return VFS_STATUS_OK;
 }
 
@@ -63,6 +66,7 @@ vfs_status_t vfs_mount(vfs_node_t* mountpoint,
   mount->point = mountpoint;
   mount->parent = parent;
   mountpoint->mount = mount;
+  mount->root->mount = mount;
 
   vfs_vnode_borrow(mountpoint);
   vfs_vnode_borrow(mount->root);
@@ -78,6 +82,7 @@ vfs_status_t vfs_unmount(vfs_mount_t* mount) {
   if (mount->point->mount != mount) { return VFS_STATUS_INVALID_ARG; }
 
   mount->point->mount = NULL;
+  mount->root->mount = NULL;
   vfs_vnode_release(mount->root);
   vfs_vnode_release(mount->point);
   mount->point = NULL;
@@ -85,9 +90,9 @@ vfs_status_t vfs_unmount(vfs_mount_t* mount) {
   return VFS_STATUS_OK;
 }
 
-vfs_status_t vfs_lookup(const char* absolute_path, vfs_node_t** out) {
+vfs_status_t vfs_lookup(const char* path, vfs_node_t** out) {
   if (out == NULL) { return VFS_STATUS_INVALID_ARG; }
-  return vfs_lookup_at(NULL, absolute_path, out);
+  return vfs_lookup_at(NULL, path, out);
 }
 
 vfs_status_t vfs_lookup_at(vfs_node_t* base,
@@ -97,7 +102,7 @@ vfs_status_t vfs_lookup_at(vfs_node_t* base,
   return walk_path(base, path, false, out, NULL, NULL);
 }
 
-vfs_status_t vfs_lookup_parent(const char* absolute_path,
+vfs_status_t vfs_lookup_parent(const char* path,
                                vfs_node_t** parent_out,
                                const char** name_out,
                                uint32_t* name_len_out) {
@@ -105,8 +110,7 @@ vfs_status_t vfs_lookup_parent(const char* absolute_path,
     return VFS_STATUS_INVALID_ARG;
   }
 
-  return vfs_lookup_parent_at(
-      NULL, absolute_path, parent_out, name_out, name_len_out);
+  return vfs_lookup_parent_at(NULL, path, parent_out, name_out, name_len_out);
 }
 
 vfs_status_t vfs_lookup_parent_at(vfs_node_t* base,
@@ -121,21 +125,21 @@ vfs_status_t vfs_lookup_parent_at(vfs_node_t* base,
   return walk_path(base, path, true, parent_out, name_out, name_len_out);
 }
 
-vfs_status_t vfs_open(const char* absolute_path,
+vfs_status_t vfs_open(const char* path,
                       uint32_t flags,
                       vfs_file_t** out,
                       uint64_t* out_fd) {
-  if (absolute_path == NULL || out == NULL) { return VFS_STATUS_INVALID_ARG; }
+  if (path == NULL || out == NULL) { return VFS_STATUS_INVALID_ARG; }
   *out = NULL;
   SET_OUT(out_fd, 0);
 
-  const char* path_end = absolute_path;
+  const char* path_end = path;
   while (*path_end != '\0') { path_end++; }
 
   if ((flags & VFS_OPEN_CREATE) && (flags & VFS_OPEN_DIRECTORY)) {
     return VFS_STATUS_INVALID_ARG;
   }
-  if ((flags & VFS_OPEN_CREATE) && path_end > absolute_path + 1 &&
+  if ((flags & VFS_OPEN_CREATE) && path_end > path + 1 &&
       path_end[-1] == '/') {
     return VFS_STATUS_INVALID_ARG;
   }
@@ -144,7 +148,7 @@ vfs_status_t vfs_open(const char* absolute_path,
   bool has_fd = sched_pb_fd_find_null(g_kernel.current_process, &fd_idx);
   if (!has_fd) { return VFS_STATUS_TOO_MANY_OPEN; }
 
-  vfs_status_t open_status = vfs_get_file_handle(absolute_path, flags, out);
+  vfs_status_t open_status = vfs_get_file_handle(path, flags, out);
   if (open_status == VFS_STATUS_OK) {
     sched_pb_fd_set(g_kernel.current_process, fd_idx, *out);
     SET_OUT(out_fd, fd_idx);
@@ -152,25 +156,25 @@ vfs_status_t vfs_open(const char* absolute_path,
   return open_status;
 }
 
-vfs_status_t vfs_get_file_handle(const char* absolute_path,
+vfs_status_t vfs_get_file_handle(const char* path,
                                  uint32_t flags,
                                  vfs_file_t** out) {
-  if (absolute_path == NULL || out == NULL) { return VFS_STATUS_INVALID_ARG; }
+  if (path == NULL || out == NULL) { return VFS_STATUS_INVALID_ARG; }
   *out = NULL;
 
-  const char* path_end = absolute_path;
+  const char* path_end = path;
   while (*path_end != '\0') { path_end++; }
 
   if ((flags & VFS_OPEN_CREATE) && (flags & VFS_OPEN_DIRECTORY)) {
     return VFS_STATUS_INVALID_ARG;
   }
-  if ((flags & VFS_OPEN_CREATE) && path_end > absolute_path + 1 &&
+  if ((flags & VFS_OPEN_CREATE) && path_end > path + 1 &&
       path_end[-1] == '/') {
     return VFS_STATUS_INVALID_ARG;
   }
 
   vfs_node_t* target = NULL;
-  vfs_status_t lookup_res = vfs_lookup(absolute_path, &target);
+  vfs_status_t lookup_res = vfs_lookup(path, &target);
   if (lookup_res != VFS_STATUS_OK &&
       !(lookup_res == VFS_STATUS_NOENT && (flags & VFS_OPEN_CREATE) &&
         !(flags & VFS_OPEN_DIRECTORY))) {
@@ -182,7 +186,7 @@ vfs_status_t vfs_get_file_handle(const char* absolute_path,
     const char* name = NULL;
     uint32_t name_len = 0;
     vfs_status_t dir_status =
-        vfs_lookup_parent(absolute_path, &dir, &name, &name_len);
+        vfs_lookup_parent(path, &dir, &name, &name_len);
     if (dir_status != VFS_STATUS_OK) { return dir_status; }
 
     vfs_status_t create_status = vfs_create(dir, name, name_len, &target);
@@ -393,9 +397,9 @@ vfs_status_t vfs_seek(vfs_file_t* file,
   return file->ops->seek(file, offset, whence, new_pos);
 }
 
-vfs_status_t vfs_stat(const char* absolute_path, vfs_stat_t** out) {
+vfs_status_t vfs_stat(const char* path, vfs_stat_t** out) {
   vfs_node_t* vnode = NULL;
-  vfs_status_t status = vfs_lookup(absolute_path, &vnode);
+  vfs_status_t status = vfs_lookup(path, &vnode);
   if (status != VFS_STATUS_OK) {
     SET_OUT(out, NULL);
     return status;
@@ -559,14 +563,12 @@ static void cache_vnode_stat_timestamps(vfs_node_t* vnode, vfs_stat_t** out) {
   (*out)->changed_mdt_timestamp = vnode->changed_mdt_timestamp;
 }
 
-static vfs_status_t component_parent(vfs_node_t** current,
-                                     vfs_mount_t** current_mount) {
+static vfs_status_t component_parent(vfs_node_t** current) {
   if (current == NULL || *current == NULL) { return VFS_STATUS_INVALID_ARG; }
   if (*current == root_mount->root) { return VFS_STATUS_NOENT; }
 
-  if (current_mount != NULL && *current_mount != NULL &&
-      *current_mount != root_mount && *current == (*current_mount)->root) {
-    vfs_mount_t* mount = *current_mount;
+  vfs_mount_t* mount = (*current)->mount;
+  if (mount != NULL && mount != root_mount && *current == mount->root) {
     vfs_mount_t* parent_mount =
         mount->parent == NULL ? root_mount : mount->parent;
     if (mount->point == NULL || parent_mount == NULL) {
@@ -577,7 +579,6 @@ static vfs_status_t component_parent(vfs_node_t** current,
       vfs_vnode_borrow(parent_mount->root);
       vfs_vnode_release(*current);
       *current = parent_mount->root;
-      *current_mount = parent_mount;
       return VFS_STATUS_OK;
     }
 
@@ -592,7 +593,6 @@ static vfs_status_t component_parent(vfs_node_t** current,
 
     vfs_vnode_release(*current);
     *current = parent;
-    *current_mount = parent_mount;
     return VFS_STATUS_OK;
   }
 
@@ -618,17 +618,13 @@ static bool component_is_dotdot(const char* component, uint32_t component_len) {
   return component_len == 2 && component[0] == '.' && component[1] == '.';
 }
 
-static vfs_node_t* traverse_mount(vfs_node_t* vnode,
-                                  vfs_mount_t** current_mount) {
+static vfs_node_t* traverse_mount(vfs_node_t* vnode) {
   if (vnode == NULL) { return NULL; }
 
   vfs_mount_t* mount = vnode->mount;
   if (mount == NULL || mount->root == NULL) { return vnode; }
+  if (vnode == mount->root) { return vnode; }
 
-  if (current_mount != NULL) {
-    if (mount->parent == NULL) { mount->parent = *current_mount; }
-    *current_mount = mount;
-  }
   vfs_vnode_borrow(mount->root);
   vfs_vnode_release(vnode);
   return mount->root;
@@ -650,12 +646,15 @@ static vfs_status_t walk_path(vfs_node_t* base,
 
   if (path[0] == '\0') { return VFS_STATUS_NOENT; }
 
-  vfs_mount_t* current_mount = path[0] == '/' ? root_mount : NULL;
+  if (path[0] != '/') {
+    vfs_node_t* cwd = sched_pb_get_cwd(g_kernel.current_process);
+    if (base == NULL) { base = cwd == NULL ? root_mount->root : cwd; }
+  }
+
   vfs_node_t* current = path[0] == '/' ? root_mount->root : base;
-  if (current == root_mount->root) { current_mount = root_mount; }
   if (current == NULL) { return VFS_STATUS_NOENT; }
   vfs_vnode_borrow(current);
-  current = traverse_mount(current, &current_mount);
+  current = traverse_mount(current);
 
   const char* cursor = path;
 
@@ -688,7 +687,7 @@ static vfs_status_t walk_path(vfs_node_t* base,
 
     if (component_is_dot(component, component_len)) { continue; }
     if (component_is_dotdot(component, component_len)) {
-      vfs_status_t status = component_parent(&current, &current_mount);
+      vfs_status_t status = component_parent(&current);
       if (status != VFS_STATUS_OK) {
         vfs_vnode_release(current);
         return status;
@@ -703,7 +702,7 @@ static vfs_status_t walk_path(vfs_node_t* base,
       vfs_vnode_release(current);
       return status;
     }
-    next = traverse_mount(next, &current_mount);
+    next = traverse_mount(next);
 
     vfs_vnode_release(current);
     current = next;

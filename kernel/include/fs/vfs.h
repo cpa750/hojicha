@@ -98,6 +98,11 @@ struct vfs_node {
   int64_t accessed_timestamp;
   int64_t modified_timestamp;
   int64_t changed_mdt_timestamp;
+  /*
+   * Mount boundary metadata. On a covered mountpoint, this points to the child
+   * mount mounted over it. On a mount root, this points to the mount that owns
+   * the root. Other vnodes leave it NULL.
+   */
   vfs_mount_t* mount;
   void* fs_data;
 };
@@ -177,29 +182,32 @@ vfs_status_t vfs_mount(vfs_node_t* mountpoint,
 vfs_status_t vfs_unmount(vfs_mount_t* mount);
 
 /*
- * Resolves an absolute path to a vnode.
+ * Resolves a path to a vnode. Absolute paths start at root; relative paths
+ * start at the current process cwd, or root if there is no cwd.
  */
-vfs_status_t vfs_lookup(const char* absolute_path, vfs_node_t** out);
+vfs_status_t vfs_lookup(const char* path, vfs_node_t** out);
 
 /*
- * Resolves `path` from `base` when relative, or from root when absolute.
+ * Resolves `path` from `base` when relative, or from the current process cwd
+ * if `base` is NULL. Absolute paths always start at root.
  */
 vfs_status_t vfs_lookup_at(vfs_node_t* base,
                            const char* path,
                            vfs_node_t** out);
 
 /*
- * Resolves the parent directory of an absolute path and returns the final path
- * component as a view into `absolute_path`.
+ * Resolves the parent directory of a path and returns the final path component
+ * as a view into `path`.
  */
-vfs_status_t vfs_lookup_parent(const char* absolute_path,
+vfs_status_t vfs_lookup_parent(const char* path,
                                vfs_node_t** parent_out,
                                const char** name_out,
                                uint32_t* name_len_out);
 
 /*
  * Resolves the parent directory of `path` from `base` when relative, or from
- * root when absolute. The final component is returned as a view into `path`.
+ * the current process cwd if `base` is NULL. Absolute paths always start at
+ * root. The final component is returned as a view into `path`.
  */
 vfs_status_t vfs_lookup_parent_at(vfs_node_t* base,
                                   const char* path,
@@ -208,19 +216,18 @@ vfs_status_t vfs_lookup_parent_at(vfs_node_t* base,
                                   uint32_t* name_len_out);
 
 /*
- * Opens a regular file or directory at `absolute_path`. `out_fd` is optional
- * and receives the process fd assigned to the opened handle on success.
+ * Opens a regular file or directory at `path`. `out_fd` is optional and
+ * receives the process fd assigned to the opened handle on success.
  */
-vfs_status_t vfs_open(const char* absolute_path,
+vfs_status_t vfs_open(const char* path,
                       uint32_t flags,
                       vfs_file_t** out,
                       uint64_t* out_fd);
 
 /*
- * Opens a regular file or directory at `absolute_path` and returns a file
- * handle.
+ * Opens a regular file or directory at `path` and returns a file handle.
  */
-vfs_status_t vfs_get_file_handle(const char* absolute_path,
+vfs_status_t vfs_get_file_handle(const char* path,
                                  uint32_t flags,
                                  vfs_file_t** out);
 
@@ -288,7 +295,7 @@ vfs_status_t vfs_seek(vfs_file_t* file,
 /*
  * Returns metadata for a file without opening it.
  */
-vfs_status_t vfs_stat(const char* absolute_path, vfs_stat_t** out);
+vfs_status_t vfs_stat(const char* path, vfs_stat_t** out);
 
 /*
  * Returns metadata for an already-open file.

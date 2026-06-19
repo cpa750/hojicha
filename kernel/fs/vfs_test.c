@@ -209,6 +209,53 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx, vfs_lookup("/..", &looked_up) == VFS_STATUS_NOENT);
   HTEST_ASSERT(&ctx, looked_up == NULL);
 
+  htest_case_begin(&ctx, "process cwd lookup");
+  mock_reset(&mock);
+
+  vfs_node_t* old_cwd = sched_pb_get_cwd(g_kernel.current_process);
+  HTEST_ASSERT(&ctx, old_cwd != NULL);
+  vfs_vnode_borrow(old_cwd);
+
+  sched_pb_set_cwd(g_kernel.current_process, NULL);
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup("etc/vfs_mock/existing.txt", &looked_up) ==
+                   VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == &mock.existing_file.vnode);
+  vfs_vnode_release(looked_up);
+
+  vfs_node_t* mock_cwd = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup("/etc/vfs_mock/existing_dir", &mock_cwd) ==
+                   VFS_STATUS_OK);
+  sched_pb_set_cwd(g_kernel.current_process, mock_cwd);
+  vfs_vnode_release(mock_cwd);
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx, vfs_lookup("nested.txt", &looked_up) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == &mock.nested_file.vnode);
+  vfs_vnode_release(looked_up);
+
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup_at(NULL, "nested.txt", &looked_up) ==
+                   VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == &mock.nested_file.vnode);
+  vfs_vnode_release(looked_up);
+
+  parent = NULL;
+  name = NULL;
+  name_len = 0;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup_parent("nested.txt", &parent, &name, &name_len) ==
+                   VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, parent == &mock.existing_dir.vnode);
+  HTEST_ASSERT(&ctx, name_len == strlen("nested.txt"));
+  HTEST_ASSERT(&ctx, memcmp(name, "nested.txt", strlen("nested.txt")) == 0);
+  vfs_vnode_release(parent);
+
+  sched_pb_set_cwd(g_kernel.current_process, old_cwd);
+  vfs_vnode_release(old_cwd);
+
   htest_case_begin(&ctx, "relative lookup");
   mock_reset(&mock);
 

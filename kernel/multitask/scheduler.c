@@ -71,6 +71,7 @@ struct process_block {
   char** envp;
 
   vfs_file_t** fds;
+  vfs_node_t* cwd;
   process_block_t** children;
   process_block_t* parent;
   wait_queue_t child_waiters;
@@ -87,6 +88,16 @@ char* sched_pb_get_name(process_block_t* p) { return p->name; }
 uint64_t sched_pb_get_pid(process_block_t* p) { return p->pid; }
 process_mem_t* sched_pb_get_mem(process_block_t* p) { return p->mem; }
 void sched_pb_set_elf(process_block_t* p, elf_t* elf) { p->elf = elf; }
+vfs_node_t* sched_pb_get_cwd(process_block_t* p) {
+  if (p == NULL) { return NULL; }
+  return p->cwd;
+}
+void sched_pb_set_cwd(process_block_t* p, vfs_node_t* cwd) {
+  if (p == NULL) { return; }
+  vfs_vnode_borrow(cwd);
+  vfs_vnode_release(p->cwd);
+  p->cwd = cwd;
+}
 void multitask_pb_dump(process_block_t* p, hlog_level_t log_level) {
   haddr_t vmm_cr3 = 0;
   process_mem_t* mem = sched_pb_get_mem(p);
@@ -302,6 +313,7 @@ process_block_t* sched_uproc_new(char* name, elf_t* elf) {
   new_proc->is_kernel_proc = false;
   new_proc->elf = elf;
   new_proc->mem->vmm = vmm;
+  sched_pb_set_cwd(new_proc, sched_pb_get_cwd(g_kernel.current_process));
   return new_proc;
 }
 
@@ -442,6 +454,7 @@ long sched_fork(process_block_t* process, interrupt_frame_t* frame) {
     new_proc->fds[fd] = process->fds[fd];
     vfs_file_borrow(new_proc->fds[fd]);
   }
+  sched_pb_set_cwd(new_proc, process->cwd);
 
   new_proc->rsp = (void*)switch_rsp;
   new_proc->parent = process;
@@ -899,6 +912,7 @@ void process_free(process_block_t* p) {
   free(p->name);
   proc_strings_free(p->argv);
   proc_strings_free(p->envp);
+  sched_pb_set_cwd(p, NULL);
   process_mem_free(p->mem);
   free(p->stack_end);
   free(p);
