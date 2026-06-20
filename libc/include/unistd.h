@@ -18,6 +18,7 @@ extern "C" {
 int access(const char* path, int amode);
 int chdir(const char* path);
 int close(int fd);
+int dup2(int oldfd, int newfd);
 int execve(const char* pathname, char* const argv[], char* const envp[]);
 int fchdir(int fd);
 int fork(void);

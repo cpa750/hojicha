@@ -9,6 +9,7 @@ long syscall_exit(int code);
 unsigned long syscall_nanosleep(unsigned long ns);
 
 long syscall_close(long fd);
+long syscall_dup2(long oldfd, long newfd);
 long syscall_execve(const char* pathname,
                     char* const argv[],
                     char* const envp[]);

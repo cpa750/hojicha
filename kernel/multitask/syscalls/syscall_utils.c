@@ -1,5 +1,7 @@
 #include <errno.h>
 #include <fs/vfs.h>
+#include <kernel/g_kernel.h>
+#include <multitask/scheduler.h>
 #include <multitask/syscall_utils.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -62,4 +64,19 @@ long syscall_lookup_parent_for_child(const char* path,
   }
 
   return 0;
+}
+
+vfs_status_t syscall_close_fd(long fd) {
+  if (fd < 0 || fd >= MAX_FDS) { return VFS_STATUS_BAD_FD; }
+
+  vfs_file_t* file = sched_pb_fd_get(g_kernel.current_process, fd);
+  if (file == NULL) { return VFS_STATUS_BAD_FD; }
+
+  if (file->refcount > 1) {
+    sched_pb_fd_set(g_kernel.current_process, fd, NULL);
+    vfs_file_release(file);
+    return VFS_STATUS_OK;
+  }
+
+  return vfs_close(file);
 }

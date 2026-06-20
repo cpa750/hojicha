@@ -50,6 +50,9 @@ void syscall_handle(interrupt_frame_t* frame) {
     case __HOJICHA_INTERNAL_SYSCALL_IOCTL:
       ret = syscall_ioctl(frame->rdi, frame->rsi, (void*)frame->rdx);
       break;
+    case __HOJICHA_INTERNAL_SYSCALL_DUP2:
+      ret = syscall_dup2(frame->rdi, frame->rsi);
+      break;
     case __HOJICHA_INTERNAL_SYSCALL_GETDENTS:
       ret =
           syscall_getdents(frame->rdi, (linux_dirent_t*)frame->rsi, frame->rdx);
