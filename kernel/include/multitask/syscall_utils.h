@@ -13,6 +13,7 @@ long syscall_lookup_parent_for_child(const char* path,
                                      vfs_node_t** parent_out,
                                      const char** name_out,
                                      uint32_t* name_len_out);
+vfs_status_t syscall_close_fd(long fd);
 bool syscall_is_uaddr(const void* ptr, size_t len);
 void* syscall_utok_memcpy(const void* src, size_t len);
 char* syscall_utok_strcpy(const char* src, size_t max_len);
