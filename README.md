@@ -7,10 +7,7 @@ This project is a first effort at developing an operating system for the x86_64 
 ![Hojicha screenshot](https://static.22ru.dev/hojicha/hojicha.jpg)
 
 ## Current Status:
-Expansion of shell capabilities:
-- [x] VFS support for linking and relative paths
-- [x] mkdir/rmdir/link/unlink etc. userspace programs
-- [ ] Redirection (echo foo > bar.txt)
+Figuring out what's needed for DOOM port (framebuffer device, frame buffering? HW accelerated graphics?)
 
 ## MVP Done:
 - [x] Babysteps
@@ -47,7 +44,7 @@ Expansion of shell capabilities:
   - [x] malloc and friends
   - [x] basic init and shell
   - [x] cat, echo, ln, ls, mkdir, touch, rm, rmdir, unlink
-  - [ ] Brainfuck interpreter/compiler
+  - [x] Brainfuck interpreter/compiler
   - [ ] DOOM port
 
 If you're reading this and you have feedback, please don't hesitate to let me know!
