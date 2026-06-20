@@ -169,6 +169,21 @@ vfs_status_t initrd_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
   vfile->fs_data = (void*)file;
   vfile->ops = &initrd_vfile_ops;
 
+  if ((flags & VFS_OPEN_TRUNC) && (flags & VFS_OPEN_WRITE) &&
+      vnode->type == VFS_NODE_FILE) {
+    initrd_inode_t* inode = (initrd_inode_t*)vnode->fs_data;
+    int64_t now = unix_time();
+    inode->len = 0;
+    vnode->modified_timestamp = now;
+    vnode->changed_mdt_timestamp = now;
+    inode->modified_timestamp = now;
+    inode->changed_mdt_timestamp = now;
+    sync_vnode_timestamps(inode);
+  }
+  if ((flags & VFS_OPEN_APPEND) && vnode->type == VFS_NODE_FILE) {
+    vfile->offset = ((initrd_inode_t*)vnode->fs_data)->len;
+  }
+
   if (out != NULL) { *out = vfile; }
   return VFS_STATUS_OK;
 }

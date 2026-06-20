@@ -3,6 +3,7 @@ set(LIBC_UNISTD_SOURCES
   brk.c
   chdir.c
   close.c
+  dup2.c
   execve.c
   fork.c
   link.c

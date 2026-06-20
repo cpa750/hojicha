@@ -36,6 +36,8 @@ typedef enum {
   VFS_OPEN_DIRECTORY = 4,
   VFS_OPEN_CREATE = 8,
   VFS_OPEN_CLOEXEC = 16,
+  VFS_OPEN_TRUNC = 32,
+  VFS_OPEN_APPEND = 64,
 } vfs_open_flags_t;
 
 typedef enum {

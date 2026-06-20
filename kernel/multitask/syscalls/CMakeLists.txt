@@ -2,6 +2,7 @@ target_sources(kernel_objects PRIVATE
   syscall_brk.c
   syscall_chdir.c
   syscall_close.c
+  syscall_dup2.c
   syscall_execve.c
   syscall_exit.c
   syscall_fork.c

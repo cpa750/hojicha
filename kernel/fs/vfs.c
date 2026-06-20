@@ -454,6 +454,10 @@ vfs_status_t vfs_write(vfs_file_t* file,
   if (HVFS_FOP_MISSING(file, write)) { return VFS_STATUS_NOT_IMPLEMENTED; }
   vfs_status_t status = can_write(file, buffer);
   if (status != VFS_STATUS_OK) { return status; }
+  if ((file->flags & VFS_OPEN_APPEND) && file->vnode->type == VFS_NODE_FILE) {
+    status = vfs_seek(file, 0, VFS_SEEK_END, NULL);
+    if (status != VFS_STATUS_OK) { return status; }
+  }
 
   uint64_t bytes_written = 0;
   uint64_t* written_out =
