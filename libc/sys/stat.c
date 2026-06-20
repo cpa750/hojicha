@@ -12,6 +12,16 @@ int stat(const char* path, stat_t* stat_buf) {
   return ret;
 }
 
+int lstat(const char* path, stat_t* stat_buf) {
+  int ret =
+      __syscall2(__HOJICHA_INTERNAL_SYSCALL_LSTAT, (long)path, (long)stat_buf);
+  if (ret < 0) {
+    errno = -ret;
+    return -1;
+  }
+  return ret;
+}
+
 int fstat(int fd, stat_t* stat_buf) {
   int ret = __syscall2(__HOJICHA_INTERNAL_SYSCALL_FSTAT, fd, (long)stat_buf);
   if (ret < 0) {

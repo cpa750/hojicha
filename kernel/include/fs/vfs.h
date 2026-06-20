@@ -335,6 +335,12 @@ vfs_status_t vfs_seek(vfs_file_t* file,
 vfs_status_t vfs_stat(const char* path, vfs_stat_t** out);
 
 /*
+ * Returns metadata for a path without following the final component if it is a
+ * symbolic link.
+ */
+vfs_status_t vfs_lstat(const char* path, vfs_stat_t** out);
+
+/*
  * Returns metadata for an already-open file.
  */
 vfs_status_t vfs_fstat(vfs_file_t* file, vfs_stat_t** out);

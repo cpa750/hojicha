@@ -55,11 +55,13 @@ static vfs_status_t lookup_parent_entry(const char* path,
                                         const char** name_out,
                                         uint32_t* name_len_out);
 static bool open_create_path_invalid(const char* path, uint32_t flags);
+static bool path_is_root(const char* path);
 static vfs_status_t resolve_symlink_component(vfs_node_t* base,
                                               vfs_node_t* link,
                                               const char* remaining,
                                               uint32_t symlink_depth,
                                               vfs_node_t** out);
+static vfs_status_t stat_vnode(vfs_node_t* vnode, vfs_stat_t** out);
 static vfs_status_t walk_path(const vfs_lookup_request_t* request,
                               vfs_lookup_result_t* result);
 static vfs_status_t vnode_owning_mount(vfs_node_t* vnode, vfs_mount_t** out);
@@ -493,15 +495,26 @@ vfs_status_t vfs_stat(const char* path, vfs_stat_t** out) {
   vfs_node_t* vnode = NULL;
   vfs_status_t status = vfs_lookup(path, &vnode);
   if (status != VFS_STATUS_OK) { return status; }
-  if (HVFS_VOP_MISSING(vnode, stat)) {
-    status = VFS_STATUS_NOT_IMPLEMENTED;
-    goto cleanup;
+
+  status = stat_vnode(vnode, out);
+
+  vfs_vnode_release(vnode);
+  return status;
+}
+
+vfs_status_t vfs_lstat(const char* path, vfs_stat_t** out) {
+  SET_OUT(out, NULL);
+
+  vfs_node_t* vnode = NULL;
+  vfs_status_t status;
+  if (path_is_root(path)) {
+    status = vfs_lookup(path, &vnode);
+  } else {
+    status = lookup_child_no_follow(path, &vnode);
   }
+  if (status != VFS_STATUS_OK) { return status; }
 
-  status = vnode->ops->stat(vnode, out);
-  if (status == VFS_STATUS_OK) { cache_vnode_stat_timestamps(vnode, out); }
-
-cleanup:
+  status = stat_vnode(vnode, out);
   vfs_vnode_release(vnode);
   return status;
 }
@@ -509,14 +522,7 @@ cleanup:
 vfs_status_t vfs_fstat(vfs_file_t* file, vfs_stat_t** out) {
   SET_OUT(out, NULL);
   if (file == NULL) { return VFS_STATUS_NOENT; }
-  if (HVFS_VOP_MISSING(file->vnode, stat)) {
-    return VFS_STATUS_NOT_IMPLEMENTED;
-  }
-  vfs_status_t status = file->vnode->ops->stat(file->vnode, out);
-  if (status == VFS_STATUS_OK) {
-    cache_vnode_stat_timestamps(file->vnode, out);
-  }
-  return status;
+  return stat_vnode(file->vnode, out);
 }
 
 vfs_status_t vfs_close(vfs_file_t* file) {
@@ -875,6 +881,12 @@ static bool open_create_path_invalid(const char* path, uint32_t flags) {
   return path_end > path + 1 && path_end[-1] == '/';
 }
 
+static bool path_is_root(const char* path) {
+  if (path == NULL) { return false; }
+  while (*path == '/') { path++; }
+  return *path == '\0';
+}
+
 static vfs_status_t vnode_owning_mount(vfs_node_t* vnode, vfs_mount_t** out) {
   if (vnode == NULL || out == NULL) { return VFS_STATUS_INVALID_ARG; }
   if (root_mount == NULL || root_mount->root == NULL) {
@@ -952,6 +964,17 @@ static vfs_status_t resolve_symlink_component(vfs_node_t* base,
 cleanup:
   free(linked_path);
   free(target);
+  return status;
+}
+
+static vfs_status_t stat_vnode(vfs_node_t* vnode, vfs_stat_t** out) {
+  if (HVFS_VOP_MISSING(vnode, stat)) {
+    SET_OUT(out, NULL);
+    return VFS_STATUS_NOT_IMPLEMENTED;
+  }
+
+  vfs_status_t status = vnode->ops->stat(vnode, out);
+  if (status == VFS_STATUS_OK) { cache_vnode_stat_timestamps(vnode, out); }
   return status;
 }
 

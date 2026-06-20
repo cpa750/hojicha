@@ -428,6 +428,12 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx, link_target_len == strlen("existing.txt"));
   HTEST_ASSERT(&ctx, memcmp(link_target, "existing.txt", link_target_len) == 0);
 
+  stat = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lstat("/etc/vfs_mock/file-link", &stat) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, stat->type == VFS_NODE_SYMLINK);
+  free(stat);
+
   HTEST_ASSERT(&ctx,
                vfs_symlink("existing_dir", "/etc/vfs_mock/dir-link") ==
                    VFS_STATUS_OK);

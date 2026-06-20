@@ -51,6 +51,7 @@ extern "C" {
 #endif
 
 int fstat(int fd, stat_t* stat_buf);
+int lstat(const char* path, stat_t* stat_buf);
 int mkdir(const char* path);
 int stat(const char* path, stat_t* stat_buf);
 

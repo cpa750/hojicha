@@ -1,18 +1,22 @@
 target_sources(kernel_objects PRIVATE
   syscall_brk.c
+  syscall_chdir.c
   syscall_close.c
   syscall_execve.c
   syscall_exit.c
   syscall_fork.c
   syscall_getdents.c
   syscall_ioctl.c
+  syscall_link.c
   syscall_lseek.c
   syscall_mkdir.c
   syscall_nanosleep.c
   syscall_open.c
   syscall_read.c
+  syscall_readlink.c
   syscall_rmdir.c
   syscall_stat.c
+  syscall_symlink.c
   syscall_unlink.c
   syscall_utils.c
   syscall_waitpid.c

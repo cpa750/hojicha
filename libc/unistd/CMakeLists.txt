@@ -4,10 +4,13 @@ set(LIBC_UNISTD_SOURCES
   close.c
   execve.c
   fork.c
+  link.c
   lseek.c
+  readlink.c
   rmdir.c
   sleep.c
   sbrk.c
+  symlink.c
   unlink.c
 )
 

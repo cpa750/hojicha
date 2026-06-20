@@ -19,9 +19,12 @@ int access(const char* path, int amode);
 int close(int fd);
 int execve(const char* pathname, char* const argv[], char* const envp[]);
 int fork(void);
+int link(const char* oldpath, const char* newpath);
 long lseek(int fd, long offset, int whence);
+long readlink(const char* path, char* buf, long bufsiz);
 int rmdir(const char* path);
 unsigned int sleep(unsigned int seconds);
+int symlink(const char* target, const char* linkpath);
 int unlink(const char* path);
 
 int brk(void* addr);
