@@ -210,8 +210,9 @@ vfs_status_t devfs_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
   }
 
   if (vnode->type == VFS_NODE_DIR) {
-    devfs_open_dir_t* dir = (devfs_open_dir_t*)malloc(sizeof(devfs_open_dir_t));
-    vfs_file_t* vfile = (vfs_file_t*)malloc(sizeof(vfs_file_t));
+    devfs_open_dir_t* dir =
+        (devfs_open_dir_t*)calloc(1, sizeof(devfs_open_dir_t));
+    vfs_file_t* vfile = (vfs_file_t*)calloc(1, sizeof(vfs_file_t));
     if (dir == NULL || vfile == NULL) {
       free(dir);
       free(vfile);
@@ -233,7 +234,7 @@ vfs_status_t devfs_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
   devfs_device_t* dev = get_device(dev_node);
   if (dev == NULL) { return VFS_STATUS_NOENT; }
 
-  vfs_file_t* vfile = (vfs_file_t*)malloc(sizeof(vfs_file_t));
+  vfs_file_t* vfile = (vfs_file_t*)calloc(1, sizeof(vfs_file_t));
   if (vfile == NULL) { return VFS_STATUS_NOMEM; }
 
   init_vfile(vfile, vnode, flags);
@@ -315,7 +316,7 @@ vfs_status_t devfs_readdir(vfs_file_t* vdir, vfs_dirent_t** out) {
   file->current = file->current->next;
   vdir->offset++;
 
-  vfs_dirent_t* ret = (vfs_dirent_t*)malloc(sizeof(vfs_dirent_t));
+  vfs_dirent_t* ret = (vfs_dirent_t*)calloc(1, sizeof(vfs_dirent_t));
   if (ret == NULL) { return VFS_STATUS_NOMEM; }
 
   ret->name = vfs_clone_name(
@@ -486,7 +487,7 @@ vfs_status_t devfs_readlink(vfs_node_t* vnode,
 
 vfs_status_t devfs_stat(vfs_node_t* vnode, vfs_stat_t** out) {
   if (vnode->type == VFS_NODE_DIR || vnode->type == VFS_NODE_SYMLINK) {
-    vfs_stat_t* ret = (vfs_stat_t*)malloc(sizeof(vfs_stat_t));
+    vfs_stat_t* ret = (vfs_stat_t*)calloc(1, sizeof(vfs_stat_t));
     if (ret == NULL) { return VFS_STATUS_NOMEM; }
 
     ret->size = ((devfs_node_t*)vnode->fs_data)->len;

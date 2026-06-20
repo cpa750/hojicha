@@ -558,15 +558,15 @@ void vfs_test(void) {
   file->vnode->accessed_timestamp = -7;
   HTEST_ASSERT(&ctx, vfs_read(file, read_buf, 0, &bytes_read) == VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, bytes_read == 0);
-  HTEST_ASSERT(&ctx, file->vnode->accessed_timestamp != -7);
+  HTEST_ASSERT(&ctx, file->vnode->accessed_timestamp == -7);
 
   file->vnode->modified_timestamp = -8;
   file->vnode->changed_mdt_timestamp = -9;
   HTEST_ASSERT(&ctx, vfs_write(file, write_buf, 0, &bytes_written) ==
                          VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, bytes_written == 0);
-  HTEST_ASSERT(&ctx, file->vnode->modified_timestamp != -8);
-  HTEST_ASSERT(&ctx, file->vnode->changed_mdt_timestamp != -9);
+  HTEST_ASSERT(&ctx, file->vnode->modified_timestamp == -8);
+  HTEST_ASSERT(&ctx, file->vnode->changed_mdt_timestamp == -9);
 
   uint64_t new_pos = 0;
   HTEST_ASSERT(&ctx,
@@ -620,6 +620,35 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx, vfs_readdir(file, NULL) == VFS_STATUS_NOTDIR);
   HTEST_ASSERT(&ctx, mock.readdir_calls == 0);
   HTEST_ASSERT(&ctx, vfs_close(file) == VFS_STATUS_OK);
+
+  htest_case_begin(&ctx, "file op availability guards");
+  mock_reset(&mock);
+
+  vfs_file_t missing_read = {
+      .vnode = &mock.existing_file.vnode,
+      .ops = &mock_dir_file_ops,
+      .flags = 0,
+      .refcount = 1,
+  };
+  bytes_read = 99;
+  HTEST_ASSERT(&ctx,
+               vfs_read(&missing_read, read_buf, sizeof(read_buf),
+                        &bytes_read) == VFS_STATUS_NOT_IMPLEMENTED);
+  HTEST_ASSERT(&ctx, bytes_read == 0);
+  HTEST_ASSERT(&ctx, mock.read_calls == 0);
+
+  vfs_file_t missing_write = {
+      .vnode = &mock.existing_file.vnode,
+      .ops = &mock_dir_file_ops,
+      .flags = 0,
+      .refcount = 1,
+  };
+  bytes_written = 99;
+  HTEST_ASSERT(&ctx,
+               vfs_write(&missing_write, write_buf, sizeof(write_buf),
+                         &bytes_written) == VFS_STATUS_NOT_IMPLEMENTED);
+  HTEST_ASSERT(&ctx, bytes_written == 0);
+  HTEST_ASSERT(&ctx, mock.write_calls == 0);
 
   htest_case_begin(&ctx, "stat/readdir");
   mock_reset(&mock);
@@ -746,7 +775,7 @@ static vfs_status_t mock_open(vfs_node_t* vnode,
   if (out == NULL) { return VFS_STATUS_INVALID_ARG; }
 
   mock_vfs_state_t* state = mock_state();
-  vfs_file_t* file = (vfs_file_t*)malloc(sizeof(vfs_file_t));
+  vfs_file_t* file = (vfs_file_t*)calloc(1, sizeof(vfs_file_t));
   if (file == NULL) { return VFS_STATUS_NOMEM; }
 
   file->vnode = vnode;
@@ -922,7 +951,7 @@ static vfs_status_t mock_stat(vfs_node_t* vnode, vfs_stat_t** out) {
 
   mock_vfs_state_t* state = mock_state();
   mock_node_t* node = mock_node_from_vnode(vnode);
-  vfs_stat_t* stat = (vfs_stat_t*)malloc(sizeof(vfs_stat_t));
+  vfs_stat_t* stat = (vfs_stat_t*)calloc(1, sizeof(vfs_stat_t));
   if (stat == NULL) { return VFS_STATUS_NOMEM; }
 
   stat->type = vnode->type;
@@ -969,7 +998,7 @@ static vfs_status_t mock_readdir(vfs_file_t* dir, vfs_dirent_t** out) {
     return VFS_STATUS_OK;
   }
 
-  vfs_dirent_t* dirent = (vfs_dirent_t*)malloc(sizeof(vfs_dirent_t));
+  vfs_dirent_t* dirent = (vfs_dirent_t*)calloc(1, sizeof(vfs_dirent_t));
   if (dirent == NULL) { return VFS_STATUS_NOMEM; }
   dirent->name = vfs_clone_name("existing.txt", strlen("existing.txt"), false);
   dirent->inode_no = 1;
