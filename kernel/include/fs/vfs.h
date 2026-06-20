@@ -19,6 +19,8 @@ typedef enum {
   VFS_STATUS_NOT_IMPLEMENTED,
   VFS_STATUS_NOTEMPTY,
   VFS_STATUS_EXISTS,
+  VFS_STATUS_XDEV,
+  VFS_STATUS_LOOP,
 } vfs_status_t;
 
 typedef enum {
@@ -152,6 +154,20 @@ struct vfs_node_ops {
                         const char* name,
                         uint32_t name_len,
                         uint32_t flags);
+  vfs_status_t (*link)(vfs_node_t* dir,
+                       const char* name,
+                       uint32_t name_len,
+                       vfs_node_t* target);
+  vfs_status_t (*symlink)(vfs_node_t* dir,
+                          const char* name,
+                          uint32_t name_len,
+                          const char* target,
+                          uint32_t target_len,
+                          vfs_node_t** out);
+  vfs_status_t (*readlink)(vfs_node_t* vnode,
+                           char* buffer,
+                           uint64_t len,
+                           uint64_t* bytes_read_out);
   void (*free)(vfs_node_t* vnode);
   vfs_status_t (*stat)(vfs_node_t* vnode, vfs_stat_t** out);
 };
@@ -159,6 +175,7 @@ struct vfs_node_ops {
 struct vfs_stat {
   vfs_node_type_t type;
   uint64_t size;
+  uint32_t link_count;
   int64_t accessed_timestamp;
   int64_t modified_timestamp;
   int64_t changed_mdt_timestamp;
@@ -262,6 +279,26 @@ vfs_status_t vfs_rmdir(vfs_node_t* dir,
                        const char* name,
                        uint32_t name_len,
                        uint32_t flags);
+
+/*
+ * Creates a hard link at `new_path` to an existing non-directory file at
+ * `old_path`. Hard links cannot cross mounted filesystems.
+ */
+vfs_status_t vfs_link(const char* old_path, const char* new_path);
+
+/*
+ * Creates a symbolic link at `link_path` whose stored target is `target`.
+ */
+vfs_status_t vfs_symlink(const char* target, const char* link_path);
+
+/*
+ * Reads the target stored in a symbolic link. The target is copied into
+ * `buffer` without adding a terminating NUL byte.
+ */
+vfs_status_t vfs_readlink(const char* path,
+                          char* buffer,
+                          uint64_t len,
+                          uint64_t* bytes_read_out);
 
 /*
  * Reads up to `len` bytes from a file handle, advancing its current offset.

@@ -12,6 +12,7 @@ extern int __errno;
 #define ENOMEM    12
 #define EACCES    13
 #define EEXIST    17
+#define EXDEV     18
 #define ENOENT    2
 #define ENOTDIR   20
 #define EISDIR    21
@@ -19,5 +20,6 @@ extern int __errno;
 #define EMFILE    24
 #define ENOSYS    38
 #define ENOTEMPTY 39
+#define ELOOP     40
 
 #endif  // HOJICHA_ERRNO_H

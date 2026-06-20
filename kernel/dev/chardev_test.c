@@ -85,6 +85,40 @@ void chardev_test(void) {
 
   vfs_node_t* looked_up = NULL;
   HTEST_ASSERT(&ctx,
+               vfs_symlink("null", "/dev/null-link") == VFS_STATUS_OK);
+  char link_target[16] = {0};
+  uint64_t link_target_len = 0;
+  HTEST_ASSERT(&ctx,
+               vfs_readlink("/dev/null-link",
+                            link_target,
+                            sizeof(link_target),
+                            &link_target_len) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, link_target_len == sizeof("null") - 1);
+  HTEST_ASSERT(&ctx, memcmp(link_target, "null", link_target_len) == 0);
+
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx, vfs_lookup("/dev/null-link", &looked_up) == VFS_STATUS_OK);
+  vfs_node_t* direct_null = NULL;
+  HTEST_ASSERT(&ctx, vfs_lookup("/dev/null", &direct_null) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == direct_null);
+  vfs_vnode_release(looked_up);
+  vfs_vnode_release(direct_null);
+
+  HTEST_ASSERT(&ctx,
+               vfs_symlink("parent_walk_test", "/dev/parent-walk-link") ==
+                   VFS_STATUS_OK);
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup("/dev/parent-walk-link/../zero", &looked_up) ==
+                   VFS_STATUS_OK);
+  vfs_vnode_release(looked_up);
+
+  HTEST_ASSERT(&ctx,
+               vfs_link("/dev/null", "/dev/null-hard") ==
+                   VFS_STATUS_INVALID_ARG);
+
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
                vfs_lookup_at(parent_walk_dir, "../null", &looked_up) ==
                    VFS_STATUS_OK);
   vfs_vnode_release(looked_up);
@@ -171,6 +205,16 @@ void chardev_test(void) {
   sched_pb_set_cwd(g_kernel.current_process, old_cwd);
   vfs_vnode_release(old_cwd);
 
+  HTEST_ASSERT(&ctx,
+               vfs_unlink(dev_dir->vnode,
+                          "null-link",
+                          sizeof("null-link") - 1,
+                          0) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx,
+               vfs_unlink(dev_dir->vnode,
+                          "parent-walk-link",
+                          sizeof("parent-walk-link") - 1,
+                          0) == VFS_STATUS_OK);
   HTEST_ASSERT(&ctx,
                vfs_rmdir(dev_dir->vnode,
                          "parent_walk_test",

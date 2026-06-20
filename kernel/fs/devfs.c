@@ -18,6 +18,8 @@ struct devfs_node {
   uint64_t minor;
   char* name;
   uint64_t name_len;
+  char* symlink_target;
+  uint64_t symlink_target_len;
   uint64_t len;
 };
 
@@ -45,7 +47,9 @@ static const vfs_node_ops_t devfs_node_ops = {.lookup = devfs_lookup,
                                               .create_dir = devfs_create_dir,
                                               .stat = devfs_stat,
                                               .unlink = devfs_delete_file,
-                                              .rmdir = devfs_delete_dir};
+                                              .rmdir = devfs_delete_dir,
+                                              .symlink = devfs_symlink,
+                                              .readlink = devfs_readlink};
 
 static const vfs_file_ops_t devfs_file_ops = {
     .read = devfs_read,
@@ -389,7 +393,20 @@ vfs_status_t devfs_delete_file(vfs_node_t* dir,
                                const char* name,
                                uint32_t name_len,
                                uint32_t flags) {
-  return VFS_STATUS_NOT_IMPLEMENTED;
+  if (dir == NULL || dir->type != VFS_NODE_DIR || name == NULL ||
+      name_len == 0) {
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  devfs_node_t* dir_node = (devfs_node_t*)dir->fs_data;
+  devfs_node_t* child = find_child(dir_node->first_child, name, name_len);
+  if (child == NULL) { return VFS_STATUS_NOENT; }
+  if (child->vnode->type == VFS_NODE_DIR) { return VFS_STATUS_ISDIR; }
+  if (child->vnode->type != VFS_NODE_SYMLINK) {
+    return VFS_STATUS_NOT_IMPLEMENTED;
+  }
+
+  return detach_child(child) == NULL ? VFS_STATUS_NOENT : VFS_STATUS_OK;
 }
 vfs_status_t devfs_delete_dir(vfs_node_t* dir,
                               const char* name,
@@ -409,13 +426,72 @@ vfs_status_t devfs_delete_dir(vfs_node_t* dir,
   return detach_child(child) == NULL ? VFS_STATUS_NOENT : VFS_STATUS_OK;
 }
 
+vfs_status_t devfs_symlink(vfs_node_t* dir,
+                           const char* name,
+                           uint32_t name_len,
+                           const char* target,
+                           uint32_t target_len,
+                           vfs_node_t** out) {
+  if (dir == NULL || dir->type != VFS_NODE_DIR ||
+      !vfs_validate_name(name, name_len) || target == NULL ||
+      target_len == 0) {
+    SET_OUT(out, NULL);
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  devfs_node_t* dir_node = (devfs_node_t*)dir->fs_data;
+  if (find_child(dir_node->first_child, name, name_len) != NULL) {
+    SET_OUT(out, NULL);
+    return VFS_STATUS_EXISTS;
+  }
+
+  devfs_node_t* child =
+      create_child(dir_node, VFS_NODE_SYMLINK, 0, 0, name, name_len);
+  if (child == NULL) {
+    SET_OUT(out, NULL);
+    return VFS_STATUS_NOMEM;
+  }
+
+  child->symlink_target = vfs_clone_name(target, target_len, false);
+  if (child->symlink_target == NULL) {
+    detach_child(child);
+    devfs_free(child->vnode);
+    SET_OUT(out, NULL);
+    return VFS_STATUS_NOMEM;
+  }
+  child->symlink_target_len = target_len;
+  child->len = target_len;
+
+  vfs_vnode_borrow(child->vnode);
+  SET_OUT(out, child->vnode);
+  return VFS_STATUS_OK;
+}
+
+vfs_status_t devfs_readlink(vfs_node_t* vnode,
+                            char* buffer,
+                            uint64_t len,
+                            uint64_t* bytes_read_out) {
+  if (vnode == NULL || vnode->type != VFS_NODE_SYMLINK || buffer == NULL) {
+    SET_OUT(bytes_read_out, 0);
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  devfs_node_t* node = (devfs_node_t*)vnode->fs_data;
+  uint64_t copy_len = node->symlink_target_len;
+  if (copy_len > len) { copy_len = len; }
+  memcpy(buffer, node->symlink_target, copy_len);
+  SET_OUT(bytes_read_out, copy_len);
+  return VFS_STATUS_OK;
+}
+
 vfs_status_t devfs_stat(vfs_node_t* vnode, vfs_stat_t** out) {
-  if (vnode->type == VFS_NODE_DIR) {
+  if (vnode->type == VFS_NODE_DIR || vnode->type == VFS_NODE_SYMLINK) {
     vfs_stat_t* ret = (vfs_stat_t*)malloc(sizeof(vfs_stat_t));
     if (ret == NULL) { return VFS_STATUS_NOMEM; }
 
     ret->size = ((devfs_node_t*)vnode->fs_data)->len;
     ret->type = vnode->type;
+    ret->link_count = vnode->link_count;
     SET_OUT(out, ret);
     return VFS_STATUS_OK;
   }
@@ -431,7 +507,7 @@ vfs_status_t devfs_stat(vfs_node_t* vnode, vfs_stat_t** out) {
 void devfs_free(vfs_node_t* vnode) {
   if (vnode == NULL) { return; }
 
-  if (vnode->type != VFS_NODE_DIR) {
+  if (vnode->type == VFS_NODE_DEVICE) {
     devfs_node_t* dev_node = (devfs_node_t*)vnode->fs_data;
     devfs_device_t* dev = get_device(dev_node);
     if (dev != NULL && dev->node_ops != NULL && dev->node_ops->free != NULL) {
@@ -442,6 +518,7 @@ void devfs_free(vfs_node_t* vnode) {
   devfs_node_t* node = (devfs_node_t*)vnode->fs_data;
   if (node != NULL) {
     free(node->name);
+    free(node->symlink_target);
     free(node);
   }
   free(vnode);
@@ -455,8 +532,8 @@ static devfs_node_t* create_child(devfs_node_t* parent,
                                   uint64_t name_len) {
   if (parent == NULL || !vfs_validate_name(name, name_len)) { return NULL; }
 
-  devfs_node_t* child = (devfs_node_t*)malloc(sizeof(devfs_node_t));
-  vfs_node_t* vnode = (vfs_node_t*)malloc(sizeof(vfs_node_t));
+  devfs_node_t* child = (devfs_node_t*)calloc(1, sizeof(devfs_node_t));
+  vfs_node_t* vnode = (vfs_node_t*)calloc(1, sizeof(vfs_node_t));
   char* owned_name = vfs_clone_name(name, name_len, false);
   if (child == NULL || vnode == NULL || owned_name == NULL) {
     free(child);
@@ -473,6 +550,8 @@ static devfs_node_t* create_child(devfs_node_t* parent,
   child->minor = minor;
   child->name = owned_name;
   child->name_len = name_len;
+  child->symlink_target = NULL;
+  child->symlink_target_len = 0;
   child->len = 0;
   init_vnode(vnode, type, child);
 

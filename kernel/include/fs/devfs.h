@@ -66,6 +66,16 @@ vfs_status_t devfs_delete_dir(vfs_node_t* dir,
                               const char* name,
                               uint32_t name_len,
                               uint32_t flags);
+vfs_status_t devfs_symlink(vfs_node_t* dir,
+                           const char* name,
+                           uint32_t name_len,
+                           const char* target,
+                           uint32_t target_len,
+                           vfs_node_t** out);
+vfs_status_t devfs_readlink(vfs_node_t* vnode,
+                            char* buffer,
+                            uint64_t len,
+                            uint64_t* bytes_read_out);
 
 vfs_status_t devfs_stat(vfs_node_t* vnode, vfs_stat_t** out);
 

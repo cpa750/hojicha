@@ -6,6 +6,13 @@
 
 #define HOJICHA_USTAR_HEADER_LEN_BYTES 512
 
+typedef enum {
+  USTAR_TYPE_REGULAR_FILE = '0',
+  USTAR_TYPE_REGULAR_FILE_ALT = '\0',
+  USTAR_TYPE_SYMBOLIC_LINK = '2',
+  USTAR_TYPE_DIRECTORY = '5',
+} ustar_type_t;
+
 struct ustar_header {
   char filename[100];
   char mode[8];

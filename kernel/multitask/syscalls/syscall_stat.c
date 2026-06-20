@@ -26,6 +26,7 @@ static long copy_vfs_stat(vfs_stat_t* vfs_stat_buf, stat_t* stat_buf) {
 
   memset(stat_buf, 0, sizeof(stat_t));
   stat_buf->st_mode = vfs_type_to_mode(vfs_stat_buf->type);
+  stat_buf->st_nlink = vfs_stat_buf->link_count;
   stat_buf->st_size = vfs_stat_buf->size;
   stat_buf->st_atim.tv_sec = vfs_stat_buf->accessed_timestamp;
   stat_buf->st_mtim.tv_sec = vfs_stat_buf->modified_timestamp;
