@@ -53,6 +53,14 @@ void sched_pb_set_elf(process_block_t* p, elf_t* elf);
 void* sched_pb_get_cr3(process_block_t* p);
 
 /*
+ * Gets/sets the process cwd vnode. `sched_pb_set_cwd()` borrows `cwd` and
+ * releases the previous cwd, if any. The returned cwd pointer is owned by the
+ * process and remains valid only while the process exists or until cwd changes.
+ */
+vfs_node_t* sched_pb_get_cwd(process_block_t* p);
+void sched_pb_set_cwd(process_block_t* p, vfs_node_t* cwd);
+
+/*
  * Finds the first free file descriptor in a processe's file descriptor
  * table. Returns `true` and the index in `idx_out` if there is a free
  * descriptor, `false` if not.

@@ -26,6 +26,7 @@ static long copy_vfs_stat(vfs_stat_t* vfs_stat_buf, stat_t* stat_buf) {
 
   memset(stat_buf, 0, sizeof(stat_t));
   stat_buf->st_mode = vfs_type_to_mode(vfs_stat_buf->type);
+  stat_buf->st_nlink = vfs_stat_buf->link_count;
   stat_buf->st_size = vfs_stat_buf->size;
   stat_buf->st_atim.tv_sec = vfs_stat_buf->accessed_timestamp;
   stat_buf->st_mtim.tv_sec = vfs_stat_buf->modified_timestamp;
@@ -45,6 +46,27 @@ long syscall_stat(const char* path, stat_t* stat_buf) {
 
   vfs_stat_t* vfs_stat_buf = NULL;
   vfs_status_t status = vfs_stat(path_copy, &vfs_stat_buf);
+  free(path_copy);
+  if (status != VFS_STATUS_OK) { return -vfs_status_to_errno(status); }
+
+  long ret = copy_vfs_stat(vfs_stat_buf, stat_buf);
+
+  free(vfs_stat_buf);
+  return ret;
+}
+
+long syscall_lstat(const char* path, stat_t* stat_buf) {
+  if (path == NULL || stat_buf == NULL) { return -EINVAL; }
+  if (!syscall_is_uaddr(path, SYSCALL_USER_STRING_MAX)) {
+    return -EINVAL;
+  }
+  if (!syscall_is_uaddr(stat_buf, sizeof(stat_t))) { return -EINVAL; }
+
+  char* path_copy = syscall_utok_strcpy(path, SYSCALL_USER_STRING_MAX);
+  if (path_copy == NULL) { return -ENOMEM; }
+
+  vfs_stat_t* vfs_stat_buf = NULL;
+  vfs_status_t status = vfs_lstat(path_copy, &vfs_stat_buf);
   free(path_copy);
   if (status != VFS_STATUS_OK) { return -vfs_status_to_errno(status); }
 

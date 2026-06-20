@@ -94,6 +94,122 @@ void initrd_test(void) {
   assert_dir_contains(&ctx, testmkdir, "mkdir_test.txt");
   assert_dir_missing(&ctx, testmkdir, "unlink_test.txt");
 
+  htest_case_begin(&ctx, "parent-relative lookup");
+  vfs_node_t* looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup_at(testmkdir->vnode, "../test_open_create.txt",
+                             &looked_up) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == testcreate->vnode);
+  vfs_vnode_release(looked_up);
+
+  vfs_node_t* parent = NULL;
+  const char* child_name = NULL;
+  uint32_t child_name_len = 0;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup_parent_at(testmkdir->vnode,
+                                    "../test_open_create.txt",
+                                    &parent,
+                                    &child_name,
+                                    &child_name_len) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, parent == etc->vnode);
+  HTEST_ASSERT(&ctx, child_name_len == strlen("test_open_create.txt"));
+  HTEST_ASSERT(&ctx,
+               memcmp(child_name, "test_open_create.txt", child_name_len) ==
+                   0);
+  vfs_vnode_release(parent);
+
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup("/etc/test_mkdir/../../../", &looked_up) ==
+                   VFS_STATUS_NOENT);
+  HTEST_ASSERT(&ctx, looked_up == NULL);
+
+  htest_case_begin(&ctx, "hard and symbolic links");
+  HTEST_ASSERT(&ctx,
+               vfs_link("/etc/test_open_create.txt",
+                        "/etc/test_open_create_hard.txt") == VFS_STATUS_OK);
+  vfs_stat_t* stat = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_stat("/etc/test_open_create_hard.txt", &stat) ==
+                   VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, stat->link_count == 2);
+  free(stat);
+
+  vfs_file_t* hard_link = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_open("/etc/test_open_create_hard.txt",
+                        VFS_OPEN_READ,
+                        &hard_link,
+                        NULL) == VFS_STATUS_OK);
+  assert_read_eq(&ctx, hard_link, write_test);
+
+  HTEST_ASSERT(&ctx,
+               vfs_unlink(etc->vnode,
+                          "test_open_create.txt",
+                          strlen("test_open_create.txt"),
+                          0) == VFS_STATUS_OK);
+  vfs_file_t* removed_original = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_open("/etc/test_open_create.txt",
+                        VFS_OPEN_READ,
+                        &removed_original,
+                        NULL) == VFS_STATUS_NOENT);
+  HTEST_ASSERT(&ctx, removed_original == NULL);
+  HTEST_ASSERT(&ctx, vfs_seek(hard_link, 0, VFS_SEEK_SET, NULL) == VFS_STATUS_OK);
+  assert_read_eq(&ctx, hard_link, write_test);
+
+  HTEST_ASSERT(&ctx,
+               vfs_symlink("test_open_create_hard.txt",
+                           "/etc/test_open_create_link.txt") ==
+                   VFS_STATUS_OK);
+  char link_target[64] = {0};
+  uint64_t link_target_len = 0;
+  HTEST_ASSERT(&ctx,
+               vfs_readlink("/etc/test_open_create_link.txt",
+                            link_target,
+                            sizeof(link_target),
+                            &link_target_len) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, link_target_len == strlen("test_open_create_hard.txt"));
+  HTEST_ASSERT(&ctx,
+               memcmp(link_target,
+                      "test_open_create_hard.txt",
+                      link_target_len) == 0);
+
+  vfs_file_t* symlink_file = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_open("/etc/test_open_create_link.txt",
+                        VFS_OPEN_READ,
+                        &symlink_file,
+                        NULL) == VFS_STATUS_OK);
+  assert_read_eq(&ctx, symlink_file, write_test);
+  HTEST_ASSERT(&ctx, vfs_close(symlink_file) == VFS_STATUS_OK);
+
+  HTEST_ASSERT(&ctx,
+               vfs_symlink("test_mkdir", "/etc/test_mkdir_link") ==
+                   VFS_STATUS_OK);
+  vfs_file_t* dir_symlink_file = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_open("/etc/test_mkdir_link/mkdir_test.txt",
+                        VFS_OPEN_READ,
+                        &dir_symlink_file,
+                        NULL) == VFS_STATUS_OK);
+  assert_read_eq(&ctx, dir_symlink_file, mkdir_write_test);
+  HTEST_ASSERT(&ctx, vfs_close(dir_symlink_file) == VFS_STATUS_OK);
+
+  HTEST_ASSERT(&ctx,
+               vfs_symlink("missing-target.txt", "/etc/dangling_link") ==
+                   VFS_STATUS_OK);
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup("/etc/dangling_link", &looked_up) ==
+                   VFS_STATUS_NOENT);
+  HTEST_ASSERT(&ctx,
+               vfs_readlink("/etc/dangling_link",
+                            link_target,
+                            sizeof(link_target),
+                            &link_target_len) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, link_target_len == strlen("missing-target.txt"));
+
   htest_case_begin(&ctx, "seek and write");
   vfs_file_t* test = NULL;
   HTEST_ASSERT(&ctx,
@@ -157,6 +273,27 @@ void initrd_test(void) {
   assert_dir_missing(&ctx, etc, "test_mkdir/");
 
   HTEST_ASSERT(&ctx, vfs_close(test) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, vfs_close(hard_link) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx,
+               vfs_unlink(etc->vnode,
+                          "test_open_create_hard.txt",
+                          strlen("test_open_create_hard.txt"),
+                          0) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx,
+               vfs_unlink(etc->vnode,
+                          "test_open_create_link.txt",
+                          strlen("test_open_create_link.txt"),
+                          0) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx,
+               vfs_unlink(etc->vnode,
+                          "test_mkdir_link",
+                          strlen("test_mkdir_link"),
+                          0) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx,
+               vfs_unlink(etc->vnode,
+                          "dangling_link",
+                          strlen("dangling_link"),
+                          0) == VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, vfs_close(testcreate) == VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, vfs_close(etc) == VFS_STATUS_OK);
 

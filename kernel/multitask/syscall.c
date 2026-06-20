@@ -2,9 +2,9 @@
 #include <errno.h>
 #include <haddr.h>
 #include <hlog.h>
+#include <internal/__syscalls.h>
 #include <multitask/syscall.h>
 #include <multitask/syscall_callbacks.h>
-#include <internal/__syscalls.h>
 
 struct syscall {
   syscall_callback_t callback;
@@ -41,6 +41,9 @@ void syscall_handle(interrupt_frame_t* frame) {
     case __HOJICHA_INTERNAL_SYSCALL_FSTAT:
       ret = syscall_fstat(frame->rdi, (stat_t*)frame->rsi);
       break;
+    case __HOJICHA_INTERNAL_SYSCALL_LSTAT:
+      ret = syscall_lstat((const char*)frame->rdi, (stat_t*)frame->rsi);
+      break;
     case __HOJICHA_INTERNAL_SYSCALL_LSEEK:
       ret = syscall_lseek(frame->rdi, (long)frame->rsi, (int)frame->rdx);
       break;
@@ -51,14 +54,30 @@ void syscall_handle(interrupt_frame_t* frame) {
       ret =
           syscall_getdents(frame->rdi, (linux_dirent_t*)frame->rsi, frame->rdx);
       break;
+    case __HOJICHA_INTERNAL_SYSCALL_CHDIR:
+      ret = syscall_chdir((const char*)frame->rdi);
+      break;
+    case __HOJICHA_INTERNAL_SYSCALL_FCHDIR:
+      ret = syscall_fchdir(frame->rdi);
+      break;
     case __HOJICHA_INTERNAL_SYSCALL_MKDIR:
       ret = syscall_mkdir((const char*)frame->rdi);
       break;
     case __HOJICHA_INTERNAL_SYSCALL_RMDIR:
       ret = syscall_rmdir((const char*)frame->rdi);
       break;
+    case __HOJICHA_INTERNAL_SYSCALL_LINK:
+      ret = syscall_link((const char*)frame->rdi, (const char*)frame->rsi);
+      break;
     case __HOJICHA_INTERNAL_SYSCALL_UNLINK:
       ret = syscall_unlink((const char*)frame->rdi);
+      break;
+    case __HOJICHA_INTERNAL_SYSCALL_SYMLINK:
+      ret = syscall_symlink((const char*)frame->rdi, (const char*)frame->rsi);
+      break;
+    case __HOJICHA_INTERNAL_SYSCALL_READLINK:
+      ret = syscall_readlink(
+          (const char*)frame->rdi, (char*)frame->rsi, (long)frame->rdx);
       break;
     case __HOJICHA_INTERNAL_SYSCALL_EXIT:
       ret = syscall_exit((int)frame->rdi);

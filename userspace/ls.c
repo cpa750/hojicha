@@ -88,11 +88,6 @@ static void list_dir(const char* path) {
 }
 
 static void list_path(const char* path, int include_path_header) {
-  if (path[0] != '/') {
-    printf("ls: relative paths are not supported: %s\n", path);
-    return;
-  }
-
   stat_t st;
   if (stat(path, &st) < 0) {
     printf("ls: missing: %s\n", path);
@@ -112,7 +107,7 @@ static void list_path(const char* path, int include_path_header) {
 
 int main(int argc, char** argv) {
   if (argc <= 1) {
-    list_path("/", 0);
+    list_path(".", 0);
     return 0;
   }
 

@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <utils/set_out.h>
 #include <utils/test.h>
 
 typedef struct mock_node mock_node_t;
@@ -13,6 +14,10 @@ struct mock_node {
   const char* name;
   uint64_t size;
   bool present;
+  mock_node_t* parent;
+  vfs_node_t* hard_target;
+  const char* symlink_target;
+  uint32_t symlink_target_len;
 };
 
 typedef struct mock_vfs_state mock_vfs_state_t;
@@ -25,7 +30,14 @@ struct mock_vfs_state {
   mock_node_t created_file;
   mock_node_t removable_file;
   mock_node_t existing_dir;
+  mock_node_t nested_file;
   mock_node_t created_dir;
+  mock_node_t hard_link;
+  mock_node_t file_symlink;
+  mock_node_t dir_symlink;
+  mock_node_t dangling_symlink;
+  mock_node_t loop_a;
+  mock_node_t loop_b;
 
   uint64_t lookup_calls;
   uint64_t open_calls;
@@ -33,6 +45,9 @@ struct mock_vfs_state {
   uint64_t create_dir_calls;
   uint64_t unlink_calls;
   uint64_t rmdir_calls;
+  uint64_t link_calls;
+  uint64_t symlink_calls;
+  uint64_t readlink_calls;
   uint64_t stat_calls;
   uint64_t free_calls;
   uint64_t read_calls;
@@ -56,12 +71,15 @@ struct mock_vfs_state {
   uint32_t last_rmdir_flags;
   uint32_t last_name_len;
   char last_name[32];
+  uint32_t last_target_len;
+  char last_target[64];
 };
 
 static vfs_status_t mock_lookup(vfs_node_t* dir,
                                 const char* name,
                                 uint32_t name_len,
                                 vfs_node_t** out);
+static vfs_status_t mock_parent(vfs_node_t* dir, vfs_node_t** out);
 static vfs_status_t mock_open(vfs_node_t* vnode,
                               uint32_t flags,
                               vfs_file_t** out);
@@ -81,6 +99,20 @@ static vfs_status_t mock_rmdir(vfs_node_t* dir,
                                const char* name,
                                uint32_t name_len,
                                uint32_t flags);
+static vfs_status_t mock_link(vfs_node_t* dir,
+                              const char* name,
+                              uint32_t name_len,
+                              vfs_node_t* target);
+static vfs_status_t mock_symlink(vfs_node_t* dir,
+                                 const char* name,
+                                 uint32_t name_len,
+                                 const char* target,
+                                 uint32_t target_len,
+                                 vfs_node_t** out);
+static vfs_status_t mock_readlink(vfs_node_t* vnode,
+                                  char* buffer,
+                                  uint64_t len,
+                                  uint64_t* bytes_read_out);
 static void mock_free(vfs_node_t* vnode);
 static vfs_status_t mock_stat(vfs_node_t* vnode, vfs_stat_t** out);
 
@@ -104,7 +136,11 @@ static mock_node_t* mock_node_from_vnode(vfs_node_t* vnode);
 static void mock_record_name(mock_vfs_state_t* state,
                              const char* name,
                              uint32_t name_len);
+static void mock_record_target(mock_vfs_state_t* state,
+                               const char* target,
+                               uint32_t target_len);
 static mock_node_t* mock_find_child(mock_vfs_state_t* state,
+                                    vfs_node_t* dir,
                                     const char* name,
                                     uint32_t name_len);
 static void mock_node_init(mock_node_t* node,
@@ -112,7 +148,8 @@ static void mock_node_init(mock_node_t* node,
                            vfs_node_type_t type,
                            const char* name,
                            uint64_t size,
-                           bool present);
+                           bool present,
+                           mock_node_t* parent);
 static void mock_reset(mock_vfs_state_t* state);
 static void ensure_mock_mount(htest_ctx_t* ctx);
 static void cleanup_mock_mount(htest_ctx_t* ctx);
@@ -120,17 +157,28 @@ static void free_dirent(vfs_dirent_t* dirent);
 
 static const vfs_node_ops_t mock_dir_ops = {
     .lookup = mock_lookup,
+    .parent = mock_parent,
     .open = mock_open,
     .create_file = mock_create_file,
     .create_dir = mock_create_dir,
     .unlink = mock_unlink,
     .rmdir = mock_rmdir,
+    .link = mock_link,
+    .symlink = mock_symlink,
     .free = mock_free,
     .stat = mock_stat,
 };
 
 static const vfs_node_ops_t mock_file_ops = {
+    .parent = mock_parent,
     .open = mock_open,
+    .free = mock_free,
+    .stat = mock_stat,
+};
+
+static const vfs_node_ops_t mock_symlink_ops = {
+    .parent = mock_parent,
+    .readlink = mock_readlink,
     .free = mock_free,
     .stat = mock_stat,
 };
@@ -159,6 +207,9 @@ void vfs_test(void) {
   mock_reset(&mock);
 
   vfs_node_t* looked_up = NULL;
+  vfs_node_t* parent = NULL;
+  const char* name = NULL;
+  uint32_t name_len = 0;
   HTEST_ASSERT(
       &ctx,
       vfs_lookup("/etc/vfs_mock/existing.txt", &looked_up) == VFS_STATUS_OK);
@@ -195,6 +246,222 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx, mock.close_calls == 1);
   HTEST_ASSERT(&ctx, sched_pb_fd_get(g_kernel.current_process, fd) == NULL);
 
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx, vfs_lookup("/..", &looked_up) == VFS_STATUS_NOENT);
+  HTEST_ASSERT(&ctx, looked_up == NULL);
+
+  htest_case_begin(&ctx, "process cwd lookup");
+  mock_reset(&mock);
+
+  vfs_node_t* old_cwd = sched_pb_get_cwd(g_kernel.current_process);
+  HTEST_ASSERT(&ctx, old_cwd != NULL);
+  vfs_vnode_borrow(old_cwd);
+
+  sched_pb_set_cwd(g_kernel.current_process, NULL);
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup("etc/vfs_mock/existing.txt", &looked_up) ==
+                   VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == &mock.existing_file.vnode);
+  vfs_vnode_release(looked_up);
+
+  vfs_node_t* mock_cwd = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup("/etc/vfs_mock/existing_dir", &mock_cwd) ==
+                   VFS_STATUS_OK);
+  sched_pb_set_cwd(g_kernel.current_process, mock_cwd);
+  vfs_vnode_release(mock_cwd);
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx, vfs_lookup("nested.txt", &looked_up) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == &mock.nested_file.vnode);
+  vfs_vnode_release(looked_up);
+
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup_at(NULL, "nested.txt", &looked_up) ==
+                   VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == &mock.nested_file.vnode);
+  vfs_vnode_release(looked_up);
+
+  parent = NULL;
+  name = NULL;
+  name_len = 0;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup_parent("nested.txt", &parent, &name, &name_len) ==
+                   VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, parent == &mock.existing_dir.vnode);
+  HTEST_ASSERT(&ctx, name_len == strlen("nested.txt"));
+  HTEST_ASSERT(&ctx, memcmp(name, "nested.txt", strlen("nested.txt")) == 0);
+  vfs_vnode_release(parent);
+
+  sched_pb_set_cwd(g_kernel.current_process, old_cwd);
+  vfs_vnode_release(old_cwd);
+
+  htest_case_begin(&ctx, "relative lookup");
+  mock_reset(&mock);
+
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup_at(&mock.existing_dir.vnode, "nested.txt",
+                             &looked_up) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == &mock.nested_file.vnode);
+  vfs_vnode_release(looked_up);
+
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup_at(&mock.existing_dir.vnode, "./nested.txt",
+                             &looked_up) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == &mock.nested_file.vnode);
+  vfs_vnode_release(looked_up);
+
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup_at(&mock.existing_dir.vnode, "../existing.txt",
+                             &looked_up) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == &mock.existing_file.vnode);
+  vfs_vnode_release(looked_up);
+
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup_at(&mock.existing_dir.vnode,
+                             "/etc/vfs_mock/existing.txt",
+                             &looked_up) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == &mock.existing_file.vnode);
+  vfs_vnode_release(looked_up);
+
+  HTEST_ASSERT(&ctx,
+               vfs_lookup_at(NULL, "existing.txt", &looked_up) ==
+                   VFS_STATUS_NOENT);
+
+  htest_case_begin(&ctx, "relative parent lookup");
+  mock_reset(&mock);
+
+  parent = NULL;
+  name = NULL;
+  name_len = 0;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup_parent_at(&mock.existing_dir.vnode,
+                                    "nested.txt",
+                                    &parent,
+                                    &name,
+                                    &name_len) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, parent == &mock.existing_dir.vnode);
+  HTEST_ASSERT(&ctx, name_len == strlen("nested.txt"));
+  HTEST_ASSERT(&ctx, memcmp(name, "nested.txt", strlen("nested.txt")) == 0);
+  vfs_vnode_release(parent);
+
+  parent = NULL;
+  name = NULL;
+  name_len = 0;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup_parent_at(&mock.existing_dir.vnode,
+                                    "../created.txt",
+                                    &parent,
+                                    &name,
+                                    &name_len) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, parent == &mock.root.vnode);
+  HTEST_ASSERT(&ctx, name_len == strlen("created.txt"));
+  HTEST_ASSERT(&ctx, memcmp(name, "created.txt", strlen("created.txt")) == 0);
+  vfs_vnode_release(parent);
+
+  htest_case_begin(&ctx, "hard links");
+  mock_reset(&mock);
+
+  HTEST_ASSERT(&ctx,
+               vfs_link("/etc/vfs_mock/existing.txt",
+                        "/etc/vfs_mock/existing-hard.txt") == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, mock.link_calls == 1);
+  HTEST_ASSERT(&ctx, strcmp(mock.last_name, "existing-hard.txt") == 0);
+  HTEST_ASSERT(&ctx, mock.existing_file.vnode.link_count == 2);
+
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup("/etc/vfs_mock/existing-hard.txt", &looked_up) ==
+                   VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == &mock.existing_file.vnode);
+  vfs_vnode_release(looked_up);
+
+  stat = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_stat("/etc/vfs_mock/existing-hard.txt", &stat) ==
+                   VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, stat->link_count == 2);
+  free(stat);
+
+  HTEST_ASSERT(&ctx,
+               vfs_unlink(&mock.root.vnode,
+                          "existing-hard.txt",
+                          strlen("existing-hard.txt"),
+                          0) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, mock.existing_file.vnode.link_count == 1);
+  HTEST_ASSERT(&ctx,
+               vfs_link("/etc/vfs_mock/existing_dir",
+                        "/etc/vfs_mock/dir-hard") == VFS_STATUS_ISDIR);
+  HTEST_ASSERT(&ctx,
+               vfs_link("/etc/test.txt", "/etc/vfs_mock/cross-hard") ==
+                   VFS_STATUS_XDEV);
+
+  htest_case_begin(&ctx, "symbolic links");
+  mock_reset(&mock);
+
+  HTEST_ASSERT(&ctx,
+               vfs_symlink("existing.txt", "/etc/vfs_mock/file-link") ==
+                   VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, mock.symlink_calls == 1);
+  HTEST_ASSERT(&ctx, strcmp(mock.last_name, "file-link") == 0);
+  HTEST_ASSERT(&ctx, strcmp(mock.last_target, "existing.txt") == 0);
+
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup("/etc/vfs_mock/file-link", &looked_up) ==
+                   VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == &mock.existing_file.vnode);
+  vfs_vnode_release(looked_up);
+
+  char link_target[32] = {0};
+  uint64_t link_target_len = 0;
+  HTEST_ASSERT(&ctx,
+               vfs_readlink("/etc/vfs_mock/file-link",
+                            link_target,
+                            sizeof(link_target),
+                            &link_target_len) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, link_target_len == strlen("existing.txt"));
+  HTEST_ASSERT(&ctx, memcmp(link_target, "existing.txt", link_target_len) == 0);
+
+  stat = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lstat("/etc/vfs_mock/file-link", &stat) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, stat->type == VFS_NODE_SYMLINK);
+  free(stat);
+
+  HTEST_ASSERT(&ctx,
+               vfs_symlink("existing_dir", "/etc/vfs_mock/dir-link") ==
+                   VFS_STATUS_OK);
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup("/etc/vfs_mock/dir-link/nested.txt", &looked_up) ==
+                   VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, looked_up == &mock.nested_file.vnode);
+  vfs_vnode_release(looked_up);
+
+  HTEST_ASSERT(&ctx,
+               vfs_symlink("missing.txt", "/etc/vfs_mock/dangling-link") ==
+                   VFS_STATUS_OK);
+  looked_up = NULL;
+  HTEST_ASSERT(&ctx,
+               vfs_lookup("/etc/vfs_mock/dangling-link", &looked_up) ==
+                   VFS_STATUS_NOENT);
+  HTEST_ASSERT(&ctx,
+               vfs_readlink("/etc/vfs_mock/dangling-link",
+                            link_target,
+                            sizeof(link_target),
+                            &link_target_len) == VFS_STATUS_OK);
+  HTEST_ASSERT(&ctx, link_target_len == strlen("missing.txt"));
+
+  HTEST_ASSERT(&ctx,
+               vfs_lookup("/etc/vfs_mock/loop-a", &looked_up) ==
+                   VFS_STATUS_LOOP);
+
   htest_case_begin(&ctx, "file refcount defers final close");
   mock_reset(&mock);
 
@@ -217,9 +484,9 @@ void vfs_test(void) {
   htest_case_begin(&ctx, "create with open");
   mock_reset(&mock);
 
-  vfs_node_t* parent = NULL;
-  const char* name = NULL;
-  uint32_t name_len = 0;
+  parent = NULL;
+  name = NULL;
+  name_len = 0;
   HTEST_ASSERT(&ctx,
                vfs_lookup_parent(
                    "/etc/vfs_mock/created.txt", &parent, &name, &name_len) ==
@@ -297,15 +564,15 @@ void vfs_test(void) {
   file->vnode->accessed_timestamp = -7;
   HTEST_ASSERT(&ctx, vfs_read(file, read_buf, 0, &bytes_read) == VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, bytes_read == 0);
-  HTEST_ASSERT(&ctx, file->vnode->accessed_timestamp != -7);
+  HTEST_ASSERT(&ctx, file->vnode->accessed_timestamp == -7);
 
   file->vnode->modified_timestamp = -8;
   file->vnode->changed_mdt_timestamp = -9;
   HTEST_ASSERT(&ctx, vfs_write(file, write_buf, 0, &bytes_written) ==
                          VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, bytes_written == 0);
-  HTEST_ASSERT(&ctx, file->vnode->modified_timestamp != -8);
-  HTEST_ASSERT(&ctx, file->vnode->changed_mdt_timestamp != -9);
+  HTEST_ASSERT(&ctx, file->vnode->modified_timestamp == -8);
+  HTEST_ASSERT(&ctx, file->vnode->changed_mdt_timestamp == -9);
 
   uint64_t new_pos = 0;
   HTEST_ASSERT(&ctx,
@@ -359,6 +626,35 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx, vfs_readdir(file, NULL) == VFS_STATUS_NOTDIR);
   HTEST_ASSERT(&ctx, mock.readdir_calls == 0);
   HTEST_ASSERT(&ctx, vfs_close(file) == VFS_STATUS_OK);
+
+  htest_case_begin(&ctx, "file op availability guards");
+  mock_reset(&mock);
+
+  vfs_file_t missing_read = {
+      .vnode = &mock.existing_file.vnode,
+      .ops = &mock_dir_file_ops,
+      .flags = 0,
+      .refcount = 1,
+  };
+  bytes_read = 99;
+  HTEST_ASSERT(&ctx,
+               vfs_read(&missing_read, read_buf, sizeof(read_buf),
+                        &bytes_read) == VFS_STATUS_NOT_IMPLEMENTED);
+  HTEST_ASSERT(&ctx, bytes_read == 0);
+  HTEST_ASSERT(&ctx, mock.read_calls == 0);
+
+  vfs_file_t missing_write = {
+      .vnode = &mock.existing_file.vnode,
+      .ops = &mock_dir_file_ops,
+      .flags = 0,
+      .refcount = 1,
+  };
+  bytes_written = 99;
+  HTEST_ASSERT(&ctx,
+               vfs_write(&missing_write, write_buf, sizeof(write_buf),
+                         &bytes_written) == VFS_STATUS_NOT_IMPLEMENTED);
+  HTEST_ASSERT(&ctx, bytes_written == 0);
+  HTEST_ASSERT(&ctx, mock.write_calls == 0);
 
   htest_case_begin(&ctx, "stat/readdir");
   mock_reset(&mock);
@@ -455,14 +751,27 @@ static vfs_status_t mock_lookup(vfs_node_t* dir,
   state->last_lookup_dir = dir;
   mock_record_name(state, name, name_len);
 
-  mock_node_t* child = mock_find_child(state, name, name_len);
+  mock_node_t* child = mock_find_child(state, dir, name, name_len);
   if (child == NULL) {
     if (out != NULL) { *out = NULL; }
     return VFS_STATUS_NOENT;
   }
 
-  vfs_vnode_borrow(&child->vnode);
-  if (out != NULL) { *out = &child->vnode; }
+  vfs_node_t* vnode = child->hard_target == NULL ? &child->vnode
+                                                 : child->hard_target;
+  vfs_vnode_borrow(vnode);
+  if (out != NULL) { *out = vnode; }
+  return VFS_STATUS_OK;
+}
+
+static vfs_status_t mock_parent(vfs_node_t* dir, vfs_node_t** out) {
+  if (dir == NULL || out == NULL) { return VFS_STATUS_INVALID_ARG; }
+
+  mock_node_t* node = mock_node_from_vnode(dir);
+  mock_node_t* parent = node->parent == NULL ? &mock.root : node->parent;
+
+  vfs_vnode_borrow(&parent->vnode);
+  *out = &parent->vnode;
   return VFS_STATUS_OK;
 }
 
@@ -472,7 +781,7 @@ static vfs_status_t mock_open(vfs_node_t* vnode,
   if (out == NULL) { return VFS_STATUS_INVALID_ARG; }
 
   mock_vfs_state_t* state = mock_state();
-  vfs_file_t* file = (vfs_file_t*)malloc(sizeof(vfs_file_t));
+  vfs_file_t* file = (vfs_file_t*)calloc(1, sizeof(vfs_file_t));
   if (file == NULL) { return VFS_STATUS_NOMEM; }
 
   file->vnode = vnode;
@@ -505,6 +814,7 @@ static vfs_status_t mock_create_file(vfs_node_t* dir,
   }
 
   state->created_file.present = true;
+  state->created_file.parent = mock_node_from_vnode(dir);
   state->created_file.vnode.link_count = 1;
   vfs_vnode_borrow(&state->created_file.vnode);
   if (out != NULL) { *out = &state->created_file.vnode; }
@@ -520,6 +830,7 @@ static vfs_status_t mock_create_dir(vfs_node_t* dir,
   mock_record_name(state, name, name_len);
 
   state->created_dir.present = true;
+  state->created_dir.parent = mock_node_from_vnode(dir);
   state->created_dir.vnode.link_count = 1;
   vfs_vnode_borrow(&state->created_dir.vnode);
   if (out != NULL) { *out = &state->created_dir.vnode; }
@@ -535,7 +846,7 @@ static vfs_status_t mock_unlink(vfs_node_t* dir,
   state->last_unlink_flags = flags;
   mock_record_name(state, name, name_len);
 
-  mock_node_t* child = mock_find_child(state, name, name_len);
+  mock_node_t* child = mock_find_child(state, dir, name, name_len);
   if (child == NULL || child->vnode.type == VFS_NODE_DIR) {
     return VFS_STATUS_NOENT;
   }
@@ -553,12 +864,85 @@ static vfs_status_t mock_rmdir(vfs_node_t* dir,
   state->last_rmdir_flags = flags;
   mock_record_name(state, name, name_len);
 
-  mock_node_t* child = mock_find_child(state, name, name_len);
+  mock_node_t* child = mock_find_child(state, dir, name, name_len);
   if (child == NULL || child->vnode.type != VFS_NODE_DIR) {
     return VFS_STATUS_NOENT;
   }
 
   child->present = false;
+  return VFS_STATUS_OK;
+}
+
+static vfs_status_t mock_link(vfs_node_t* dir,
+                              const char* name,
+                              uint32_t name_len,
+                              vfs_node_t* target) {
+  mock_vfs_state_t* state = mock_state();
+  state->link_calls++;
+  mock_record_name(state, name, name_len);
+
+  if (target != &state->existing_file.vnode ||
+      name_len != strlen("existing-hard.txt") ||
+      memcmp(name, "existing-hard.txt", name_len) != 0) {
+    return VFS_STATUS_NOENT;
+  }
+
+  state->hard_link.present = true;
+  state->hard_link.parent = mock_node_from_vnode(dir);
+  state->hard_link.hard_target = target;
+  return VFS_STATUS_OK;
+}
+
+static vfs_status_t mock_symlink(vfs_node_t* dir,
+                                 const char* name,
+                                 uint32_t name_len,
+                                 const char* target,
+                                 uint32_t target_len,
+                                 vfs_node_t** out) {
+  mock_vfs_state_t* state = mock_state();
+  state->symlink_calls++;
+  mock_record_name(state, name, name_len);
+  mock_record_target(state, target, target_len);
+
+  mock_node_t* link = NULL;
+  if (name_len == strlen("file-link") &&
+      memcmp(name, "file-link", name_len) == 0) {
+    link = &state->file_symlink;
+  } else if (name_len == strlen("dir-link") &&
+             memcmp(name, "dir-link", name_len) == 0) {
+    link = &state->dir_symlink;
+  } else if (name_len == strlen("dangling-link") &&
+             memcmp(name, "dangling-link", name_len) == 0) {
+    link = &state->dangling_symlink;
+  } else {
+    SET_OUT(out, NULL);
+    return VFS_STATUS_NOENT;
+  }
+
+  link->present = true;
+  link->parent = mock_node_from_vnode(dir);
+  link->symlink_target = state->last_target;
+  link->symlink_target_len = target_len;
+  vfs_vnode_borrow(&link->vnode);
+  SET_OUT(out, &link->vnode);
+  return VFS_STATUS_OK;
+}
+
+static vfs_status_t mock_readlink(vfs_node_t* vnode,
+                                  char* buffer,
+                                  uint64_t len,
+                                  uint64_t* bytes_read_out) {
+  if (vnode == NULL || buffer == NULL) { return VFS_STATUS_INVALID_ARG; }
+
+  mock_vfs_state_t* state = mock_state();
+  mock_node_t* node = mock_node_from_vnode(vnode);
+  if (node->symlink_target == NULL) { return VFS_STATUS_INVALID_ARG; }
+
+  state->readlink_calls++;
+  uint64_t copy_len = node->symlink_target_len;
+  if (copy_len > len) { copy_len = len; }
+  memcpy(buffer, node->symlink_target, copy_len);
+  SET_OUT(bytes_read_out, copy_len);
   return VFS_STATUS_OK;
 }
 
@@ -573,11 +957,12 @@ static vfs_status_t mock_stat(vfs_node_t* vnode, vfs_stat_t** out) {
 
   mock_vfs_state_t* state = mock_state();
   mock_node_t* node = mock_node_from_vnode(vnode);
-  vfs_stat_t* stat = (vfs_stat_t*)malloc(sizeof(vfs_stat_t));
+  vfs_stat_t* stat = (vfs_stat_t*)calloc(1, sizeof(vfs_stat_t));
   if (stat == NULL) { return VFS_STATUS_NOMEM; }
 
   stat->type = vnode->type;
   stat->size = node->size;
+  stat->link_count = vnode->link_count;
   state->stat_calls++;
   state->last_stat_vnode = vnode;
   *out = stat;
@@ -619,7 +1004,7 @@ static vfs_status_t mock_readdir(vfs_file_t* dir, vfs_dirent_t** out) {
     return VFS_STATUS_OK;
   }
 
-  vfs_dirent_t* dirent = (vfs_dirent_t*)malloc(sizeof(vfs_dirent_t));
+  vfs_dirent_t* dirent = (vfs_dirent_t*)calloc(1, sizeof(vfs_dirent_t));
   if (dirent == NULL) { return VFS_STATUS_NOMEM; }
   dirent->name = vfs_clone_name("existing.txt", strlen("existing.txt"), false);
   dirent->inode_no = 1;
@@ -661,20 +1046,43 @@ static void mock_record_name(mock_vfs_state_t* state,
   state->last_name_len = name_len;
 }
 
+static void mock_record_target(mock_vfs_state_t* state,
+                               const char* target,
+                               uint32_t target_len) {
+  uint32_t copy_len = target_len;
+  if (copy_len >= sizeof(state->last_target)) {
+    copy_len = sizeof(state->last_target) - 1;
+  }
+
+  memcpy(state->last_target, target, copy_len);
+  state->last_target[copy_len] = '\0';
+  state->last_target_len = target_len;
+}
+
 static mock_node_t* mock_find_child(mock_vfs_state_t* state,
+                                    vfs_node_t* dir,
                                     const char* name,
                                     uint32_t name_len) {
+  mock_node_t* parent = mock_node_from_vnode(dir);
   mock_node_t* children[] = {
       &state->existing_file,
       &state->created_file,
       &state->removable_file,
       &state->existing_dir,
+      &state->nested_file,
       &state->created_dir,
+      &state->hard_link,
+      &state->file_symlink,
+      &state->dir_symlink,
+      &state->dangling_symlink,
+      &state->loop_a,
+      &state->loop_b,
   };
 
   for (uint64_t i = 0; i < sizeof(children) / sizeof(children[0]); ++i) {
     mock_node_t* child = children[i];
     if (!child->present) { continue; }
+    if (child->parent != parent) { continue; }
     if (strlen(child->name) != name_len) { continue; }
     if (memcmp(child->name, name, name_len) == 0) { return child; }
   }
@@ -686,10 +1094,15 @@ static void mock_node_init(mock_node_t* node,
                            vfs_node_type_t type,
                            const char* name,
                            uint64_t size,
-                           bool present) {
+                           bool present,
+                           mock_node_t* parent) {
   node->name = name;
   node->size = size;
   node->present = present;
+  node->parent = parent;
+  node->hard_target = NULL;
+  node->symlink_target = NULL;
+  node->symlink_target_len = 0;
   node->vnode.ops = ops;
   node->vnode.type = type;
   node->vnode.refcount = 0;
@@ -708,6 +1121,9 @@ static void mock_reset(mock_vfs_state_t* state) {
   state->create_dir_calls = 0;
   state->unlink_calls = 0;
   state->rmdir_calls = 0;
+  state->link_calls = 0;
+  state->symlink_calls = 0;
+  state->readlink_calls = 0;
   state->stat_calls = 0;
   state->free_calls = 0;
   state->read_calls = 0;
@@ -730,36 +1146,101 @@ static void mock_reset(mock_vfs_state_t* state) {
   state->last_rmdir_flags = 0;
   state->last_name_len = 0;
   state->last_name[0] = '\0';
+  state->last_target_len = 0;
+  state->last_target[0] = '\0';
 
   mock_node_init(&state->existing_file,
                  &mock_file_ops,
                  VFS_NODE_FILE,
                  "existing.txt",
                  128,
-                 true);
+                 true,
+                 &state->root);
   mock_node_init(&state->created_file,
                  &mock_file_ops,
                  VFS_NODE_FILE,
                  "created.txt",
                  64,
-                 false);
+                 false,
+                 &state->root);
   mock_node_init(&state->removable_file,
                  &mock_file_ops,
                  VFS_NODE_FILE,
                  "removable.txt",
                  32,
-                 true);
+                 true,
+                 &state->root);
   mock_node_init(&state->existing_dir,
                  &mock_dir_ops,
                  VFS_NODE_DIR,
                  "existing_dir",
                  0,
-                 true);
-  mock_node_init(
-      &state->created_dir, &mock_dir_ops, VFS_NODE_DIR, "made_dir", 0, false);
+                 true,
+                 &state->root);
+  mock_node_init(&state->nested_file,
+                 &mock_file_ops,
+                 VFS_NODE_FILE,
+                 "nested.txt",
+                 16,
+                 true,
+                 &state->existing_dir);
+  mock_node_init(&state->created_dir,
+                 &mock_dir_ops,
+                 VFS_NODE_DIR,
+                 "made_dir",
+                 0,
+                 false,
+                 &state->root);
+  mock_node_init(&state->hard_link,
+                 &mock_file_ops,
+                 VFS_NODE_FILE,
+                 "existing-hard.txt",
+                 128,
+                 false,
+                 &state->root);
+  mock_node_init(&state->file_symlink,
+                 &mock_symlink_ops,
+                 VFS_NODE_SYMLINK,
+                 "file-link",
+                 0,
+                 false,
+                 &state->root);
+  mock_node_init(&state->dir_symlink,
+                 &mock_symlink_ops,
+                 VFS_NODE_SYMLINK,
+                 "dir-link",
+                 0,
+                 false,
+                 &state->root);
+  mock_node_init(&state->dangling_symlink,
+                 &mock_symlink_ops,
+                 VFS_NODE_SYMLINK,
+                 "dangling-link",
+                 0,
+                 false,
+                 &state->root);
+  mock_node_init(&state->loop_a,
+                 &mock_symlink_ops,
+                 VFS_NODE_SYMLINK,
+                 "loop-a",
+                 0,
+                 true,
+                 &state->root);
+  state->loop_a.symlink_target = "loop-b";
+  state->loop_a.symlink_target_len = strlen("loop-b");
+  mock_node_init(&state->loop_b,
+                 &mock_symlink_ops,
+                 VFS_NODE_SYMLINK,
+                 "loop-b",
+                 0,
+                 true,
+                 &state->root);
+  state->loop_b.symlink_target = "loop-a";
+  state->loop_b.symlink_target_len = strlen("loop-a");
 
   state->root.vnode.refcount = state->mounted ? 1 : 0;
   state->root.vnode.link_count = 1;
+  state->root.parent = &state->root;
 }
 
 static void ensure_mock_mount(htest_ctx_t* ctx) {
@@ -768,7 +1249,8 @@ static void ensure_mock_mount(htest_ctx_t* ctx) {
     return;
   }
 
-  mock_node_init(&mock.root, &mock_dir_ops, VFS_NODE_DIR, "/", 0, true);
+  mock_node_init(
+      &mock.root, &mock_dir_ops, VFS_NODE_DIR, "/", 0, true, &mock.root);
   mock.root.vnode.fs_data = &mock;
   mock.mount.root = &mock.root.vnode;
   mock.mount.point = NULL;

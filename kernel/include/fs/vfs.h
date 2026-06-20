@@ -19,6 +19,8 @@ typedef enum {
   VFS_STATUS_NOT_IMPLEMENTED,
   VFS_STATUS_NOTEMPTY,
   VFS_STATUS_EXISTS,
+  VFS_STATUS_XDEV,
+  VFS_STATUS_LOOP,
 } vfs_status_t;
 
 typedef enum {
@@ -98,6 +100,11 @@ struct vfs_node {
   int64_t accessed_timestamp;
   int64_t modified_timestamp;
   int64_t changed_mdt_timestamp;
+  /*
+   * Mount boundary metadata. On a covered mountpoint, this points to the child
+   * mount mounted over it. On a mount root, this points to the mount that owns
+   * the root. Other vnodes leave it NULL.
+   */
   vfs_mount_t* mount;
   void* fs_data;
 };
@@ -121,10 +128,15 @@ struct vfs_file_ops {
 };
 
 struct vfs_node_ops {
+  /*
+   * Vnode-returning ops return borrowed references on success. The caller owns
+   * that reference and must release it with `vfs_vnode_release()`.
+   */
   vfs_status_t (*lookup)(vfs_node_t* dir,
                          const char* name,
                          uint32_t name_len,
                          vfs_node_t** out);
+  vfs_status_t (*parent)(vfs_node_t* dir, vfs_node_t** out);
   vfs_status_t (*open)(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out);
   vfs_status_t (*create_file)(vfs_node_t* dir,
                               const char* name,
@@ -142,6 +154,20 @@ struct vfs_node_ops {
                         const char* name,
                         uint32_t name_len,
                         uint32_t flags);
+  vfs_status_t (*link)(vfs_node_t* dir,
+                       const char* name,
+                       uint32_t name_len,
+                       vfs_node_t* target);
+  vfs_status_t (*symlink)(vfs_node_t* dir,
+                          const char* name,
+                          uint32_t name_len,
+                          const char* target,
+                          uint32_t target_len,
+                          vfs_node_t** out);
+  vfs_status_t (*readlink)(vfs_node_t* vnode,
+                           char* buffer,
+                           uint64_t len,
+                           uint64_t* bytes_read_out);
   void (*free)(vfs_node_t* vnode);
   vfs_status_t (*stat)(vfs_node_t* vnode, vfs_stat_t** out);
 };
@@ -149,6 +175,7 @@ struct vfs_node_ops {
 struct vfs_stat {
   vfs_node_type_t type;
   uint64_t size;
+  uint32_t link_count;
   int64_t accessed_timestamp;
   int64_t modified_timestamp;
   int64_t changed_mdt_timestamp;
@@ -172,33 +199,52 @@ vfs_status_t vfs_mount(vfs_node_t* mountpoint,
 vfs_status_t vfs_unmount(vfs_mount_t* mount);
 
 /*
- * Resolves an absolute path to a vnode.
+ * Resolves a path to a vnode. Absolute paths start at root; relative paths
+ * start at the current process cwd, or root if there is no cwd.
  */
-vfs_status_t vfs_lookup(const char* absolute_path, vfs_node_t** out);
+vfs_status_t vfs_lookup(const char* path, vfs_node_t** out);
 
 /*
- * Resolves the parent directory of an absolute path and returns the final path
- * component as a view into `absolute_path`.
+ * Resolves `path` from `base` when relative, or from the current process cwd
+ * if `base` is NULL. Absolute paths always start at root.
  */
-vfs_status_t vfs_lookup_parent(const char* absolute_path,
+vfs_status_t vfs_lookup_at(vfs_node_t* base,
+                           const char* path,
+                           vfs_node_t** out);
+
+/*
+ * Resolves the parent directory of a path and returns the final path component
+ * as a view into `path`.
+ */
+vfs_status_t vfs_lookup_parent(const char* path,
                                vfs_node_t** parent_out,
                                const char** name_out,
                                uint32_t* name_len_out);
 
 /*
- * Opens a regular file or directory at `absolute_path`. `out_fd` is optional
- * and receives the process fd assigned to the opened handle on success.
+ * Resolves the parent directory of `path` from `base` when relative, or from
+ * the current process cwd if `base` is NULL. Absolute paths always start at
+ * root. The final component is returned as a view into `path`.
  */
-vfs_status_t vfs_open(const char* absolute_path,
+vfs_status_t vfs_lookup_parent_at(vfs_node_t* base,
+                                  const char* path,
+                                  vfs_node_t** parent_out,
+                                  const char** name_out,
+                                  uint32_t* name_len_out);
+
+/*
+ * Opens a regular file or directory at `path`. `out_fd` is optional and
+ * receives the process fd assigned to the opened handle on success.
+ */
+vfs_status_t vfs_open(const char* path,
                       uint32_t flags,
                       vfs_file_t** out,
                       uint64_t* out_fd);
 
 /*
- * Opens a regular file or directory at `absolute_path` and returns a file
- * handle.
+ * Opens a regular file or directory at `path` and returns a file handle.
  */
-vfs_status_t vfs_get_file_handle(const char* absolute_path,
+vfs_status_t vfs_get_file_handle(const char* path,
                                  uint32_t flags,
                                  vfs_file_t** out);
 
@@ -235,6 +281,26 @@ vfs_status_t vfs_rmdir(vfs_node_t* dir,
                        uint32_t flags);
 
 /*
+ * Creates a hard link at `new_path` to an existing non-directory file at
+ * `old_path`. Hard links cannot cross mounted filesystems.
+ */
+vfs_status_t vfs_link(const char* old_path, const char* new_path);
+
+/*
+ * Creates a symbolic link at `link_path` whose stored target is `target`.
+ */
+vfs_status_t vfs_symlink(const char* target, const char* link_path);
+
+/*
+ * Reads the target stored in a symbolic link. The target is copied into
+ * `buffer` without adding a terminating NUL byte.
+ */
+vfs_status_t vfs_readlink(const char* path,
+                          char* buffer,
+                          uint64_t len,
+                          uint64_t* bytes_read_out);
+
+/*
  * Reads up to `len` bytes from a file handle, advancing its current offset.
  */
 vfs_status_t vfs_read(vfs_file_t* file,
@@ -266,7 +332,13 @@ vfs_status_t vfs_seek(vfs_file_t* file,
 /*
  * Returns metadata for a file without opening it.
  */
-vfs_status_t vfs_stat(const char* absolute_path, vfs_stat_t** out);
+vfs_status_t vfs_stat(const char* path, vfs_stat_t** out);
+
+/*
+ * Returns metadata for a path without following the final component if it is a
+ * symbolic link.
+ */
+vfs_status_t vfs_lstat(const char* path, vfs_stat_t** out);
 
 /*
  * Returns metadata for an already-open file.
