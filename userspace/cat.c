@@ -7,11 +7,6 @@
 #define STDOUT_FD    1
 
 static void cat_file(const char* path) {
-  if (path[0] != '/') {
-    printf("cat: relative paths are not supported: %s\n", path);
-    return;
-  }
-
   int fd = open(path, O_RDONLY, 0);
   if (fd < 0) {
     printf("cat: cannot open %s: %d\n", path, errno);

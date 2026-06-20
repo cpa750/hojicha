@@ -4,11 +4,6 @@
 #include <unistd.h>
 
 static int touch_path(const char* path) {
-  if (path[0] != '/') {
-    printf("touch: relative paths are not supported: %s\n", path);
-    return 1;
-  }
-
   int fd = open(path, O_RDWR | O_CREAT, 0);
   if (fd < 0) {
     printf("touch: cannot touch %s: %d\n", path, errno);

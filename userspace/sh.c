@@ -97,6 +97,15 @@ int main(int argc, char** argv, char** envp) {
     if (command_argc <= 0) { continue; }
 
     if (strcmp(command_argv[0], "exit") == 0) { break; }
+    if (strcmp(command_argv[0], "cd") == 0) {
+      const char* path = command_argc > 1 ? command_argv[1] : getenv("HOME");
+      if (command_argc > 2) {
+        printf("cd: too many arguments\n");
+      } else if (chdir(path == NULL ? "/" : path) < 0) {
+        printf("cd: cannot cd to %s: %d\n", path == NULL ? "/" : path, errno);
+      }
+      continue;
+    }
 
     char path_buf[SH_PATH_MAX];
     char* executable =
