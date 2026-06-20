@@ -23,7 +23,19 @@ static int launch_shell(void) {
 }
 
 int main(void) {
-  printf("Welcome to Hojicha. Pour yourself a cup and let's get started!\n");
+  printf(""
+         "    ))  ))\n"
+         "   ((  ((\n"
+         "    ))  ))\n"
+         "  .((..((...\n"
+         ".'  ))  ))  '.\n"
+         "|'..........'|\n"
+         "|            |\n"
+         "|            |\n"
+         "|            |\n"
+         " '.        .'\n"
+         "   '------'    Welcome to Hojicha. Pour yourself a cup and let's "
+         "get started!\n\n");
 
   for (;;) {
     int shell_pid = launch_shell();

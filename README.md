@@ -4,10 +4,12 @@ This project is a first effort at developing an operating system for the x86_64 
 > Caution: Hojicha is _very much_ a work in progress. It is very incomplete, and likely has many bugs. _Please do not_
 > try to install it on real hardware - I'm not responsible for what happens if you do.
 
+![Hojicha screenshot](https://static.22ru.dev/hojicha/hojicha.jpg)
+
 ## Current Status:
 Expansion of shell capabilities:
-- [ ] VFS support for linking and relative paths
-- [ ] mkdir/rmdir/link/unlink userspace programs
+- [x] VFS support for linking and relative paths
+- [x] mkdir/rmdir/link/unlink etc. userspace programs
 - [ ] Redirection (echo foo > bar.txt)
 
 ## MVP Done:
@@ -37,8 +39,6 @@ Expansion of shell capabilities:
   - [ ] Many, many others
 - [x] Filesystems
   - [x] VFS prototype
-    - [ ] Relative paths
-    - [ ] Linking
   - [x] initrd from bundled USTAR image
   - [x] devfs machinery prototype
   - [ ] Ext2
@@ -46,7 +46,7 @@ Expansion of shell capabilities:
 - [ ] Userspace
   - [x] malloc and friends
   - [x] basic init and shell
-  - [ ] ls/touch/mkdir/rm/cat etc.
+  - [x] cat, echo, ln, ls, mkdir, touch, rm, rmdir, unlink
   - [ ] Brainfuck interpreter/compiler
   - [ ] DOOM port
 
