@@ -16,8 +16,10 @@ extern "C" {
 #endif
 
 int access(const char* path, int amode);
+int chdir(const char* path);
 int close(int fd);
 int execve(const char* pathname, char* const argv[], char* const envp[]);
+int fchdir(int fd);
 int fork(void);
 int link(const char* oldpath, const char* newpath);
 long lseek(int fd, long offset, int whence);

@@ -1,5 +1,4 @@
 #include <errno.h>
-#include <fcntl.h>
 #include <fs/vfs.h>
 #include <kernel/g_kernel.h>
 #include <multitask/scheduler.h>
@@ -27,6 +26,7 @@ long syscall_chdir(const char* target) {
     return (long)-vfs_status_to_errno(VFS_STATUS_NOTDIR);
   }
   sched_pb_set_cwd(g_kernel.current_process, node);
+  vfs_vnode_release(node);
   return 0;
 }
 
