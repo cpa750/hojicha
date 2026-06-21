@@ -3,5 +3,6 @@ target_sources(kernel_objects PRIVATE
   pic.c
   pit.c
   tty.c
+  tty_control.c
   serial.c
 )

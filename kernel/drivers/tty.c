@@ -1,4 +1,5 @@
 #include <drivers/tty.h>
+#include <drivers/tty_control.h>
 #include <drivers/vga.h>
 #include <fonts/inconsolata.h>
 #include <fs/devfs.h>
@@ -62,6 +63,11 @@ uint64_t tty_pos_to_vga_idx(uint16_t row, uint16_t col);
 static uint64_t terminal_lock(void);
 static void terminal_unlock(uint64_t irq_state);
 static void terminal_putchar_unlocked(char c);
+static void terminal_clear_cell(uint16_t row, uint16_t col);
+static void terminal_clear_cells(uint16_t start_row,
+                                 uint16_t start_col,
+                                 uint16_t end_row,
+                                 uint16_t end_col);
 static void tty_buffer_input_char(tty_state_t* t, char c);
 static void tty_emit_output(const char* data, uint64_t len);
 static vfs_status_t tty_read(vfs_file_t* file,
@@ -97,6 +103,7 @@ void terminal_initialize(void) {
   caret.colour = tty.fg;
   tty.caret = &caret;
   g_kernel.tty = &tty;
+  tty_control_reset();
 
   framebuffer = vga_state_get_framebuffer_addr(g_kernel.vga);
   vga_height = vga_state_get_height(g_kernel.vga);
@@ -242,6 +249,16 @@ void terminal_put_entry_at(unsigned char c, uint32_t fg, size_t x, size_t y) {
   vga_draw_bitmap_16h8w(&pos, inconsolata_bitmaps[c], fg);
 }
 
+uint64_t terminal_get_height(void) {
+  if (g_kernel.tty == NULL) { return 0; }
+  return g_kernel.tty->height;
+}
+
+uint64_t terminal_get_width(void) {
+  if (g_kernel.tty == NULL) { return 0; }
+  return g_kernel.tty->width;
+}
+
 void scroll() {
   uint64_t row_stride = vga_pitch / sizeof(uint32_t);
   uint64_t text_scanlines = g_kernel.tty->height * INCONSOLATA_HEIGHT;
@@ -309,6 +326,51 @@ void terminal_caret_set_pos(uint16_t row,
   return;
 }
 
+void terminal_set_cursor_pos(uint16_t row, uint16_t col) {
+  uint64_t irq_state = terminal_lock();
+
+  if (g_kernel.tty == NULL || g_kernel.tty->height == 0 ||
+      g_kernel.tty->width == 0) {
+    terminal_unlock(irq_state);
+    return;
+  }
+
+  if (row >= g_kernel.tty->height) { row = g_kernel.tty->height - 1; }
+  if (col >= g_kernel.tty->width) { col = g_kernel.tty->width - 1; }
+
+  terminal_row = row;
+  terminal_column = col;
+  terminal_caret_set_pos(terminal_row, terminal_column, true);
+  terminal_unlock(irq_state);
+}
+
+void terminal_clear_display(tty_clear_mode_t mode) {
+  uint64_t irq_state = terminal_lock();
+
+  if (g_kernel.tty == NULL || g_kernel.tty->height == 0 ||
+      g_kernel.tty->width == 0) {
+    terminal_unlock(irq_state);
+    return;
+  }
+
+  uint16_t last_row = g_kernel.tty->height - 1;
+  uint16_t last_col = g_kernel.tty->width - 1;
+  switch (mode) {
+    case TTY_CLEAR_TO_END:
+      terminal_clear_cells(terminal_row, terminal_column, last_row, last_col);
+      break;
+    case TTY_CLEAR_TO_BEGINNING:
+      terminal_clear_cells(0, 0, terminal_row, terminal_column);
+      break;
+    case TTY_CLEAR_ALL:
+      terminal_clear_cells(0, 0, last_row, last_col);
+      break;
+  }
+
+  terminal_caret_set_pos(terminal_row, terminal_column, false);
+  terminal_unlock(irq_state);
+}
+
 void terminal_putchar(char c) {
   uint64_t irq_state = terminal_lock();
   terminal_putchar_unlocked(c);
@@ -360,10 +422,37 @@ static void terminal_putchar_unlocked(char c) {
 }
 
 void terminal_write(const char* data, size_t len) {
-  uint64_t irq_state = terminal_lock();
-  size_t idx = 0;
-  while (len--) { terminal_putchar_unlocked(data[idx++]); }
-  terminal_unlock(irq_state);
+  tty_control_write(data, len);
+}
+
+static void terminal_clear_cell(uint16_t row, uint16_t col) {
+  uint64_t start_x = col * INCONSOLATA_WIDTH;
+  uint64_t start_y = row * INCONSOLATA_HEIGHT;
+  uint64_t end_x = start_x + INCONSOLATA_WIDTH;
+  uint64_t end_y = start_y + INCONSOLATA_HEIGHT;
+  uint64_t row_stride = vga_pitch / sizeof(uint32_t);
+
+  if (end_x > vga_width) { end_x = vga_width; }
+  if (end_y > vga_height) { end_y = vga_height; }
+
+  for (uint64_t y = start_y; y < end_y; ++y) {
+    for (uint64_t x = start_x; x < end_x; ++x) {
+      framebuffer[y * row_stride + x] = g_kernel.tty->bg;
+    }
+  }
+}
+
+static void terminal_clear_cells(uint16_t start_row,
+                                 uint16_t start_col,
+                                 uint16_t end_row,
+                                 uint16_t end_col) {
+  for (uint16_t row = start_row; row <= end_row; ++row) {
+    uint16_t first_col = row == start_row ? start_col : 0;
+    uint16_t last_col = row == end_row ? end_col : g_kernel.tty->width - 1;
+    for (uint16_t col = first_col; col <= last_col; ++col) {
+      terminal_clear_cell(row, col);
+    }
+  }
 }
 
 static vfs_status_t tty_read(vfs_file_t* file,
