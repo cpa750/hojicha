@@ -57,6 +57,9 @@ void syscall_handle(interrupt_frame_t* frame) {
       ret =
           syscall_getdents(frame->rdi, (linux_dirent_t*)frame->rsi, frame->rdx);
       break;
+    case __HOJICHA_INTERNAL_SYSCALL_GETCWD:
+      ret = syscall_getcwd((char*)frame->rdi, frame->rsi);
+      break;
     case __HOJICHA_INTERNAL_SYSCALL_CHDIR:
       ret = syscall_chdir((const char*)frame->rdi);
       break;

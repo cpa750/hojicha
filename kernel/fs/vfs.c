@@ -48,6 +48,14 @@ static void cross_mount(vfs_node_t** current);
 static vfs_status_t dir_mutation_allowed(vfs_node_t* dir,
                                          const char* name,
                                          uint32_t name_len);
+static bool getcwd_is_mount_root(vfs_node_t* vnode);
+static vfs_status_t getcwd_prepend_component(char* buffer,
+                                             uint64_t* pos,
+                                             const char* name,
+                                             uint64_t name_len);
+static vfs_status_t getcwd_step_to_parent(vfs_node_t** current,
+                                          char* buffer,
+                                          uint64_t* pos);
 static char* join_symlink_path(const char* target, const char* remaining);
 static vfs_status_t lookup_child_no_follow(const char* path, vfs_node_t** out);
 static vfs_status_t lookup_parent_entry(const char* path,
@@ -185,6 +193,39 @@ vfs_status_t vfs_lookup_parent_at(vfs_node_t* base,
     *name_len_out = result.final_name_len;
   }
   return status;
+}
+
+vfs_status_t vfs_getcwd(vfs_node_t* cwd, char* buffer, uint64_t len) {
+  if (buffer == NULL) { return VFS_STATUS_INVALID_ARG; }
+  if (len == 0) { return VFS_STATUS_RANGE; }
+  if (root_mount == NULL || root_mount->root == NULL) {
+    return VFS_STATUS_NOENT;
+  }
+
+  vfs_node_t* current = cwd == NULL ? root_mount->root : cwd;
+  vfs_vnode_borrow(current);
+
+  uint64_t pos = len;
+  buffer[--pos] = '\0';
+  vfs_status_t status = VFS_STATUS_LOOP;
+
+  for (uint32_t depth = 0; depth < VFS_SYMLINK_TARGET_MAX; ++depth) {
+    if (current == root_mount->root) {
+      status = pos == len - 1 ? getcwd_prepend_component(buffer, &pos, "", 0)
+                              : VFS_STATUS_OK;
+      goto done;
+    }
+
+    status = getcwd_step_to_parent(&current, buffer, &pos);
+    if (status != VFS_STATUS_OK) { goto done; }
+  }
+
+done:
+  vfs_vnode_release(current);
+  if (status != VFS_STATUS_OK) { return status; }
+
+  memmove(buffer, buffer + pos, len - pos);
+  return VFS_STATUS_OK;
 }
 
 vfs_status_t vfs_open(const char* path,
@@ -638,6 +679,8 @@ int vfs_status_to_errno(vfs_status_t status) {
       return EXDEV;
     case VFS_STATUS_LOOP:
       return ELOOP;
+    case VFS_STATUS_RANGE:
+      return ERANGE;
     default:
       return EINVAL;
   }
@@ -811,6 +854,84 @@ static vfs_status_t dir_mutation_allowed(vfs_node_t* dir,
   if (dir == NULL || name == NULL) { return VFS_STATUS_INVALID_ARG; }
   if (dir->type != VFS_NODE_DIR) { return VFS_STATUS_NOTDIR; }
   if (!vfs_validate_name(name, name_len)) { return VFS_STATUS_INVALID_ARG; }
+  return VFS_STATUS_OK;
+}
+
+static bool getcwd_is_mount_root(vfs_node_t* vnode) {
+  return vnode != NULL && vnode->mount != NULL && vnode->mount != root_mount &&
+         vnode == vnode->mount->root;
+}
+
+static vfs_status_t getcwd_prepend_component(char* buffer,
+                                             uint64_t* pos,
+                                             const char* name,
+                                             uint64_t name_len) {
+  if (buffer == NULL || pos == NULL || name == NULL) {
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  while (name_len > 0 && name[name_len - 1] == '/') { name_len--; }
+
+  if (*pos < name_len + 1) { return VFS_STATUS_RANGE; }
+  *pos -= name_len;
+  if (name_len > 0) { memcpy(buffer + *pos, name, name_len); }
+  buffer[--(*pos)] = '/';
+  return VFS_STATUS_OK;
+}
+
+static vfs_status_t getcwd_step_to_parent(vfs_node_t** current,
+                                          char* buffer,
+                                          uint64_t* pos) {
+  if (current == NULL || *current == NULL) { return VFS_STATUS_INVALID_ARG; }
+
+  vfs_node_t* child = *current;
+  vfs_node_t* visible_child = child;
+  vfs_mount_t* mount = getcwd_is_mount_root(child) ? child->mount : NULL;
+
+  if (mount != NULL) {
+    vfs_mount_t* parent_mount =
+        mount->parent == NULL ? root_mount : mount->parent;
+    if (mount->point == NULL || parent_mount == NULL ||
+        parent_mount->root == NULL) {
+      return VFS_STATUS_INVALID_ARG;
+    }
+    if (mount->point == parent_mount->root) {
+      vfs_vnode_borrow(parent_mount->root);
+      vfs_vnode_release(child);
+      *current = parent_mount->root;
+      return VFS_STATUS_OK;
+    }
+    visible_child = mount->point;
+  }
+
+  if (HVFS_VOP_MISSING(visible_child, parent)) {
+    return VFS_STATUS_NOT_IMPLEMENTED;
+  }
+  if (HVFS_VOP_MISSING(visible_child, name)) {
+    return VFS_STATUS_NOT_IMPLEMENTED;
+  }
+
+  vfs_node_t* parent = NULL;
+  vfs_status_t status = visible_child->ops->parent(visible_child, &parent);
+  if (status != VFS_STATUS_OK) { return status; }
+  if (parent == NULL || parent == visible_child) {
+    vfs_vnode_release(parent);
+    return VFS_STATUS_NOENT;
+  }
+
+  const char* name = NULL;
+  uint32_t name_len = 0;
+  status = visible_child->ops->name(visible_child, &name, &name_len);
+  if (status == VFS_STATUS_OK) {
+    status = getcwd_prepend_component(buffer, pos, name, name_len);
+  }
+  if (status != VFS_STATUS_OK) {
+    vfs_vnode_release(parent);
+    return status;
+  }
+
+  vfs_vnode_release(child);
+  *current = parent;
   return VFS_STATUS_OK;
 }
 

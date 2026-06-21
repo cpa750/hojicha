@@ -21,6 +21,7 @@ typedef enum {
   VFS_STATUS_EXISTS,
   VFS_STATUS_XDEV,
   VFS_STATUS_LOOP,
+  VFS_STATUS_RANGE,
 } vfs_status_t;
 
 typedef enum {
@@ -139,6 +140,12 @@ struct vfs_node_ops {
                          uint32_t name_len,
                          vfs_node_t** out);
   vfs_status_t (*parent)(vfs_node_t* dir, vfs_node_t** out);
+  /*
+   * Returns a borrowed pointer to this vnode's basename.
+   */
+  vfs_status_t (*name)(vfs_node_t* vnode,
+                       const char** name_out,
+                       uint32_t* name_len_out);
   vfs_status_t (*open)(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out);
   vfs_status_t (*create_file)(vfs_node_t* dir,
                               const char* name,
@@ -233,6 +240,12 @@ vfs_status_t vfs_lookup_parent_at(vfs_node_t* base,
                                   vfs_node_t** parent_out,
                                   const char** name_out,
                                   uint32_t* name_len_out);
+
+/*
+ * Reconstructs the absolute path for `cwd`, crossing mount boundaries as
+ * needed. Writes a NUL-terminated path into `buffer`.
+ */
+vfs_status_t vfs_getcwd(vfs_node_t* cwd, char* buffer, uint64_t len);
 
 /*
  * Opens a regular file or directory at `path`. `out_fd` is optional and

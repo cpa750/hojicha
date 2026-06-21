@@ -6,6 +6,7 @@ set(LIBC_UNISTD_SOURCES
   dup2.c
   execve.c
   fork.c
+  getcwd.c
   link.c
   lseek.c
   rmdir.c

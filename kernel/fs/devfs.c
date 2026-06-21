@@ -41,6 +41,7 @@ static devfs_device_t* (*dev_table)[HOJICHA_MINOR_MAX];
 
 static const vfs_node_ops_t devfs_node_ops = {.lookup = devfs_lookup,
                                               .parent = devfs_parent,
+                                              .name = devfs_name,
                                               .open = devfs_open,
                                               .free = devfs_free,
                                               .create_file = devfs_create_file,
@@ -195,6 +196,23 @@ vfs_status_t devfs_parent(vfs_node_t* dir, vfs_node_t** out) {
   devfs_node_t* parent = node->parent == NULL ? node : node->parent;
   vfs_vnode_borrow(parent->vnode);
   *out = parent->vnode;
+  return VFS_STATUS_OK;
+}
+
+vfs_status_t devfs_name(vfs_node_t* vnode,
+                        const char** name_out,
+                        uint32_t* name_len_out) {
+  if (vnode == NULL || name_out == NULL || name_len_out == NULL) {
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  devfs_node_t* node = (devfs_node_t*)vnode->fs_data;
+  if (node == NULL || node->name == NULL || node->name_len > UINT32_MAX) {
+    return VFS_STATUS_NOENT;
+  }
+
+  *name_out = node->name;
+  *name_len_out = (uint32_t)node->name_len;
   return VFS_STATUS_OK;
 }
 

@@ -21,5 +21,6 @@ extern int __errno;
 #define ENOSYS    38
 #define ENOTEMPTY 39
 #define ELOOP     40
+#define ERANGE    34
 
 #endif  // HOJICHA_ERRNO_H

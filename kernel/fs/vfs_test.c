@@ -80,6 +80,9 @@ static vfs_status_t mock_lookup(vfs_node_t* dir,
                                 uint32_t name_len,
                                 vfs_node_t** out);
 static vfs_status_t mock_parent(vfs_node_t* dir, vfs_node_t** out);
+static vfs_status_t mock_name(vfs_node_t* vnode,
+                              const char** name_out,
+                              uint32_t* name_len_out);
 static vfs_status_t mock_open(vfs_node_t* vnode,
                               uint32_t flags,
                               vfs_file_t** out);
@@ -158,6 +161,7 @@ static void free_dirent(vfs_dirent_t* dirent);
 static const vfs_node_ops_t mock_dir_ops = {
     .lookup = mock_lookup,
     .parent = mock_parent,
+    .name = mock_name,
     .open = mock_open,
     .create_file = mock_create_file,
     .create_dir = mock_create_dir,
@@ -171,6 +175,7 @@ static const vfs_node_ops_t mock_dir_ops = {
 
 static const vfs_node_ops_t mock_file_ops = {
     .parent = mock_parent,
+    .name = mock_name,
     .open = mock_open,
     .free = mock_free,
     .stat = mock_stat,
@@ -178,6 +183,7 @@ static const vfs_node_ops_t mock_file_ops = {
 
 static const vfs_node_ops_t mock_symlink_ops = {
     .parent = mock_parent,
+    .name = mock_name,
     .readlink = mock_readlink,
     .free = mock_free,
     .stat = mock_stat,
@@ -772,6 +778,21 @@ static vfs_status_t mock_parent(vfs_node_t* dir, vfs_node_t** out) {
 
   vfs_vnode_borrow(&parent->vnode);
   *out = &parent->vnode;
+  return VFS_STATUS_OK;
+}
+
+static vfs_status_t mock_name(vfs_node_t* vnode,
+                              const char** name_out,
+                              uint32_t* name_len_out) {
+  if (vnode == NULL || name_out == NULL || name_len_out == NULL) {
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  mock_node_t* node = mock_node_from_vnode(vnode);
+  if (node == NULL || node->name == NULL) { return VFS_STATUS_NOENT; }
+
+  *name_out = node->name;
+  *name_len_out = strlen(node->name);
   return VFS_STATUS_OK;
 }
 

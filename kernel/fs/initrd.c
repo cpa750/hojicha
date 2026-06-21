@@ -68,6 +68,7 @@ vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out);
 static const vfs_node_ops_t initrd_vnode_ops = {
     .lookup = initrd_lookup,
     .parent = initrd_parent,
+    .name = initrd_name,
     .open = initrd_open,
     .free = initrd_free,
     .create_file = initrd_create_file,
@@ -134,6 +135,23 @@ vfs_status_t initrd_parent(vfs_node_t* dir, vfs_node_t** out) {
   initrd_inode_t* parent = inode->parent == NULL ? inode : inode->parent;
   vfs_vnode_borrow(&parent->vnode);
   *out = &parent->vnode;
+  return VFS_STATUS_OK;
+}
+
+vfs_status_t initrd_name(vfs_node_t* vnode,
+                         const char** name_out,
+                         uint32_t* name_len_out) {
+  if (vnode == NULL || name_out == NULL || name_len_out == NULL) {
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  initrd_inode_t* inode = (initrd_inode_t*)vnode->fs_data;
+  if (inode == NULL || inode->name == NULL || inode->name_size > UINT32_MAX) {
+    return VFS_STATUS_NOENT;
+  }
+
+  *name_out = inode->name;
+  *name_len_out = (uint32_t)inode->name_size;
   return VFS_STATUS_OK;
 }
 

@@ -14,6 +14,7 @@ long syscall_execve(const char* pathname,
                     char* const argv[],
                     char* const envp[]);
 long syscall_fork(interrupt_frame_t* frame);
+long syscall_getcwd(char* buf, unsigned long size);
 long syscall_getdents(unsigned long fd,
                       linux_dirent_t* dirent_buf,
                       unsigned int count);

@@ -22,6 +22,7 @@ int dup2(int oldfd, int newfd);
 int execve(const char* pathname, char* const argv[], char* const envp[]);
 int fchdir(int fd);
 int fork(void);
+char* getcwd(char* buf, unsigned long size);
 int link(const char* oldpath, const char* newpath);
 long lseek(int fd, long offset, int whence);
 long readlink(const char* path, char* buf, long bufsiz);
