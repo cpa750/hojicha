@@ -1,0 +1,121 @@
+#include <haddr.h>
+#include <memory/vma.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+
+#include "vma_internal.h"
+
+static bool vma_range_valid(haddr_t start, haddr_t end);
+static bool vma_overlaps(vma_t* vma, haddr_t start, haddr_t end);
+static void vma_unlink(vma_t** head, vma_t* node);
+static void vma_link_before(vma_t** head, vma_t* before, vma_t* node);
+
+bool vma_insert(vma_t** head,
+                haddr_t start,
+                haddr_t end,
+                uint64_t access,
+                uint64_t flags,
+                uint64_t offset) {
+  if (head == NULL || !vma_range_valid(start, end)) { return false; }
+
+  vma_t* current = *head;
+  while (current != NULL && current->end < start) {
+    if (current->end == (haddr_t)-1) { return false; }
+    current = current->next;
+  }
+
+  if (current != NULL && vma_overlaps(current, start, end)) { return false; }
+
+  vma_t* node = calloc(1, sizeof(vma_t));
+  if (node == NULL) { return false; }
+
+  node->start = start;
+  node->end = end;
+  node->access = access;
+  node->flags = flags;
+  node->offset = offset;
+  vma_link_before(head, current, node);
+  return true;
+}
+
+bool vma_remove(vma_t** head, haddr_t start, haddr_t end) {
+  if (head == NULL || !vma_range_valid(start, end)) { return false; }
+
+  vma_t* current = *head;
+  while (current != NULL && current->end < start) { current = current->next; }
+
+  if (current == NULL || current->start > start) { return true; }
+
+  haddr_t remove_end = end < current->end ? end : current->end;
+
+  if (start == current->start && remove_end == current->end) {
+    vma_unlink(head, current);
+  } else if (start == current->start) {
+    current->start = remove_end + 1;
+  } else if (remove_end == current->end) {
+    current->end = start - 1;
+  } else {
+    vma_t* split = calloc(1, sizeof(vma_t));
+    if (split == NULL) { return false; }
+
+    split->start = remove_end + 1;
+    split->end = current->end;
+    split->access = current->access;
+    split->flags = current->flags;
+    split->offset = current->offset;
+
+    current->end = start - 1;
+    vma_link_before(head, current->next, split);
+  }
+
+  return true;
+}
+
+static bool vma_range_valid(haddr_t start, haddr_t end) {
+  if (end < start) { return false; }
+  if ((start & (VMA_PAGE_SIZE - 1)) != 0) { return false; }
+  if (((end + 1) & (VMA_PAGE_SIZE - 1)) != 0) { return false; }
+  return true;
+}
+
+static bool vma_overlaps(vma_t* vma, haddr_t start, haddr_t end) {
+  return vma->start <= end && start <= vma->end;
+}
+
+static void vma_unlink(vma_t** head, vma_t* node) {
+  if (node->prev != NULL) {
+    node->prev->next = node->next;
+  } else {
+    *head = node->next;
+  }
+
+  if (node->next != NULL) { node->next->prev = node->prev; }
+  free(node);
+}
+
+static void vma_link_before(vma_t** head, vma_t* before, vma_t* node) {
+  if (before == NULL) {
+    vma_t* tail = *head;
+    if (tail == NULL) {
+      *head = node;
+      return;
+    }
+
+    while (tail->next != NULL) { tail = tail->next; }
+
+    tail->next = node;
+    node->prev = tail;
+    return;
+  }
+
+  node->next = before;
+  node->prev = before->prev;
+  before->prev = node;
+
+  if (node->prev != NULL) {
+    node->prev->next = node;
+  } else {
+    *head = node;
+  }
+}
