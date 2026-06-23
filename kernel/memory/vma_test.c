@@ -19,9 +19,8 @@ static uint64_t vma_test_count(vma_t* head) {
 }
 
 static void vma_test_cleanup(htest_ctx_t* ctx, vma_t** head) {
-  while (*head != NULL) {
-    HTEST_ASSERT(ctx, vma_remove(head, (*head)->start, (*head)->end));
-  }
+  vma_clear(head);
+  HTEST_ASSERT(ctx, *head == NULL);
 }
 
 void vma_test(void) {
@@ -187,6 +186,51 @@ void vma_test(void) {
     HTEST_ASSERT(&ctx, second->prev == head);
 
     vma_test_cleanup(&ctx, &head);
+  }
+
+  htest_case_begin(&ctx, "copy list");
+  {
+    vma_t* src = NULL;
+    vma_t* dst = NULL;
+    vma_t* dst_second = NULL;
+
+    HTEST_ASSERT(
+        &ctx,
+        vma_insert(
+            &src, PAGE, (2 * PAGE) - 1, VMA_ACCESS, VMA_FLAGS, VMA_OFFSET));
+    HTEST_ASSERT(&ctx,
+                 vma_insert(&src, 3 * PAGE, (4 * PAGE) - 1, 4, 5, 6));
+    HTEST_ASSERT(&ctx, vma_copy_list(&dst, src));
+    HTEST_ASSERT(&ctx, dst != NULL);
+    dst_second = dst->next;
+    HTEST_ASSERT(&ctx, vma_test_count(dst) == 2);
+    HTEST_ASSERT(&ctx, dst != src);
+    HTEST_ASSERT(&ctx, dst->start == PAGE);
+    HTEST_ASSERT(&ctx, dst->end == (2 * PAGE) - 1);
+    HTEST_ASSERT(&ctx, dst->access == VMA_ACCESS);
+    HTEST_ASSERT(&ctx, dst->flags == VMA_FLAGS);
+    HTEST_ASSERT(&ctx, dst->offset == VMA_OFFSET);
+    HTEST_ASSERT(&ctx, dst_second != NULL);
+    HTEST_ASSERT(&ctx, dst_second->start == 3 * PAGE);
+    HTEST_ASSERT(&ctx, dst_second->end == (4 * PAGE) - 1);
+    HTEST_ASSERT(&ctx, dst_second->access == 4);
+    HTEST_ASSERT(&ctx, dst_second->flags == 5);
+    HTEST_ASSERT(&ctx, dst_second->offset == 6);
+    HTEST_ASSERT(&ctx, dst_second->prev == dst);
+
+    vma_test_cleanup(&ctx, &src);
+    vma_test_cleanup(&ctx, &dst);
+  }
+
+  htest_case_begin(&ctx, "clear list");
+  {
+    vma_t* head = NULL;
+
+    HTEST_ASSERT(&ctx, vma_insert(&head, PAGE, (2 * PAGE) - 1, 0, 0, 0));
+    HTEST_ASSERT(&ctx, vma_insert(&head, 3 * PAGE, (4 * PAGE) - 1, 0, 0, 0));
+    HTEST_ASSERT(&ctx, vma_test_count(head) == 2);
+    vma_clear(&head);
+    HTEST_ASSERT(&ctx, head == NULL);
   }
 
   htest_suite_pass(&ctx);

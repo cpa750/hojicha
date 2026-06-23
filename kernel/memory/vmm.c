@@ -3,6 +3,7 @@
 #include <kernel/g_kernel.h>
 #include <limine.h>
 #include <memory/pmm.h>
+#include <memory/vma.h>
 #include <memory/vmm.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -40,6 +41,7 @@ struct vmm {
   haddr_t kernel_offset;
 
   haddr_t* pml4_phys;
+  vma_t* vma_list;
 };
 typedef struct vmm vmm_t;
 typedef bool (*vmm_mapping_callback_t)(vmm_t* vmm,
@@ -76,6 +78,18 @@ uint16_t get_pt_idx(haddr_t virt);
 
 void map_framebuffer(vmm_t* vmm);
 static haddr_t map_in_current_cr3(haddr_t virt, haddr_t phys, haddr_t flags);
+static haddr_t map_single(vmm_t* vmm, haddr_t virt, haddr_t flags);
+static haddr_t map_at_paddr_internal(vmm_t* vmm,
+                                     haddr_t virt,
+                                     haddr_t phys,
+                                     haddr_t flags);
+static haddr_t unmap_internal(vmm_t* vmm, haddr_t virt);
+static bool track_vma(vmm_t* vmm, haddr_t virt, haddr_t flags);
+static bool insert_vma(vmm_t* vmm,
+                       haddr_t virt,
+                       haddr_t byte_count,
+                       haddr_t flags);
+static bool remove_vma(vmm_t* vmm, haddr_t virt);
 static bool entry_is_present(haddr_t entry);
 static haddr_t entry_phys(haddr_t entry);
 static haddr_t entry_flags(haddr_t entry);
@@ -258,32 +272,59 @@ vmm_t* vmm_copy(vmm_t* src) {
     return NULL;
   }
 
+  if (!vma_copy_list(&dst->vma_list, src->vma_list)) {
+    vmm_free(dst);
+    return NULL;
+  }
+
   return dst;
 }
 
 haddr_t vmm_map(vmm_t* vmm, haddr_t virt, haddr_t page_count, haddr_t flags) {
   haddr_t base = virt;
+  haddr_t virt_base = base & MAPPING_STRUCTURE_MASK;
+  if (page_count > (haddr_t)-1 / PAGE_SIZE) { return 0; }
+  haddr_t byte_count = page_count * PAGE_SIZE;
+  if (!insert_vma(vmm, virt_base, byte_count, flags)) { return 0; }
+
   while (page_count-- > 0) {
-    haddr_t res = vmm_map_single(vmm, virt, flags);
+    haddr_t res = map_single(vmm, virt, flags);
     //  OOM
-    if (res == 0) { return res; }
+    if (res == 0) {
+      remove_vma(vmm, virt_base);
+      return res;
+    }
     virt += PAGE_SIZE;
   }
-  haddr_t virt_base = base & MAPPING_STRUCTURE_MASK;
   return virt_base;
 }
 
-haddr_t vmm_map_single(vmm_t* vmm, haddr_t virt, haddr_t flags) {
+static haddr_t map_single(vmm_t* vmm, haddr_t virt, haddr_t flags) {
   haddr_t new_page = pmm_alloc_frame();
   // OOM
   if (new_page == 0) { return 0; }
-  return vmm_map_at_paddr(vmm, virt, new_page, flags);
+  return map_at_paddr_internal(vmm, virt, new_page, flags);
 }
 
 haddr_t vmm_map_at_paddr(vmm_t* vmm,
                          haddr_t virt,
                          haddr_t phys,
                          haddr_t flags) {
+  haddr_t virt_base = virt & MAPPING_STRUCTURE_MASK;
+  if (!insert_vma(vmm, virt_base, PAGE_SIZE, flags)) { return 0; }
+
+  virt_base = map_at_paddr_internal(vmm, virt, phys, flags);
+  if (virt_base == 0) {
+    remove_vma(vmm, virt & MAPPING_STRUCTURE_MASK);
+    return 0;
+  }
+  return virt_base;
+}
+
+static haddr_t map_at_paddr_internal(vmm_t* vmm,
+                                     haddr_t virt,
+                                     haddr_t phys,
+                                     haddr_t flags) {
   haddr_t virt_base = virt & MAPPING_STRUCTURE_MASK;
   haddr_t leaf_flags = normalize_leaf_flags(virt, flags);
   haddr_t table_flags = normalize_table_flags(virt, flags);
@@ -338,6 +379,13 @@ haddr_t vmm_map_at_paddr(vmm_t* vmm,
 }
 
 haddr_t vmm_unmap(vmm_t* vmm, haddr_t virt) {
+  haddr_t virt_base = unmap_internal(vmm, virt);
+  if (virt_base == 0) { return 0; }
+  if (!remove_vma(vmm, virt_base)) { return 0; }
+  return virt_base;
+}
+
+static haddr_t unmap_internal(vmm_t* vmm, haddr_t virt) {
   haddr_t virt_base = virt & MAPPING_STRUCTURE_MASK;
   uint16_t pml4_idx = get_pml4_idx(virt);
   if (pml4_idx == RECURSIVE_IDX) { return 0; }
@@ -366,10 +414,34 @@ haddr_t vmm_unmap(vmm_t* vmm, haddr_t virt) {
   return virt_base;
 }
 
+static bool track_vma(vmm_t* vmm, haddr_t virt, haddr_t flags) {
+  if (vmm == NULL || vmm == g_kernel.vmm) { return false; }
+  if (is_higher_half(virt)) { return false; }
+  return (flags & PAGE_USER_ACCESIBLE) != 0;
+}
+
+static bool insert_vma(vmm_t* vmm,
+                       haddr_t virt,
+                       haddr_t byte_count,
+                       haddr_t flags) {
+  if (!track_vma(vmm, virt, flags)) { return true; }
+  if (byte_count == 0) { return true; }
+  if (byte_count - 1 > (haddr_t)-1 - virt) { return false; }
+
+  return vma_insert(&vmm->vma_list, virt, virt + byte_count - 1, flags, 0, 0);
+}
+
+static bool remove_vma(vmm_t* vmm, haddr_t virt) {
+  if (vmm == NULL || vmm == g_kernel.vmm) { return true; }
+  if (is_higher_half(virt)) { return true; }
+  return vma_remove(&vmm->vma_list, virt, virt | (PAGE_SIZE - 1));
+}
+
 void vmm_free(vmm_t* vmm) {
   if (vmm == NULL || vmm == g_kernel.vmm) { return; }
 
   vmm_destroy_mappings(vmm);
+  vma_clear(&vmm->vma_list);
   pmm_free_frame((haddr_t)vmm->pml4_phys);
   free(vmm);
 }

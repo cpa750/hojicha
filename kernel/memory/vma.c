@@ -72,6 +72,34 @@ bool vma_remove(vma_t** head, haddr_t start, haddr_t end) {
   return true;
 }
 
+bool vma_copy_list(vma_t** dst, vma_t* src) {
+  if (dst == NULL || *dst != NULL) { return false; }
+
+  for (vma_t* current = src; current != NULL; current = current->next) {
+    if (!vma_insert(dst,
+                    current->start,
+                    current->end,
+                    current->access,
+                    current->flags,
+                    current->offset)) {
+      vma_clear(dst);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+void vma_clear(vma_t** head) {
+  if (head == NULL) { return; }
+
+  while (*head != NULL) {
+    vma_t* next = (*head)->next;
+    free(*head);
+    *head = next;
+  }
+}
+
 static bool vma_range_valid(haddr_t start, haddr_t end) {
   if (end < start) { return false; }
   if ((start & (VMA_PAGE_SIZE - 1)) != 0) { return false; }
