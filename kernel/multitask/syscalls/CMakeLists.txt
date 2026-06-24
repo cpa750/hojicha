@@ -11,6 +11,7 @@ target_sources(kernel_objects PRIVATE
   syscall_ioctl.c
   syscall_link.c
   syscall_lseek.c
+  syscall_mmap.c
   syscall_mkdir.c
   syscall_nanosleep.c
   syscall_open.c

@@ -1,5 +1,6 @@
 set(LIBC_SYS_SOURCES
   ioctl.c
+  mman.c
   mkdir.c
   stat.c
   waitpid.c

@@ -385,6 +385,28 @@ haddr_t vmm_unmap(vmm_t* vmm, haddr_t virt) {
   return virt_base;
 }
 
+bool vmm_find_free_region_forward(vmm_t* vmm,
+                                  haddr_t hint,
+                                  haddr_t length,
+                                  haddr_t* out) {
+  if (vmm == NULL || out == NULL) { return false; }
+
+  haddr_t min = vmm->first_available_vaddr;
+  haddr_t max = (KERNEL_PML4_FIRST << 39) - 1;
+  return vma_find_free_forward(vmm->vma_list, hint, min, max, length, out);
+}
+
+bool vmm_find_free_region_fixed(vmm_t* vmm,
+                                haddr_t addr,
+                                haddr_t length,
+                                haddr_t* out) {
+  if (vmm == NULL || out == NULL) { return false; }
+
+  haddr_t min = vmm->first_available_vaddr;
+  haddr_t max = (KERNEL_PML4_FIRST << 39) - 1;
+  return vma_find_free_fixed(vmm->vma_list, addr, min, max, length, out);
+}
+
 static haddr_t unmap_internal(vmm_t* vmm, haddr_t virt) {
   haddr_t virt_base = virt & MAPPING_STRUCTURE_MASK;
   uint16_t pml4_idx = get_pml4_idx(virt);

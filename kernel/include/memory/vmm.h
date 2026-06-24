@@ -48,5 +48,13 @@ void vmm_free(vmm_t* vmm);
 haddr_t vmm_map_at_paddr(vmm_t* vmm, haddr_t virt, haddr_t phys, haddr_t flags);
 haddr_t vmm_map(vmm_t* vmm, haddr_t virt, haddr_t page_count, haddr_t flags);
 haddr_t vmm_unmap(vmm_t* vmm, haddr_t virt);
+bool vmm_find_free_region_forward(vmm_t* vmm,
+                                  haddr_t hint,
+                                  haddr_t length,
+                                  haddr_t* out);
+bool vmm_find_free_region_fixed(vmm_t* vmm,
+                                haddr_t addr,
+                                haddr_t length,
+                                haddr_t* out);
 
 #endif  // VMM_H

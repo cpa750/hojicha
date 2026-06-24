@@ -233,5 +233,54 @@ void vma_test(void) {
     HTEST_ASSERT(&ctx, head == NULL);
   }
 
+  htest_case_begin(&ctx, "find free empty list");
+  {
+    vma_t* head = NULL;
+    haddr_t found = 0;
+
+    HTEST_ASSERT(&ctx,
+                 vma_find_free_forward(
+                     head, 0, PAGE, (8 * PAGE) - 1, 2 * PAGE, &found));
+    HTEST_ASSERT(&ctx, found == PAGE);
+  }
+
+  htest_case_begin(&ctx, "find free walks forward from hint");
+  {
+    vma_t* head = NULL;
+    haddr_t found = 0;
+
+    HTEST_ASSERT(&ctx, vma_insert(&head, PAGE, (3 * PAGE) - 1, 0, 0, 0));
+    HTEST_ASSERT(&ctx, vma_insert(&head, 4 * PAGE, (5 * PAGE) - 1, 0, 0, 0));
+    HTEST_ASSERT(&ctx,
+                 vma_find_free_forward(
+                     head, PAGE, PAGE, (8 * PAGE) - 1, PAGE, &found));
+    HTEST_ASSERT(&ctx, found == 3 * PAGE);
+
+    vma_test_cleanup(&ctx, &head);
+  }
+
+  htest_case_begin(&ctx, "find fixed rejects overlap");
+  {
+    vma_t* head = NULL;
+    haddr_t found = 0;
+
+    HTEST_ASSERT(&ctx, vma_insert(&head, 2 * PAGE, (4 * PAGE) - 1, 0, 0, 0));
+    HTEST_ASSERT(&ctx,
+                 !vma_find_free_fixed(
+                     head, 3 * PAGE, PAGE, (8 * PAGE) - 1, PAGE, &found));
+
+    vma_test_cleanup(&ctx, &head);
+  }
+
+  htest_case_begin(&ctx, "find fixed requires page boundary");
+  {
+    vma_t* head = NULL;
+    haddr_t found = 0;
+
+    HTEST_ASSERT(&ctx,
+                 !vma_find_free_fixed(
+                     head, PAGE + 1, PAGE, (8 * PAGE) - 1, PAGE, &found));
+  }
+
   htest_suite_pass(&ctx);
 }

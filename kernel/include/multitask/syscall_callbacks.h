@@ -22,7 +22,14 @@ long syscall_ioctl(long fd, unsigned long request, void* arg);
 long syscall_link(const char* old_path, const char* new_path);
 long syscall_lstat(const char* path, stat_t* stat_buf);
 long syscall_lseek(long fd, long offset, int whence);
+long syscall_mmap(void* addr,
+                  unsigned long length,
+                  int prot,
+                  int flags,
+                  int fd,
+                  long offset);
 long syscall_mkdir(const char* path);
+long syscall_munmap(void* addr, unsigned long length);
 long syscall_open(const char* absolute_path, unsigned int flags);
 long syscall_read(long fd, void* buf, long count);
 long syscall_readlink(const char* path, char* buf, long bufsiz);
