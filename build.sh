@@ -54,6 +54,13 @@ case "$*" in
     ;;
 esac
 
+TEST_VMA=0
+case "$*" in
+  *--test-vma*)
+    TEST_VMA=1
+    ;;
+esac
+
 AST_SCHEDULER=0
 case "$*" in
   *--ast-scheduler*)
@@ -126,6 +133,7 @@ echo "Calling CMake:"
     -DHOJICHA_TEST_VFS="$TEST_VFS" \
     -DHOJICHA_TEST_CHARDEV="$TEST_CHARDEV" \
     -DHOJICHA_TEST_RINGBUFFER="$TEST_RINGBUFFER" \
+    -DHOJICHA_TEST_VMA="$TEST_VMA" \
     -DHOJICHA_AST_SCHEDULER="$AST_SCHEDULER" \
     -DHOJICHA_TEST_ALL="$TEST_ALL" \
     -DHOJICHA_HLOG_LEVEL="$HLOG_LEVEL" \

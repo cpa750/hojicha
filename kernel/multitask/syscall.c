@@ -47,6 +47,17 @@ void syscall_handle(interrupt_frame_t* frame) {
     case __HOJICHA_INTERNAL_SYSCALL_LSEEK:
       ret = syscall_lseek(frame->rdi, (long)frame->rsi, (int)frame->rdx);
       break;
+    case __HOJICHA_INTERNAL_SYSCALL_MMAP:
+      ret = syscall_mmap((void*)frame->rdi,
+                         frame->rsi,
+                         (int)frame->rdx,
+                         (int)frame->r10,
+                         (int)frame->r8,
+                         (long)frame->r9);
+      break;
+    case __HOJICHA_INTERNAL_SYSCALL_MUNMAP:
+      ret = syscall_munmap((void*)frame->rdi, frame->rsi);
+      break;
     case __HOJICHA_INTERNAL_SYSCALL_IOCTL:
       ret = syscall_ioctl(frame->rdi, frame->rsi, (void*)frame->rdx);
       break;

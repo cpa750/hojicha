@@ -1,5 +1,6 @@
 #include <dev/chardev.h>
 #include <dev/console.h>
+#include <dev/fb.h>
 #include <dev/null.h>
 #include <dev/zero.h>
 #include <drivers/tty.h>
@@ -19,4 +20,9 @@ void chardev_initialize(void) {
 
   console_initialize();
   tty_device_initialize();
+
+  devfs_device_t* fb_dev = fb_dev_new();
+  if (fb_dev != NULL) {
+    devfs_register(DEVFS_CHARDEV, 4, fb_dev, "fb0", 3);
+  }
 }

@@ -41,6 +41,9 @@
 #if defined(__test_ringbuffer)
 #include <utils/ringbuffer_test.h>
 #endif
+#if defined(__test_vma)
+#include <memory/vma_test.h>
+#endif
 #if defined(__ast_scheduler)
 #include <multitask/scheduler_ast.h>
 #endif
@@ -134,6 +137,9 @@ void kernel_main() {
 #endif
 #if defined(__test_ringbuffer)
   ringbuffer_test();
+#endif
+#if defined(__test_vma)
+  vma_test();
 #endif
 #if defined(__ast_scheduler)
   ast_scheduler();
