@@ -11,7 +11,7 @@
 #include <string.h>
 #include <sys/mman.h>
 
-#define MMAP_SUPPORTED_FLAGS                                                 \
+#define MMAP_SUPPORTED_FLAGS                                                   \
   (MAP_PRIVATE | MAP_SHARED | MAP_FIXED | MAP_ANONYMOUS)
 #define MMAP_SUPPORTED_PROT (PROT_READ | PROT_WRITE | PROT_EXEC)
 
@@ -58,8 +58,8 @@ long syscall_mmap(void* addr,
   }
 
   haddr_t mapped_addr = 0;
-  long addr_status = mmap_find_addr(mem->vmm, addr, rounded_len, flags,
-                                    &mapped_addr);
+  long addr_status =
+      mmap_find_addr(mem->vmm, addr, rounded_len, flags, &mapped_addr);
   if (addr_status < 0) { return addr_status; }
 
   haddr_t vmm_flags = mmap_prot_to_vmm_flags(prot);
