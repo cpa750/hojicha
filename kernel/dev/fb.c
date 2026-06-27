@@ -1,11 +1,15 @@
 #include <dev/fb.h>
 #include <drivers/vga.h>
 #include <fs/vfs.h>
+#include <haddr.h>
 #include <kernel/g_kernel.h>
-#include <utils/set_out.h>
+#include <memory/pmm.h>
+#include <memory/vmm.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <utils/set_out.h>
 
 static vfs_status_t fb_open(vfs_node_t* vnode,
                             uint32_t flags,
@@ -24,6 +28,13 @@ static vfs_status_t fb_seek(vfs_file_t* file,
                             vfs_seek_whence_t whence,
                             uint64_t* new_pos);
 static vfs_status_t fb_stat(vfs_node_t* vnode, vfs_stat_t** out);
+static vfs_status_t fb_mmap(vfs_file_t* file,
+                            vmm_t* vmm,
+                            haddr_t* addr_inout,
+                            uint64_t len,
+                            int prot,
+                            int flags,
+                            uint64_t offset);
 
 static uint8_t* fb_base(void);
 static uint64_t fb_size(void);
@@ -42,6 +53,7 @@ devfs_device_t* fb_dev_new(void) {
   file_ops->write = fb_write;
   file_ops->seek = fb_seek;
   file_ops->close = fb_close;
+  file_ops->mmap = fb_mmap;
 
   node_ops->open = fb_open;
   node_ops->stat = fb_stat;
@@ -163,6 +175,56 @@ static vfs_status_t fb_stat(vfs_node_t* vnode, vfs_stat_t** out) {
   return VFS_STATUS_OK;
 }
 
+static vfs_status_t fb_mmap(vfs_file_t* file,
+                            vmm_t* vmm,
+                            haddr_t* addr_inout,
+                            uint64_t len,
+                            int prot,
+                            int flags,
+                            uint64_t offset) {
+  if (vmm == NULL || addr_inout == NULL || len == 0 ||
+      (prot & PROT_WRITE) == 0 || (flags & MAP_SHARED) == 0) {
+    return VFS_STATUS_INVALID_ARG;
+  }
+
+  uint8_t* base = fb_base();
+  uint64_t size = fb_size();
+  if (base == NULL || offset > size || len > size - offset) {
+    return VFS_STATUS_RANGE;
+  }
+
+  haddr_t base_addr = (haddr_t)base;
+  haddr_t kernel_offset = vmm_get_kernel_offset(vmm);
+  haddr_t phys =
+      base_addr >= kernel_offset ? base_addr - kernel_offset : base_addr;
+  if (offset > (haddr_t)-1 - phys) { return VFS_STATUS_RANGE; }
+  phys += offset;
+
+  haddr_t phys_page = phys & ~(PAGE_SIZE - 1);
+  haddr_t page_offset = phys & (PAGE_SIZE - 1);
+  if (len > (haddr_t)-1 - page_offset - (PAGE_SIZE - 1)) {
+    return VFS_STATUS_RANGE;
+  }
+  haddr_t map_len = (len + page_offset + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+  haddr_t map_addr = *addr_inout;
+
+  for (uint64_t mapped = 0; mapped < map_len; mapped += PAGE_SIZE) {
+    if (vmm_map_at_paddr(vmm,
+                         map_addr + mapped,
+                         phys_page + mapped,
+                         PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER_ACCESIBLE) ==
+        0) {
+      for (uint64_t rollback = 0; rollback < mapped; rollback += PAGE_SIZE) {
+        vmm_unmap(vmm, map_addr + rollback);
+      }
+      return VFS_STATUS_NOMEM;
+    }
+  }
+
+  *addr_inout = map_addr + page_offset;
+  return VFS_STATUS_OK;
+}
+
 static uint8_t* fb_base(void) {
   if (g_kernel.vga == NULL) { return NULL; }
   return (uint8_t*)vga_state_get_framebuffer_addr(g_kernel.vga);
@@ -170,8 +232,7 @@ static uint8_t* fb_base(void) {
 
 static uint64_t fb_size(void) {
   if (g_kernel.vga == NULL) { return 0; }
-  return vga_state_get_pitch(g_kernel.vga) *
-         vga_state_get_height(g_kernel.vga);
+  return vga_state_get_pitch(g_kernel.vga) * vga_state_get_height(g_kernel.vga);
 }
 
 static uint64_t seek_offset(uint64_t origin, int64_t offset, uint64_t limit) {

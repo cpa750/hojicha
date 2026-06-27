@@ -25,6 +25,7 @@ static long mmap_find_addr(vmm_t* vmm,
                            int flags,
                            haddr_t* addr_out);
 static long mmap_file_into_region(int fd,
+                                  vfs_file_t* file,
                                   long offset,
                                   haddr_t mapped_addr,
                                   unsigned long length);
@@ -57,10 +58,33 @@ long syscall_mmap(void* addr,
     return -EINVAL;
   }
 
+  vfs_file_t* file = NULL;
+  bool file_mmap = false;
+  if ((flags & MAP_ANONYMOUS) == 0) {
+    if (fd < 0) { return -EBADF; }
+
+    vfs_status_t status = vfs_resolve_fd(fd, &file);
+    if (status != VFS_STATUS_OK) { return -vfs_status_to_errno(status); }
+    file_mmap = file->ops != NULL && file->ops->mmap != NULL;
+  }
+
+  haddr_t search_len = rounded_len;
+  if (file_mmap) {
+    if (rounded_len > (haddr_t)-1 - PAGE_SIZE) { return -EINVAL; }
+    search_len += PAGE_SIZE;
+  }
+
   haddr_t mapped_addr = 0;
   long addr_status =
-      mmap_find_addr(mem->vmm, addr, rounded_len, flags, &mapped_addr);
+      mmap_find_addr(mem->vmm, addr, search_len, flags, &mapped_addr);
   if (addr_status < 0) { return addr_status; }
+
+  if (file_mmap) {
+    vfs_status_t status = file->ops->mmap(
+        file, mem->vmm, &mapped_addr, rounded_len, prot, flags, offset);
+    return status == VFS_STATUS_OK ? (long)mapped_addr
+                                   : -vfs_status_to_errno(status);
+  }
 
   haddr_t vmm_flags = mmap_prot_to_vmm_flags(prot);
   if (vmm_map(mem->vmm, mapped_addr, page_count, vmm_flags) == 0) {
@@ -70,7 +94,8 @@ long syscall_mmap(void* addr,
   memset((void*)mapped_addr, 0, rounded_len);
 
   if ((flags & MAP_ANONYMOUS) == 0) {
-    long file_status = mmap_file_into_region(fd, offset, mapped_addr, length);
+    long file_status = mmap_file_into_region(
+        fd, file, offset, mapped_addr, length);
     if (file_status < 0) {
       mmap_unmap_pages(mem->vmm, mapped_addr, page_count);
       return file_status;
@@ -140,17 +165,15 @@ static long mmap_find_addr(vmm_t* vmm,
 }
 
 static long mmap_file_into_region(int fd,
+                                  vfs_file_t* file,
                                   long offset,
                                   haddr_t mapped_addr,
                                   unsigned long length) {
   if (fd < 0) { return -EBADF; }
-
-  vfs_file_t* file = NULL;
-  vfs_status_t status = vfs_resolve_fd(fd, &file);
-  if (status != VFS_STATUS_OK) { return -vfs_status_to_errno(status); }
+  if (file == NULL) { return -EBADF; }
 
   uint64_t old_offset = 0;
-  status = vfs_seek(file, 0, VFS_SEEK_CUR, &old_offset);
+  vfs_status_t status = vfs_seek(file, 0, VFS_SEEK_CUR, &old_offset);
   if (status != VFS_STATUS_OK) { return -vfs_status_to_errno(status); }
 
   status = vfs_seek(file, offset, VFS_SEEK_SET, NULL);

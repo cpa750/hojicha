@@ -58,6 +58,7 @@ static const vfs_file_ops_t devfs_file_ops = {
     .readdir = devfs_readdir,
     .seek = devfs_seek,
     .ioctl = devfs_ioctl,
+    .mmap = devfs_mmap,
     .close = devfs_close,
 };
 
@@ -371,6 +372,22 @@ vfs_status_t devfs_ioctl(vfs_file_t* file, uint64_t number, void* args) {
     return VFS_STATUS_NOT_IMPLEMENTED;
   }
   return dev->file_ops->ioctl(file, number, args);
+}
+
+vfs_status_t devfs_mmap(vfs_file_t* file,
+                        struct vmm* vmm,
+                        haddr_t* addr_inout,
+                        uint64_t len,
+                        int prot,
+                        int flags,
+                        uint64_t offset) {
+  devfs_node_t* dev_node = (devfs_node_t*)file->vnode->fs_data;
+  devfs_device_t* dev = get_device(dev_node);
+  if (dev == NULL || dev->file_ops == NULL || dev->file_ops->mmap == NULL) {
+    return VFS_STATUS_NOT_IMPLEMENTED;
+  }
+  return dev->file_ops->mmap(
+      file, vmm, addr_inout, len, prot, flags, offset);
 }
 
 vfs_status_t devfs_create_file(vfs_node_t* dir,

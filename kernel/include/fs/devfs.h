@@ -51,6 +51,13 @@ vfs_status_t devfs_seek(vfs_file_t* vfile,
                         vfs_seek_whence_t whence,
                         uint64_t* new_pos);
 vfs_status_t devfs_ioctl(vfs_file_t* file, uint64_t number, void* args);
+vfs_status_t devfs_mmap(vfs_file_t* file,
+                        struct vmm* vmm,
+                        haddr_t* addr_inout,
+                        uint64_t len,
+                        int prot,
+                        int flags,
+                        uint64_t offset);
 
 vfs_status_t devfs_create_file(vfs_node_t* dir,
                                const char* name,

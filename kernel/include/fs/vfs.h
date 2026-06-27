@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <unistd.h>
 
+#include <haddr.h>
+
 #define MAX_FDS 256
 
 typedef enum {
@@ -73,6 +75,7 @@ typedef struct vfs_file_ops vfs_file_ops_t;
 typedef struct vfs_node_ops vfs_node_ops_t;
 
 typedef struct vfs_stat vfs_stat_t;
+struct vmm;
 
 struct vfs_mount {
   vfs_node_t* point;
@@ -128,6 +131,13 @@ struct vfs_file_ops {
                        uint64_t* new_pos);
   vfs_status_t (*close)(vfs_file_t* file);
   vfs_status_t (*ioctl)(vfs_file_t* file, uint64_t number, void* args);
+  vfs_status_t (*mmap)(vfs_file_t* file,
+                       struct vmm* vmm,
+                       haddr_t* addr_inout,
+                       uint64_t len,
+                       int prot,
+                       int flags,
+                       uint64_t offset);
 };
 
 struct vfs_node_ops {
