@@ -21,7 +21,7 @@
 
 typedef struct ringbuffer ringbuffer_t;
 struct ringbuffer {
-  char* buf;
+  void** buf;
   uint64_t read_pos;
   uint64_t write_pos;
   uint64_t size;
@@ -40,7 +40,7 @@ void ringbuffer_new(uint64_t size,
                     ringbuffer_lock_fn_t write_lock_fn,
                     ringbuffer_unlock_fn_t write_unlock_fn) {
   ringbuffer_t* ret = calloc(1, sizeof(ringbuffer_t));
-  char* buffer = calloc(size + 1, sizeof(char));
+  void** buffer = calloc(size + 1, sizeof(void*));
   if (ret == NULL || buffer == NULL) {
     free(ret);
     free(buffer);
@@ -65,7 +65,7 @@ void ringbuffer_free(ringbuffer_t* r) {
   free(r);
 }
 
-void ringbuffer_write(ringbuffer_t* r, char value) {
+void ringbuffer_write(ringbuffer_t* r, void* value) {
   RINGBUFFER_WRITE_LOCK(r);
   if (r->write_pos == 0) { r->write_pos = 1; }
   r->buf[r->write_pos++] = value;
@@ -73,7 +73,7 @@ void ringbuffer_write(ringbuffer_t* r, char value) {
   RINGBUFFER_WRITE_UNLOCK(r);
 }
 
-bool ringbuffer_read(ringbuffer_t* r, char* out) {
+bool ringbuffer_read(ringbuffer_t* r, void** out) {
   RINGBUFFER_READ_LOCK(r);
   if (r->read_pos == r->write_pos) {
     RINGBUFFER_READ_UNLOCK(r);

@@ -472,10 +472,11 @@ static vfs_status_t tty_read(vfs_file_t* file,
   char* out = (char*)buffer;
   uint64_t bytes_read = 0;
   while (bytes_read < len) {
-    char c = 0;
+    void* value = NULL;
     sched_postpone();
-    if (ringbuffer_read(g_kernel.tty->input, &c)) {
+    if (ringbuffer_read(g_kernel.tty->input, &value)) {
       sched_resume();
+      char c = (char)(uintptr_t)value;
       out[bytes_read++] = c;
       if (g_kernel.tty->mode == TTY_MODE_CANONICAL && c == '\n') { break; }
       continue;
@@ -555,7 +556,7 @@ void terminal_caret_set_colour(tty_state_t* t, uint32_t colour) {
 }
 
 static void tty_buffer_input_char(tty_state_t* t, char c) {
-  ringbuffer_write(t->input, c);
+  ringbuffer_write(t->input, (void*)(uintptr_t)c);
 }
 
 static void tty_emit_output(const char* data, uint64_t len) {

@@ -63,31 +63,31 @@ void ringbuffer_test(void) {
   htest_case_begin(&ctx, "simple write + read");
   {
     ringbuffer_t* rb = NULL;
-    char a;
+    void* a = NULL;
     ringbuffer_new(RINGBUFFER_SIZE, &rb, NULL, NULL, NULL, NULL, NULL);
     HTEST_ASSERT(&ctx, rb != NULL);
-    ringbuffer_write(rb, 'a');
+    ringbuffer_write(rb, (void*)(uintptr_t)'a');
 
     HTEST_ASSERT(&ctx, ringbuffer_read(rb, &a) == true);
-    HTEST_ASSERT(&ctx, a == 'a');
+    HTEST_ASSERT(&ctx, (char)(uintptr_t)a == 'a');
     ringbuffer_free(rb);
   }
 
   htest_case_begin(&ctx, "starved read");
   {
     ringbuffer_t* rb = NULL;
-    char a;
+    void* a = NULL;
     ringbuffer_new(RINGBUFFER_SIZE, &rb, NULL, NULL, NULL, NULL, NULL);
     HTEST_ASSERT(&ctx, rb != NULL);
-    ringbuffer_write(rb, 'a');
+    ringbuffer_write(rb, (void*)(uintptr_t)'a');
     ringbuffer_read(rb, &a);
-    char b = 'c';
+    void* b = (void*)(uintptr_t)'c';
     HTEST_ASSERT(&ctx, ringbuffer_read(rb, &b) == false);
-    HTEST_ASSERT(&ctx, b == 'c');
+    HTEST_ASSERT(&ctx, (char)(uintptr_t)b == 'c');
 
-    ringbuffer_write(rb, 'b');
+    ringbuffer_write(rb, (void*)(uintptr_t)'b');
     HTEST_ASSERT(&ctx, ringbuffer_read(rb, &b) == true);
-    HTEST_ASSERT(&ctx, b == 'b');
+    HTEST_ASSERT(&ctx, (char)(uintptr_t)b == 'b');
 
     ringbuffer_free(rb);
   }
@@ -95,25 +95,25 @@ void ringbuffer_test(void) {
   htest_case_begin(&ctx, "overflow");
   {
     ringbuffer_t* rb = NULL;
-    char a;
-    char b;
-    char c;
-    char d;
+    void* a = NULL;
+    void* b = NULL;
+    void* c = NULL;
+    void* d = NULL;
 
     ringbuffer_new(RINGBUFFER_SIZE, &rb, NULL, NULL, NULL, NULL, NULL);
     HTEST_ASSERT(&ctx, rb != NULL);
-    ringbuffer_write(rb, 'a');
-    ringbuffer_write(rb, 'b');
-    ringbuffer_write(rb, 'c');
+    ringbuffer_write(rb, (void*)(uintptr_t)'a');
+    ringbuffer_write(rb, (void*)(uintptr_t)'b');
+    ringbuffer_write(rb, (void*)(uintptr_t)'c');
     ringbuffer_read(rb, &a);
     ringbuffer_read(rb, &b);
 
     HTEST_ASSERT(&ctx, ringbuffer_read(rb, &c) == true);
-    HTEST_ASSERT(&ctx, c == 'c');
+    HTEST_ASSERT(&ctx, (char)(uintptr_t)c == 'c');
 
-    ringbuffer_write(rb, 'd');
+    ringbuffer_write(rb, (void*)(uintptr_t)'d');
     HTEST_ASSERT(&ctx, ringbuffer_read(rb, &d) == true);
-    HTEST_ASSERT(&ctx, d == 'd');
+    HTEST_ASSERT(&ctx, (char)(uintptr_t)d == 'd');
 
     ringbuffer_free(rb);
   }
@@ -121,17 +121,44 @@ void ringbuffer_test(void) {
   htest_case_begin(&ctx, "overwrite");
   {
     ringbuffer_t* rb = NULL;
-    char d;
+    void* d = NULL;
 
     ringbuffer_new(RINGBUFFER_SIZE, &rb, NULL, NULL, NULL, NULL, NULL);
     HTEST_ASSERT(&ctx, rb != NULL);
-    ringbuffer_write(rb, 'a');
-    ringbuffer_write(rb, 'b');
-    ringbuffer_write(rb, 'c');
-    ringbuffer_write(rb, 'd');
+    ringbuffer_write(rb, (void*)(uintptr_t)'a');
+    ringbuffer_write(rb, (void*)(uintptr_t)'b');
+    ringbuffer_write(rb, (void*)(uintptr_t)'c');
+    ringbuffer_write(rb, (void*)(uintptr_t)'d');
 
     HTEST_ASSERT(&ctx, ringbuffer_read(rb, &d) == true);  // First read
-    HTEST_ASSERT(&ctx, d == 'd');  // overflow replaces unread chars
+    HTEST_ASSERT(&ctx,
+                 (char)(uintptr_t)d == 'd');  // overflow replaces unread chars
+
+    ringbuffer_free(rb);
+  }
+
+  htest_case_begin(&ctx, "stores object pointers");
+  {
+    typedef struct sample_value sample_value_t;
+    struct sample_value {
+      uint64_t id;
+      char tag;
+    };
+
+    ringbuffer_t* rb = NULL;
+    sample_value_t value = {42, 'x'};
+    void* raw = NULL;
+    sample_value_t* out = NULL;
+
+    ringbuffer_new(RINGBUFFER_SIZE, &rb, NULL, NULL, NULL, NULL, NULL);
+    HTEST_ASSERT(&ctx, rb != NULL);
+    ringbuffer_write(rb, &value);
+
+    HTEST_ASSERT(&ctx, ringbuffer_read(rb, &raw) == true);
+    out = (sample_value_t*)raw;
+    HTEST_ASSERT(&ctx, out == &value);
+    HTEST_ASSERT(&ctx, out->id == 42);
+    HTEST_ASSERT(&ctx, out->tag == 'x');
 
     ringbuffer_free(rb);
   }
@@ -140,7 +167,7 @@ void ringbuffer_test(void) {
   {
     ringbuffer_t* rb = NULL;
     mock_lock_t lock = {0};
-    char a;
+    void* a = NULL;
 
     ringbuffer_new(RINGBUFFER_SIZE,
                    &rb,
@@ -151,14 +178,14 @@ void ringbuffer_test(void) {
                    mock_write_unlock);
     HTEST_ASSERT(&ctx, rb != NULL);
 
-    ringbuffer_write(rb, 'a');
+    ringbuffer_write(rb, (void*)(uintptr_t)'a');
     HTEST_ASSERT(&ctx, lock.read_lock_count == 0);
     HTEST_ASSERT(&ctx, lock.read_unlock_count == 0);
     HTEST_ASSERT(&ctx, lock.write_lock_count == 1);
     HTEST_ASSERT(&ctx, lock.write_unlock_count == 1);
 
     HTEST_ASSERT(&ctx, ringbuffer_read(rb, &a) == true);
-    HTEST_ASSERT(&ctx, a == 'a');
+    HTEST_ASSERT(&ctx, (char)(uintptr_t)a == 'a');
     HTEST_ASSERT(&ctx, lock.read_lock_count == 1);
     HTEST_ASSERT(&ctx, lock.read_unlock_count == 1);
     HTEST_ASSERT(&ctx, lock.write_lock_count == 1);

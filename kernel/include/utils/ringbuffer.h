@@ -10,7 +10,7 @@ typedef void (*ringbuffer_lock_fn_t)(void*);
 typedef void (*ringbuffer_unlock_fn_t)(void*);
 
 /*
- * Creates a new ringbuffer with `size` `char`-sized slots.
+ * Creates a new ringbuffer with `size` pointer-sized slots.
  *
  * If `lock` and callbacks are provided, the ringbuffer calls them around
  * reads and writes. The lock is borrowed and must outlive the ringbuffer.
@@ -29,13 +29,13 @@ void ringbuffer_new(uint64_t size,
 void ringbuffer_free(ringbuffer_t* r);
 
 /*
- * Reads one character and advances the read position.
+ * Reads one pointer and advances the read position.
  */
-bool ringbuffer_read(ringbuffer_t* r, char* out);
+bool ringbuffer_read(ringbuffer_t* r, void** out);
 
 /*
- * Writes one character and advances the write position.
+ * Writes one pointer and advances the write position.
  */
-void ringbuffer_write(ringbuffer_t* r, char value);
+void ringbuffer_write(ringbuffer_t* r, void* value);
 
 #endif  // HOJICHA_RINGBUFFER_H
