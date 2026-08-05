@@ -105,8 +105,6 @@ void kernel_main() {
   print_ok("VMM");
   hmalloc_initialize();
   print_ok("hmalloc");
-  keyboard_initialize();
-  print_ok("Keyboard");
 
 #if defined(__test_hmalloc)
   hmalloc_test();
@@ -114,6 +112,9 @@ void kernel_main() {
 #if defined(__stress_hmalloc)
   hmalloc_stress_test();
 #endif
+
+  keyboard_initialize();
+  print_ok("Keyboard");
 
   if (!bootmodule_cache_finalize()) {
     printf("Error: Bootmodule cache finalization failed");
