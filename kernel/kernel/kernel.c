@@ -32,6 +32,9 @@
 #if defined(__test_hmalloc) || defined(__stress_hmalloc)
 #include <memory/hmalloc_test.h>
 #endif
+#if defined(__test_bitmap)
+#include <utils/bitmap_test.h>
+#endif
 #if defined(__test_initrd)
 #include <fs/initrd_test.h>
 #endif
@@ -92,8 +95,6 @@ void kernel_main() {
   print_ok("PIT");
   ktime_initialize();
   print_ok("ktime");
-  keyboard_initialize();
-  print_ok("Keyboard");
   pmm_initialize();
   print_ok("PMM");
   if (!bootmodule_initialize()) {
@@ -104,6 +105,8 @@ void kernel_main() {
   print_ok("VMM");
   hmalloc_initialize();
   print_ok("hmalloc");
+  keyboard_initialize();
+  print_ok("Keyboard");
 
 #if defined(__test_hmalloc)
   hmalloc_test();
@@ -134,6 +137,9 @@ void kernel_main() {
 #endif
 #if defined(__test_chardev)
   chardev_test();
+#endif
+#if defined(__test_bitmap)
+  bitmap_test();
 #endif
 #if defined(__test_ringbuffer)
   ringbuffer_test();

@@ -5,6 +5,7 @@
 #include <fs/devfs.h>
 #include <io.h>
 #include <kernel/g_kernel.h>
+#include <memory/slab.h>
 #include <multitask/mutex.h>
 #include <multitask/spinlock.h>
 #include <multitask/wait_queue.h>
@@ -115,8 +116,8 @@ void terminal_initialize(void) {
 void tty_device_initialize(void) {
   if (g_kernel.tty == NULL || g_kernel.tty->device_initialized) { return; }
 
-  vfs_file_ops_t* file_ops = calloc(1, sizeof(vfs_file_ops_t));
-  vfs_node_ops_t* node_ops = calloc(1, sizeof(vfs_node_ops_t));
+  vfs_file_ops_t* file_ops = slab_calloc(sizeof(vfs_file_ops_t));
+  vfs_node_ops_t* node_ops = slab_calloc(sizeof(vfs_node_ops_t));
   mutex_t* lock = mutex_create();
   ringbuffer_t* input = NULL;
   if (lock != NULL) {
@@ -130,8 +131,8 @@ void tty_device_initialize(void) {
   }
 
   if (file_ops == NULL || node_ops == NULL || lock == NULL || input == NULL) {
-    free(file_ops);
-    free(node_ops);
+    slab_free(file_ops);
+    slab_free(node_ops);
     if (input != NULL) { ringbuffer_free(input); }
     if (lock != NULL) { mutex_destroy(lock); }
     return;
@@ -145,17 +146,17 @@ void tty_device_initialize(void) {
 
   devfs_device_t* dev = devfs_device_new(file_ops, node_ops);
   if (dev == NULL) {
-    free(file_ops);
-    free(node_ops);
+    slab_free(file_ops);
+    slab_free(node_ops);
     ringbuffer_free(input);
     mutex_destroy(lock);
     return;
   }
 
   if (devfs_register(DEVFS_CHARDEV, 3, dev, "tty0", 4) != VFS_STATUS_OK) {
-    free(dev);
-    free(file_ops);
-    free(node_ops);
+    slab_free(dev);
+    slab_free(file_ops);
+    slab_free(node_ops);
     ringbuffer_free(input);
     mutex_destroy(lock);
     return;
@@ -472,10 +473,11 @@ static vfs_status_t tty_read(vfs_file_t* file,
   char* out = (char*)buffer;
   uint64_t bytes_read = 0;
   while (bytes_read < len) {
-    char c = 0;
+    void* value = NULL;
     sched_postpone();
-    if (ringbuffer_read(g_kernel.tty->input, &c)) {
+    if (ringbuffer_read(g_kernel.tty->input, &value)) {
       sched_resume();
+      char c = (char)(uintptr_t)value;
       out[bytes_read++] = c;
       if (g_kernel.tty->mode == TTY_MODE_CANONICAL && c == '\n') { break; }
       continue;
@@ -555,7 +557,7 @@ void terminal_caret_set_colour(tty_state_t* t, uint32_t colour) {
 }
 
 static void tty_buffer_input_char(tty_state_t* t, char c) {
-  ringbuffer_write(t->input, c);
+  ringbuffer_write(t->input, (void*)(uintptr_t)c);
 }
 
 static void tty_emit_output(const char* data, uint64_t len) {

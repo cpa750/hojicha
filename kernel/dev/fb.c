@@ -3,6 +3,7 @@
 #include <fs/vfs.h>
 #include <haddr.h>
 #include <kernel/g_kernel.h>
+#include <memory/slab.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
 #include <stdint.h>
@@ -41,11 +42,11 @@ static uint64_t fb_size(void);
 static uint64_t seek_offset(uint64_t origin, int64_t offset, uint64_t limit);
 
 devfs_device_t* fb_dev_new(void) {
-  vfs_file_ops_t* file_ops = calloc(1, sizeof(vfs_file_ops_t));
-  vfs_node_ops_t* node_ops = calloc(1, sizeof(vfs_node_ops_t));
+  vfs_file_ops_t* file_ops = slab_calloc(sizeof(vfs_file_ops_t));
+  vfs_node_ops_t* node_ops = slab_calloc(sizeof(vfs_node_ops_t));
   if (file_ops == NULL || node_ops == NULL) {
-    free(file_ops);
-    free(node_ops);
+    slab_free(file_ops);
+    slab_free(node_ops);
     return NULL;
   }
 
@@ -60,8 +61,8 @@ devfs_device_t* fb_dev_new(void) {
 
   devfs_device_t* dev = devfs_device_new(file_ops, node_ops);
   if (dev == NULL) {
-    free(file_ops);
-    free(node_ops);
+    slab_free(file_ops);
+    slab_free(node_ops);
     return NULL;
   }
 

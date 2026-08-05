@@ -2,6 +2,7 @@
 #include <drivers/tty.h>
 #include <fs/devfs.h>
 #include <fs/vfs.h>
+#include <memory/slab.h>
 #include <utils/set_out.h>
 #include <kernel/g_kernel.h>
 #include <stdbool.h>
@@ -20,11 +21,11 @@ struct console_state {
 };
 
 void console_initialize(void) {
-  vfs_file_ops_t* file_ops = calloc(1, sizeof(vfs_file_ops_t));
-  vfs_node_ops_t* node_ops = calloc(1, sizeof(vfs_node_ops_t));
+  vfs_file_ops_t* file_ops = slab_calloc(sizeof(vfs_file_ops_t));
+  vfs_node_ops_t* node_ops = slab_calloc(sizeof(vfs_node_ops_t));
   if (file_ops == NULL || node_ops == NULL) {
-    free(file_ops);
-    free(node_ops);
+    slab_free(file_ops);
+    slab_free(node_ops);
     return;
   }
 
@@ -33,24 +34,24 @@ void console_initialize(void) {
 
   devfs_device_t* dev = devfs_device_new(file_ops, node_ops);
   if (dev == NULL) {
-    free(file_ops);
-    free(node_ops);
+    slab_free(file_ops);
+    slab_free(node_ops);
     return;
   }
 
-  console_state_t* state = calloc(1, sizeof(console_state_t));
+  console_state_t* state = slab_calloc(sizeof(console_state_t));
   if (state == NULL) {
-    free(dev);
-    free(file_ops);
-    free(node_ops);
+    slab_free(dev);
+    slab_free(file_ops);
+    slab_free(node_ops);
     return;
   }
 
   if (devfs_register(DEVFS_CHARDEV, 2, dev, "console", 7) != VFS_STATUS_OK) {
-    free(state);
-    free(dev);
-    free(file_ops);
-    free(node_ops);
+    slab_free(state);
+    slab_free(dev);
+    slab_free(file_ops);
+    slab_free(node_ops);
     return;
   }
 

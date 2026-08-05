@@ -1,6 +1,7 @@
 #include <fs/devfs.h>
 #include <fs/vfs.h>
 #include <kernel/ktime.h>
+#include <memory/slab.h>
 #include <utils/set_out.h>
 #include <hlog.h>
 #include <stdbool.h>
@@ -101,15 +102,15 @@ bool devfs_initialize() {
     return false;
   }
 
-  vfs_mount_t* mount = (vfs_mount_t*)calloc(1, sizeof(vfs_mount_t));
-  devfs_root = (vfs_node_t*)calloc(1, sizeof(vfs_node_t));
-  devfs_root_node = (devfs_node_t*)calloc(1, sizeof(devfs_node_t));
+  vfs_mount_t* mount = (vfs_mount_t*)slab_calloc(sizeof(vfs_mount_t));
+  devfs_root = (vfs_node_t*)slab_calloc(sizeof(vfs_node_t));
+  devfs_root_node = (devfs_node_t*)slab_calloc(sizeof(devfs_node_t));
   dev_table = calloc(HOJICHA_MAJOR_MAX, sizeof(*dev_table));
   if (mount == NULL || devfs_root == NULL || devfs_root_node == NULL ||
       dev_table == NULL) {
-    free(mount);
-    free(devfs_root);
-    free(devfs_root_node);
+    slab_free(mount);
+    slab_free(devfs_root);
+    slab_free(devfs_root_node);
     free(dev_table);
     hlog_write(HLOG_ERROR, "Error initializing devfs, OOM");
     vfs_vnode_release(root);
@@ -124,9 +125,9 @@ bool devfs_initialize() {
   mount->fs_data = NULL;
   vfs_status_t mount_st = vfs_mount(dev, mount, root->mount);
   if (mount_st != VFS_STATUS_OK) {
-    free(mount);
-    free(devfs_root_node);
-    free(devfs_root);
+    slab_free(mount);
+    slab_free(devfs_root_node);
+    slab_free(devfs_root);
     free(dev_table);
     hlog_write(HLOG_ERROR,
                "Error initializing devfs, could not mount filesystem: %d",
@@ -143,7 +144,7 @@ bool devfs_initialize() {
 
 devfs_device_t* devfs_device_new(vfs_file_ops_t* file_ops,
                                  vfs_node_ops_t* node_ops) {
-  devfs_device_t* dev = (devfs_device_t*)calloc(1, sizeof(devfs_device_t));
+  devfs_device_t* dev = (devfs_device_t*)slab_calloc(sizeof(devfs_device_t));
   if (dev == NULL) { return NULL; }
   dev->file_ops = file_ops;
   dev->node_ops = node_ops;
@@ -230,11 +231,11 @@ vfs_status_t devfs_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
 
   if (vnode->type == VFS_NODE_DIR) {
     devfs_open_dir_t* dir =
-        (devfs_open_dir_t*)calloc(1, sizeof(devfs_open_dir_t));
-    vfs_file_t* vfile = (vfs_file_t*)calloc(1, sizeof(vfs_file_t));
+        (devfs_open_dir_t*)slab_calloc(sizeof(devfs_open_dir_t));
+    vfs_file_t* vfile = (vfs_file_t*)slab_calloc(sizeof(vfs_file_t));
     if (dir == NULL || vfile == NULL) {
-      free(dir);
-      free(vfile);
+      slab_free(dir);
+      slab_free(vfile);
       return VFS_STATUS_NOMEM;
     }
 
@@ -253,7 +254,7 @@ vfs_status_t devfs_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
   devfs_device_t* dev = get_device(dev_node);
   if (dev == NULL) { return VFS_STATUS_NOENT; }
 
-  vfs_file_t* vfile = (vfs_file_t*)calloc(1, sizeof(vfs_file_t));
+  vfs_file_t* vfile = (vfs_file_t*)slab_calloc(sizeof(vfs_file_t));
   if (vfile == NULL) { return VFS_STATUS_NOMEM; }
 
   init_vfile(vfile, vnode, flags);
@@ -262,12 +263,12 @@ vfs_status_t devfs_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
     vfs_file_t* opened = vfile;
     vfs_status_t status = dev->node_ops->open(vnode, flags, &opened);
     if (status != VFS_STATUS_OK) {
-      free(vfile);
+      slab_free(vfile);
       return status;
     }
     if (opened != vfile) {
-      free(opened);
-      free(vfile);
+      slab_free(opened);
+      slab_free(vfile);
       return VFS_STATUS_INVALID_ARG;
     }
   }
@@ -280,8 +281,8 @@ vfs_status_t devfs_close(vfs_file_t* vfile) {
   if (vfile == NULL) { return VFS_STATUS_OK; }
 
   if (vfile->vnode->type == VFS_NODE_DIR) {
-    free(vfile->fs_data);
-    free(vfile);
+    slab_free(vfile->fs_data);
+    slab_free(vfile);
     return VFS_STATUS_OK;
   }
 
@@ -292,7 +293,7 @@ vfs_status_t devfs_close(vfs_file_t* vfile) {
     if (status != VFS_STATUS_OK) { return status; }
   }
 
-  free(vfile);
+  slab_free(vfile);
   return VFS_STATUS_OK;
 }
 
@@ -555,9 +556,9 @@ void devfs_free(vfs_node_t* vnode) {
   if (node != NULL) {
     free(node->name);
     free(node->symlink_target);
-    free(node);
+    slab_free(node);
   }
-  free(vnode);
+  slab_free(vnode);
 }
 
 static devfs_node_t* create_child(devfs_node_t* parent,
@@ -568,12 +569,12 @@ static devfs_node_t* create_child(devfs_node_t* parent,
                                   uint64_t name_len) {
   if (parent == NULL || !vfs_validate_name(name, name_len)) { return NULL; }
 
-  devfs_node_t* child = (devfs_node_t*)calloc(1, sizeof(devfs_node_t));
-  vfs_node_t* vnode = (vfs_node_t*)calloc(1, sizeof(vfs_node_t));
+  devfs_node_t* child = (devfs_node_t*)slab_calloc(sizeof(devfs_node_t));
+  vfs_node_t* vnode = (vfs_node_t*)slab_calloc(sizeof(vfs_node_t));
   char* owned_name = vfs_clone_name(name, name_len, false);
   if (child == NULL || vnode == NULL || owned_name == NULL) {
-    free(child);
-    free(vnode);
+    slab_free(child);
+    slab_free(vnode);
     free(owned_name);
     return NULL;
   }

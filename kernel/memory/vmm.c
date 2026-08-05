@@ -3,6 +3,7 @@
 #include <kernel/g_kernel.h>
 #include <limine.h>
 #include <memory/pmm.h>
+#include <memory/slab.h>
 #include <memory/vma.h>
 #include <memory/vmm.h>
 #include <stdbool.h>
@@ -208,20 +209,23 @@ void vmm_initialize() {
     memset(new_pml3, 0, PAGE_SIZE);
   }
 
+  haddr_t bitmap_pages = pmm_addr_to_page_ceil(
+      (pmm_state_get_total_pages(g_kernel.pmm) + 7) >> 3);
   kernel_vmm.first_available_vaddr =
-      kernel_vstart + (kernel_end - kernel_start) + pmm_page_to_addr_base(1);
+      pmm_state_get_mem_bitmap(g_kernel.pmm) +
+      pmm_page_to_addr_base(bitmap_pages);
   kernel_vmm.last_available_vaddr = (haddr_t)virtual_directory;
   kernel_vmm.pml4_phys = (haddr_t*)pml4_physical;
 }
 
 vmm_t* vmm_new(haddr_t flags) {
-  vmm_t* vmm = (vmm_t*)malloc(sizeof(vmm_t));
+  vmm_t* vmm = (vmm_t*)slab_alloc(sizeof(vmm_t));
   if (vmm == NULL) { return NULL; }
   memset(vmm, 0, sizeof(vmm_t));
 
   haddr_t pml4 = pmm_alloc_frame();
   if (pml4 == 0) {
-    free(vmm);
+    slab_free(vmm);
     return NULL;
   }
 
@@ -233,7 +237,7 @@ vmm_t* vmm_new(haddr_t flags) {
       scratch_map_table(VIRT_SCRATCH_L3, (haddr_t)g_kernel.vmm->pml4_phys);
   if (new_pml4 == NULL || kernel_pml4 == NULL) {
     pmm_free_frame(pml4);
-    free(vmm);
+    slab_free(vmm);
     return NULL;
   }
 
@@ -465,7 +469,7 @@ void vmm_free(vmm_t* vmm) {
   vmm_destroy_mappings(vmm);
   vma_clear(&vmm->vma_list);
   pmm_free_frame((haddr_t)vmm->pml4_phys);
-  free(vmm);
+  slab_free(vmm);
 }
 
 void check_kernel_size(haddr_t kernel_page_count) {

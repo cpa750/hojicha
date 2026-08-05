@@ -1,3 +1,4 @@
+#include <memory/slab.h>
 #include <multitask/mutex.h>
 #include <multitask/semaphore.h>
 #include <stdlib.h>
@@ -7,12 +8,12 @@ struct mutex {
 };
 
 mutex_t* mutex_create(void) {
-  mutex_t* m = (mutex_t*)calloc(1, sizeof(mutex_t));
+  mutex_t* m = (mutex_t*)slab_calloc(sizeof(mutex_t));
 
   if (m != NULL) {
     m->semaphore = (semaphore_t*)semaphore_create(1);
     if (m->semaphore == NULL) {
-      free(m);
+      slab_free(m);
       return NULL;
     }
   }
@@ -22,7 +23,7 @@ mutex_t* mutex_create(void) {
 
 void mutex_destroy(mutex_t* m) {
   semaphore_destroy(m->semaphore);
-  free(m);
+  slab_free(m);
 }
 
 void mutex_lock(mutex_t* m) { semaphore_lock(m->semaphore); }

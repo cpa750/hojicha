@@ -1,0 +1,6 @@
+#ifndef HOJICHA_UTILS_BITMAP_TEST_H
+#define HOJICHA_UTILS_BITMAP_TEST_H
+
+void bitmap_test(void);
+
+#endif  // HOJICHA_UTILS_BITMAP_TEST_H

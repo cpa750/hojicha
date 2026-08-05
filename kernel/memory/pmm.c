@@ -8,7 +8,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <utils/bitmap.h>
 
 __attribute__((
     used,
@@ -19,10 +19,6 @@ __attribute__((used, section(".limine_requests"))) static volatile struct
     limine_executable_address_request executable_addr_request = {
         .id = LIMINE_EXECUTABLE_ADDRESS_REQUEST,
         .revision = 0};
-
-// 0 -> Free
-// 1 -> Reserved
-uint8_t* mem_bitmap;
 
 extern haddr_t __kernel_start;
 haddr_t kernel_start_vaddr = (haddr_t)&__kernel_start;
@@ -53,6 +49,7 @@ haddr_t pmm_state_get_free_mem(pmm_state_t* p) { return p->free_pages << 12; };
 haddr_t pmm_state_get_total_pages(pmm_state_t* p) { return p->total_pages; };
 haddr_t pmm_state_get_free_pages(pmm_state_t* p) { return p->free_pages; };
 haddr_t pmm_state_get_page_size(pmm_state_t* p) { return p->page_size; };
+haddr_t pmm_state_get_mem_bitmap(pmm_state_t* p) { return p->mem_bitmap; };
 haddr_t pmm_state_get_kernel_start(pmm_state_t* p) { return p->kernel_start; };
 haddr_t pmm_state_get_kernel_vstart(pmm_state_t* p) {
   return p->kernel_vstart;
@@ -76,7 +73,6 @@ haddr_t align_to_prev_page(haddr_t addr);
 haddr_t align_to_next_page(haddr_t addr);
 void clear_page(haddr_t idx);
 haddr_t early_alloc();
-uint8_t get_lowest_zero_bit(uint8_t num);
 void mark_page(haddr_t idx);
 
 haddr_t pmm_addr_to_page(haddr_t addr) { return align_to_prev_page(addr); }
@@ -87,6 +83,7 @@ haddr_t pmm_page_to_addr_base(haddr_t page) { return page << 12; }
 
 pmm_state_t pmm;
 
+static bitmap_t pmm_bitmap;
 static spinlock_t pmm_spinlock = {0};
 
 void pmm_initialize() {
@@ -135,7 +132,7 @@ void pmm_initialize() {
 
   // Divide by page size (log base 2 (4096) == 12)
   pmm.total_pages = pmm.total_mem >> 12;
-  pmm.bitmap_size = pmm.total_pages >> 3;
+  pmm.bitmap_size = bitmap_storage_size(pmm.total_pages);
   if (pmm.max_section_length <
       (pmm.kernel_end - pmm.kernel_start + pmm.bitmap_size)) {
     printf("Not enough memory to load memory bitmap. Halt.");
@@ -168,9 +165,8 @@ void pmm_initialize_bitmap() {
 
   pmm.mem_bitmap = (pmm.kernel_vend + PAGE_SIZE);
 
-  // Mark all memory as used
-  mem_bitmap = (uint8_t*)pmm.mem_bitmap;
-  memset(mem_bitmap, 0xFF, pmm.bitmap_size);
+  // Mark all memory as used.
+  bitmap_init(&pmm_bitmap, (void*)pmm.mem_bitmap, pmm.total_pages, true);
 
   haddr_t last_page =
       align_to_prev_page(pmm.max_section_start_addr + pmm.max_section_length);
@@ -183,7 +179,7 @@ void pmm_initialize_bitmap() {
   }
 
   // Make available only the largest region after kernel + bitmap
-  for (haddr_t i = align_to_next_page(pmm.max_section_start_addr);
+  for (haddr_t i = first_page_after_bitmap;
        i <=
        align_to_next_page(pmm.max_section_start_addr + pmm.max_section_length);
        ++i) {
@@ -195,15 +191,11 @@ haddr_t pmm_alloc_frame() {
   if (!pmm.memmap_is_initialized) { return early_alloc(); }
 
   uint64_t lock_count = spinlock_lock(&pmm_spinlock);
-  haddr_t bitmap_idx;
-  for (bitmap_idx = 0; bitmap_idx <= pmm.bitmap_size; ++bitmap_idx) {
-    haddr_t base_page_idx = bitmap_idx << 3;
-    if (mem_bitmap[bitmap_idx] != 0xFF) {
-      uint8_t offset = get_lowest_zero_bit(mem_bitmap[bitmap_idx]);
-      mark_page(base_page_idx + offset);
-      spinlock_unlock(&pmm_spinlock, lock_count);
-      return pmm_page_to_addr_base(base_page_idx + offset);
-    }
+  uint64_t page_idx;
+  if (bitmap_find_clear(&pmm_bitmap, &page_idx)) {
+    mark_page(page_idx);
+    spinlock_unlock(&pmm_spinlock, lock_count);
+    return pmm_page_to_addr_base(page_idx);
   }
   // OOM
   spinlock_unlock(&pmm_spinlock, lock_count);
@@ -227,21 +219,13 @@ haddr_t early_alloc() {
 }
 
 void mark_page(haddr_t idx) {
-  haddr_t mask = 1 << (idx & 7);
-  // Convert page idx to bitmap idx by log base 2 (8) = 3 right shift
-  mem_bitmap[idx >> 3] |= mask;
-  pmm.free_pages--;
+  if (idx >= pmm.total_pages || bitmap_get(&pmm_bitmap, idx)) { return; }
+  bitmap_set(&pmm_bitmap, idx);
+  if (pmm.free_pages > 0) { pmm.free_pages--; }
 }
 
 void clear_page(haddr_t idx) {
-  haddr_t mask = ~(1 << (idx & 7));
-  mem_bitmap[idx >> 3] &= mask;
+  if (idx >= pmm.total_pages || !bitmap_get(&pmm_bitmap, idx)) { return; }
+  bitmap_clear(&pmm_bitmap, idx);
   pmm.free_pages++;
-}
-
-uint8_t get_lowest_zero_bit(uint8_t num) {
-  for (int i = 0; i < 8; ++i) {
-    if (~(num >> i) & 0b1) { return i; }
-  }
-  return 7;
 }

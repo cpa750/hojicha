@@ -1,4 +1,5 @@
 #include <haddr.h>
+#include <memory/slab.h>
 #include <memory/vma.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -33,7 +34,7 @@ bool vma_insert(vma_t** head,
 
   if (current != NULL && vma_overlaps(current, start, end)) { return false; }
 
-  vma_t* node = calloc(1, sizeof(vma_t));
+  vma_t* node = slab_calloc(sizeof(vma_t));
   if (node == NULL) { return false; }
 
   node->start = start;
@@ -62,7 +63,7 @@ bool vma_remove(vma_t** head, haddr_t start, haddr_t end) {
   } else if (remove_end == current->end) {
     current->end = start - 1;
   } else {
-    vma_t* split = calloc(1, sizeof(vma_t));
+    vma_t* split = slab_calloc(sizeof(vma_t));
     if (split == NULL) { return false; }
 
     split->start = remove_end + 1;
@@ -101,7 +102,7 @@ void vma_clear(vma_t** head) {
 
   while (*head != NULL) {
     vma_t* next = (*head)->next;
-    free(*head);
+    slab_free(*head);
     *head = next;
   }
 }
@@ -200,7 +201,7 @@ static void vma_unlink(vma_t** head, vma_t* node) {
   }
 
   if (node->next != NULL) { node->next->prev = node->prev; }
-  free(node);
+  slab_free(node);
 }
 
 static void vma_link_before(vma_t** head, vma_t* before, vma_t* node) {

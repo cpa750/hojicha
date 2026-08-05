@@ -2,6 +2,7 @@
 #include <hlog.h>
 #include <kernel/g_kernel.h>
 #include <memory/pmm.h>
+#include <memory/slab.h>
 #include <memory/vmm.h>
 #include <multitask/elf.h>
 #include <stdbool.h>
@@ -97,13 +98,21 @@ elf_t* elf_read(void* buffer, uint64_t size) {
                "enough to contain ELF header.",
                read_error_msg_prefix);
   }
-  elf_header_t* elf_header = (elf_header_t*)malloc(sizeof(elf_header_t));
+  elf_header_t* elf_header = (elf_header_t*)slab_alloc(sizeof(elf_header_t));
+  if (elf_header == NULL) { return NULL; }
   elf_header = memcpy(elf_header, buffer, sizeof(elf_header_t));
 
-  if (!is_valid_header(elf_header)) { return NULL; }
+  if (!is_valid_header(elf_header)) {
+    slab_free(elf_header);
+    return NULL;
+  }
 
-  elf_program_header_t* program_headers = (elf_program_header_t*)malloc(
+  elf_program_header_t* program_headers = (elf_program_header_t*)slab_alloc(
       sizeof(elf_program_header_t) * elf_header->count_prog_header_table_entry);
+  if (program_headers == NULL) {
+    slab_free(elf_header);
+    return NULL;
+  }
   void* prog_header_offset_buf_start =
       (void*)((haddr_t)buffer + elf_header->offset_prog_header_table);
   memcpy(
@@ -111,7 +120,12 @@ elf_t* elf_read(void* buffer, uint64_t size) {
       prog_header_offset_buf_start,
       sizeof(elf_program_header_t) * elf_header->count_prog_header_table_entry);
 
-  elf_t* ret = (elf_t*)malloc(sizeof(elf_t));
+  elf_t* ret = (elf_t*)slab_alloc(sizeof(elf_t));
+  if (ret == NULL) {
+    slab_free(program_headers);
+    slab_free(elf_header);
+    return NULL;
+  }
   ret->header = elf_header;
   ret->program_headers = program_headers;
   ret->buffer = buffer;
@@ -237,11 +251,11 @@ static haddr_t prepare_user_stack(haddr_t stack_bottom,
                                   char** argv,
                                   char** envp) {
   uint64_t envc = string_array_count(envp);
-  haddr_t* argv_user = calloc(argc + 1, sizeof(haddr_t));
-  haddr_t* envp_user = calloc(envc + 1, sizeof(haddr_t));
+  haddr_t* argv_user = slab_calloc((argc + 1) * sizeof(haddr_t));
+  haddr_t* envp_user = slab_calloc((envc + 1) * sizeof(haddr_t));
   if (argv_user == NULL || envp_user == NULL) {
-    free(argv_user);
-    free(envp_user);
+    slab_free(argv_user);
+    slab_free(envp_user);
     hlog_write(HLOG_ERROR,
                "%s out of memory preparing user stack.",
                load_error_msg_prefix);
@@ -309,16 +323,16 @@ static haddr_t prepare_user_stack(haddr_t stack_bottom,
   stack[slot++] = 0;
   stack[slot++] = 0;
 
-  free(argv_user);
-  free(envp_user);
+  slab_free(argv_user);
+  slab_free(envp_user);
   return stack_start;
 }
 
 void elf_free(elf_t* elf) {
   // TODO: what else is needed here?
-  free(elf->program_headers);
-  free(elf->header);
-  free(elf);
+  slab_free(elf->program_headers);
+  slab_free(elf->header);
+  slab_free(elf);
   return;
 }
 
