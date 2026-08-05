@@ -1,5 +1,6 @@
 #include <dev/zero.h>
 #include <fs/vfs.h>
+#include <memory/slab.h>
 #include <utils/set_out.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,11 +20,11 @@ static vfs_status_t zero_write(vfs_file_t* file,
 static vfs_status_t zero_stat(vfs_node_t* vnode, vfs_stat_t** out);
 
 devfs_device_t* zero_dev_new(void) {
-  vfs_file_ops_t* file_ops = calloc(1, sizeof(vfs_file_ops_t));
-  vfs_node_ops_t* node_ops = calloc(1, sizeof(vfs_node_ops_t));
+  vfs_file_ops_t* file_ops = slab_calloc(sizeof(vfs_file_ops_t));
+  vfs_node_ops_t* node_ops = slab_calloc(sizeof(vfs_node_ops_t));
   if (file_ops == NULL || node_ops == NULL) {
-    free(file_ops);
-    free(node_ops);
+    slab_free(file_ops);
+    slab_free(node_ops);
     return NULL;
   }
 
@@ -36,8 +37,8 @@ devfs_device_t* zero_dev_new(void) {
 
   devfs_device_t* dev = devfs_device_new(file_ops, node_ops);
   if (dev == NULL) {
-    free(file_ops);
-    free(node_ops);
+    slab_free(file_ops);
+    slab_free(node_ops);
     return NULL;
   }
 

@@ -32,6 +32,9 @@
 #if defined(__test_hmalloc) || defined(__stress_hmalloc)
 #include <memory/hmalloc_test.h>
 #endif
+#if defined(__test_bitmap)
+#include <utils/bitmap_test.h>
+#endif
 #if defined(__test_initrd)
 #include <fs/initrd_test.h>
 #endif
@@ -134,6 +137,9 @@ void kernel_main() {
 #endif
 #if defined(__test_chardev)
   chardev_test();
+#endif
+#if defined(__test_bitmap)
+  bitmap_test();
 #endif
 #if defined(__test_ringbuffer)
   ringbuffer_test();

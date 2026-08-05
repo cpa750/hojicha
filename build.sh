@@ -26,6 +26,13 @@ case "$*" in
     ;;
 esac
 
+TEST_BITMAP=0
+case "$*" in
+  *--test-bitmap*)
+    TEST_BITMAP=1
+    ;;
+esac
+
 TEST_INITRD=0
 case "$*" in
   *--test-initrd*)
@@ -129,6 +136,7 @@ echo "Calling CMake:"
     -DHOJICHA_DEBUG_QEMU="$DEBUG_QEMU" \
     -DHOJICHA_TEST_HMALLOC="$TEST_HMALLOC" \
     -DHOJICHA_STRESS_HMALLOC="$STRESS_HMALLOC" \
+    -DHOJICHA_TEST_BITMAP="$TEST_BITMAP" \
     -DHOJICHA_TEST_INITRD="$TEST_INITRD" \
     -DHOJICHA_TEST_VFS="$TEST_VFS" \
     -DHOJICHA_TEST_CHARDEV="$TEST_CHARDEV" \

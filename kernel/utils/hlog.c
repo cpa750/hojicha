@@ -2,6 +2,7 @@
 #include <drivers/tty.h>
 #include <hlog.h>
 #include <kernel/g_kernel.h>
+#include <memory/slab.h>
 #include <multitask/scheduler.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -41,11 +42,8 @@ uint64_t serial_write_log_record(hlog_level_t level,
                                  char* buf);
 
 hlogger_t* hlog_new(hlog_level_t level, uint64_t bufsize) {
-  hlogger_t* logger = (hlogger_t*)calloc(1, sizeof(hlogger_t));
-  if (logger == NULL) {
-    free(logger);
-    return NULL;
-  }
+  hlogger_t* logger = (hlogger_t*)slab_calloc(sizeof(hlogger_t));
+  if (logger == NULL) { return NULL; }
 
   logger->max_level = level;
   logger->bufsize = bufsize;
@@ -56,7 +54,7 @@ hlogger_t* hlog_new(hlog_level_t level, uint64_t bufsize) {
 
 uint64_t hlog_free_logger(hlogger_t* logger) {
   uint64_t bytes_written = hlog_commit_logger(logger);
-  free(logger);
+  slab_free(logger);
   return bytes_written;
 }
 
@@ -86,8 +84,13 @@ void add_log_internal(hlogger_t* logger,
                       process_block_t* proc,
                       const char* restrict format,
                       va_list args) {
-  pending_log_t* log = (pending_log_t*)malloc(sizeof(pending_log_t));
-  char* buf = (char*)malloc(sizeof(char) * logger->bufsize);
+  pending_log_t* log = (pending_log_t*)slab_alloc(sizeof(pending_log_t));
+  char* buf = (char*)slab_alloc(sizeof(char) * logger->bufsize);
+  if (log == NULL || buf == NULL) {
+    slab_free(log);
+    slab_free(buf);
+    return;
+  }
   log->level = level;
   log->next = NULL;
   log->proc = proc;
@@ -111,10 +114,10 @@ uint64_t hlog_commit_logger(hlogger_t* logger) {
   pending_log_t* log = logger->pending_logs_head;
   while (log != NULL) {
     bytes_written += write_log_record(log->level, log->proc, log->buf);
-    free(log->buf);
+    slab_free(log->buf);
     pending_log_t* old = log;
     log = log->next;
-    free(old);
+    slab_free(old);
   }
   logger->pending_logs_head = NULL;
   logger->pending_logs_tail = NULL;
@@ -178,12 +181,12 @@ uint64_t write_log_internal(hlog_level_t level,
                             process_block_t* proc,
                             const char* restrict format,
                             va_list args) {
-  char* buf = (char*)malloc(sizeof(char) * logger->bufsize);
+  char* buf = (char*)slab_alloc(sizeof(char) * logger->bufsize);
   if (buf == NULL) { return 0; }
 
   vsnprintf(buf, logger->bufsize, format, args);
   uint64_t bytes_written = write_log_record(level, proc, buf);
-  free(buf);
+  slab_free(buf);
   return bytes_written;
 }
 

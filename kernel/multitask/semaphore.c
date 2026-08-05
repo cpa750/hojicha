@@ -1,3 +1,4 @@
+#include <memory/slab.h>
 #include <multitask/scheduler.h>
 #include <multitask/semaphore.h>
 #include <multitask/wait_queue.h>
@@ -10,7 +11,7 @@ struct semaphore {
 };
 
 semaphore_t* semaphore_create(uint8_t limit) {
-  semaphore_t* s = (semaphore_t*)malloc(sizeof(semaphore_t));
+  semaphore_t* s = (semaphore_t*)slab_alloc(sizeof(semaphore_t));
 
   if (s != NULL) {
     s->limit = limit;
@@ -21,7 +22,7 @@ semaphore_t* semaphore_create(uint8_t limit) {
   return s;
 }
 
-void semaphore_destroy(semaphore_t* s) { free(s); }
+void semaphore_destroy(semaphore_t* s) { slab_free(s); }
 
 void semaphore_lock(semaphore_t* s) {
   sched_postpone();

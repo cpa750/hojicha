@@ -1,3 +1,6 @@
+#include <hlog.h>
+#include <memory/slab.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <utils/ringbuffer.h>
 #include <utils/set_out.h>
@@ -39,11 +42,11 @@ void ringbuffer_new(uint64_t size,
                     ringbuffer_unlock_fn_t read_unlock_fn,
                     ringbuffer_lock_fn_t write_lock_fn,
                     ringbuffer_unlock_fn_t write_unlock_fn) {
-  ringbuffer_t* ret = calloc(1, sizeof(ringbuffer_t));
-  void** buffer = calloc(size + 1, sizeof(void*));
+  ringbuffer_t* ret = slab_calloc(sizeof(ringbuffer_t));
+  void** buffer = slab_calloc((size + 1) * sizeof(void*));
   if (ret == NULL || buffer == NULL) {
-    free(ret);
-    free(buffer);
+    slab_free(ret);
+    slab_free(buffer);
     SET_OUT_NULL(out);
     return;
   }
@@ -61,13 +64,19 @@ void ringbuffer_new(uint64_t size,
 }
 
 void ringbuffer_free(ringbuffer_t* r) {
-  free(r->buf);
-  free(r);
+  slab_free(r->buf);
+  slab_free(r);
 }
 
 void ringbuffer_write(ringbuffer_t* r, void* value) {
   RINGBUFFER_WRITE_LOCK(r);
   if (r->write_pos == 0) { r->write_pos = 1; }
+  hlog_write(HLOG_DEBUG,
+             "Writing to ringbuffer idx %d (value=%x, r=%x, buf=%x)",
+             r->write_pos,
+             (uintptr_t)value,
+             (uintptr_t)r,
+             (uintptr_t)r->buf);
   r->buf[r->write_pos++] = value;
   if (r->write_pos > r->size) { r->write_pos = 1; }
   RINGBUFFER_WRITE_UNLOCK(r);

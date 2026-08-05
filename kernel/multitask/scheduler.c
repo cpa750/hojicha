@@ -4,6 +4,7 @@
 #include <haddr.h>
 #include <hlog.h>
 #include <kernel/g_kernel.h>
+#include <memory/slab.h>
 #include <memory/vmm.h>
 #include <multitask/elf.h>
 #include <multitask/scheduler.h>
@@ -216,8 +217,7 @@ void wake_procs_before_timestamp(uint64_t timestamp);
 
 void sched_initialize(void) {
   process_block_t* kernel_process =
-      (process_block_t*)malloc(sizeof(process_block_t));
-  memset(kernel_process, 0, sizeof(process_block_t));
+      (process_block_t*)slab_calloc(sizeof(process_block_t));
   haddr_t cr3;
   haddr_t rsp;
   asm volatile("\t movq %%cr3,%0" : "=r"(cr3));
@@ -232,22 +232,23 @@ void sched_initialize(void) {
   kernel_process->name = proc_name_new("hojicha", strlen("hojicha"));
   kernel_process->logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
   kernel_process->mem = process_mem_new(g_kernel.vmm);
-  kernel_process->fds = (vfs_file_t**)calloc(1, sizeof(vfs_file_t*) * MAX_FDS);
+  kernel_process->fds =
+      (vfs_file_t**)slab_calloc(sizeof(vfs_file_t*) * MAX_FDS);
   kernel_process->children =
-      (process_block_t**)calloc(1, sizeof(process_block_t*) * MAX_CHILDREN);
+      (process_block_t**)slab_calloc(sizeof(process_block_t*) * MAX_CHILDREN);
   wait_queue_init(&kernel_process->child_waiters);
   wait_queue_init(&kernel_process->exit_waiters);
   if (kernel_process->name == NULL || kernel_process->logger == NULL ||
       kernel_process->mem == NULL || kernel_process->fds == NULL ||
       kernel_process->children == NULL) {
-    free(kernel_process->name);
+    slab_free(kernel_process->name);
     if (kernel_process->logger != NULL) {
       hlog_free_logger(kernel_process->logger);
     }
-    free(kernel_process->fds);
-    free(kernel_process->children);
+    slab_free(kernel_process->fds);
+    slab_free(kernel_process->children);
     process_mem_free(kernel_process->mem);
-    free(kernel_process);
+    slab_free(kernel_process);
     abort();
   }
   mt.kernel_pid = kernel_process->pid;
@@ -337,7 +338,7 @@ long sched_execve(process_block_t* process,
   if (logger == NULL || vmm == NULL || proc_name == NULL) {
     if (logger != NULL) { hlog_free_logger(logger); }
     if (vmm != NULL) { vmm_free(vmm); }
-    free(proc_name);
+    slab_free(proc_name);
     proc_strings_free(argv);
     proc_strings_free(envp);
     return -ENOMEM;
@@ -375,7 +376,7 @@ long sched_execve(process_block_t* process,
 
   load_pd(process->cr3);
   if (old_vmm != NULL && old_vmm != g_kernel.vmm) { vmm_free(old_vmm); }
-  free(old_name);
+  slab_free(old_name);
   if (old_logger != NULL) { hlog_free_logger(old_logger); }
   if (old_elf != NULL && old_elf != elf) { elf_free(old_elf); }
   proc_strings_free(old_argv);
@@ -608,7 +609,7 @@ void multitask_switch(process_block_t* process) {
   uint8_t cpl = cs & 0b11;
   bool is_ctx_switch = (!cpl && !process->is_kernel_proc) ||
                        (cpl == 3 && process->is_kernel_proc);
-  hlog_write(HLOG_DEBUG,
+  hlog_write(HLOG_VERBOSE,
              "switching to PID %d from %d",
              process->pid,
              g_kernel.current_process->pid);
@@ -776,11 +777,11 @@ void insert_process_after(process_block_t* process, process_block_t* after) {
 
 process_block_t* new_proc_shared(char* name, void* cr3) {
   process_block_t* new_proc =
-      (process_block_t*)calloc(1, sizeof(process_block_t));
-  vfs_file_t** fds = (vfs_file_t**)calloc(1, sizeof(vfs_file_t*) * MAX_FDS);
+      (process_block_t*)slab_calloc(sizeof(process_block_t));
+  vfs_file_t** fds = (vfs_file_t**)slab_calloc(sizeof(vfs_file_t*) * MAX_FDS);
   process_block_t** children =
-      (process_block_t**)calloc(1, sizeof(process_block_t*) * MAX_CHILDREN);
-  uint8_t* stack_end = (uint8_t*)calloc(1, STACK_SIZE);
+      (process_block_t**)slab_calloc(sizeof(process_block_t*) * MAX_CHILDREN);
+  uint8_t* stack_end = (uint8_t*)slab_calloc(STACK_SIZE);
   hlogger_t* logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
   process_mem_t* mem = process_mem_new(NULL);
   uint64_t pid = g_kernel.sched->total_processes_added + 1;
@@ -792,12 +793,12 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
   char* proc_name = proc_name_new(name, strlen(name));
   if (new_proc == NULL || mem == NULL || fds == NULL || children == NULL ||
       stack_end == NULL || logger == NULL || proc_name == NULL) {
-    free(new_proc);
-    free(fds);
-    free(children);
-    free(stack_end);
+    slab_free(new_proc);
+    slab_free(fds);
+    slab_free(children);
+    slab_free(stack_end);
     process_mem_free(mem);
-    free(proc_name);
+    slab_free(proc_name);
     if (logger != NULL) { hlog_free_logger(logger); }
     hlog_write(HLOG_ERROR,
                "Could not create new process %s: out of memory.",
@@ -836,7 +837,7 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
 
 char* proc_name_new(const char* name, uint64_t name_len) {
   if (name == NULL) { return NULL; }
-  char* ret = (char*)calloc(name_len + 1, sizeof(char));
+  char* ret = (char*)slab_calloc(name_len + 1);
   if (ret == NULL) { return NULL; }
   memcpy(ret, name, name_len);
   ret[name_len] = '\0';
@@ -844,7 +845,7 @@ char* proc_name_new(const char* name, uint64_t name_len) {
 }
 
 process_mem_t* process_mem_new(vmm_t* vmm) {
-  process_mem_t* mem = calloc(1, sizeof(process_mem_t));
+  process_mem_t* mem = slab_calloc(sizeof(process_mem_t));
   if (mem == NULL) { return NULL; }
   mem->vmm = vmm;
   return mem;
@@ -853,7 +854,7 @@ process_mem_t* process_mem_new(vmm_t* vmm) {
 void process_mem_free(process_mem_t* mem) {
   if (mem == NULL) { return; }
   if (mem->vmm != NULL && mem->vmm != g_kernel.vmm) { vmm_free(mem->vmm); }
-  free(mem);
+  slab_free(mem);
 }
 
 void proc_strings_free(char** strings) {
@@ -896,7 +897,7 @@ void process_free(process_block_t* p) {
         p->children[child_slot]->parent = NULL;
       }
     }
-    free(p->children);
+    slab_free(p->children);
   }
   hlog_free_logger(p->logger);
   if (p->fds != NULL) {
@@ -907,15 +908,15 @@ void process_free(process_block_t* p) {
         process_fd_release(file);
       }
     }
-    free(p->fds);
+    slab_free(p->fds);
   }
-  free(p->name);
+  slab_free(p->name);
   proc_strings_free(p->argv);
   proc_strings_free(p->envp);
   sched_pb_set_cwd(p, NULL);
   process_mem_free(p->mem);
-  free(p->stack_end);
-  free(p);
+  slab_free(p->stack_end);
+  slab_free(p);
 }
 
 void process_fd_release(vfs_file_t* file) {

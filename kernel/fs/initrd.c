@@ -4,6 +4,7 @@
 #include <kernel/ktime.h>
 #include <utils/set_out.h>
 #include <hlog.h>
+#include <memory/slab.h>
 #include <multitask/bootmodule.h>
 #include <multitask/scheduler.h>
 #include <stdbool.h>
@@ -167,11 +168,11 @@ vfs_status_t initrd_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
                               // on actual filetype
   }
 
-  initrd_file_t* file = (initrd_file_t*)calloc(1, sizeof(initrd_file_t));
-  vfs_file_t* vfile = (vfs_file_t*)calloc(1, sizeof(vfs_file_t));
+  initrd_file_t* file = (initrd_file_t*)slab_calloc(sizeof(initrd_file_t));
+  vfs_file_t* vfile = (vfs_file_t*)slab_calloc(sizeof(vfs_file_t));
   if (file == NULL || vfile == NULL) {
-    free(file);
-    free(vfile);
+    slab_free(file);
+    slab_free(vfile);
     return VFS_STATUS_NOMEM;
   }
 
@@ -207,8 +208,8 @@ vfs_status_t initrd_open(vfs_node_t* vnode, uint32_t flags, vfs_file_t** out) {
 }
 
 vfs_status_t initrd_close(vfs_file_t* vfile) {
-  free(vfile->fs_data);
-  free(vfile);
+  slab_free(vfile->fs_data);
+  slab_free(vfile);
   return VFS_STATUS_OK;
 }
 
@@ -357,7 +358,7 @@ void initrd_free(vfs_node_t* vnode) {
   if (inode != NULL) {
     if (inode->name_owned) { free((void*)inode->name); }
     if (inode->buf_owned) { free(inode->buf); }
-    free(inode);
+    slab_free(inode);
   }
 }
 
@@ -413,7 +414,7 @@ vfs_status_t initrd_create_file(vfs_node_t* dir,
     return VFS_STATUS_INVALID_ARG;
   }
 
-  initrd_inode_t* inode = calloc(1, sizeof(initrd_inode_t));
+  initrd_inode_t* inode = slab_calloc(sizeof(initrd_inode_t));
   if (inode == NULL) {
     SET_OUT_NULL(out);
     return VFS_STATUS_NOMEM;
@@ -421,7 +422,7 @@ vfs_status_t initrd_create_file(vfs_node_t* dir,
 
   char* file_name = vfs_clone_name(name, name_len, false);
   if (file_name == NULL) {
-    free(inode);
+    slab_free(inode);
     SET_OUT_NULL(out);
     return VFS_STATUS_NOMEM;
   }
@@ -536,12 +537,12 @@ vfs_status_t initrd_link(vfs_node_t* dir,
     return VFS_STATUS_EXISTS;
   }
 
-  initrd_inode_t* alias = (initrd_inode_t*)calloc(1, sizeof(initrd_inode_t));
+  initrd_inode_t* alias = (initrd_inode_t*)slab_calloc(sizeof(initrd_inode_t));
   if (alias == NULL) { return VFS_STATUS_NOMEM; }
 
   char* link_name = vfs_clone_name(name, name_len, false);
   if (link_name == NULL) {
-    free(alias);
+    slab_free(alias);
     return VFS_STATUS_NOMEM;
   }
 
@@ -587,7 +588,7 @@ vfs_status_t initrd_symlink(vfs_node_t* dir,
     return VFS_STATUS_EXISTS;
   }
 
-  initrd_inode_t* link = (initrd_inode_t*)calloc(1, sizeof(initrd_inode_t));
+  initrd_inode_t* link = (initrd_inode_t*)slab_calloc(sizeof(initrd_inode_t));
   if (link == NULL) {
     SET_OUT(out, NULL);
     return VFS_STATUS_NOMEM;
@@ -596,7 +597,7 @@ vfs_status_t initrd_symlink(vfs_node_t* dir,
   char* link_name = vfs_clone_name(name, name_len, false);
   char* link_target = vfs_clone_name(target, target_len, false);
   if (link_name == NULL || link_target == NULL) {
-    free(link);
+    slab_free(link);
     free(link_name);
     free(link_target);
     SET_OUT(out, NULL);
@@ -678,10 +679,10 @@ void add_child(initrd_inode_t* parent, initrd_inode_t* new_child) {
 initrd_inode_t* create_dir(const char* name,
                            uint64_t name_len,
                            initrd_inode_t* parent) {
-  initrd_inode_t* dir = (initrd_inode_t*)calloc(1, sizeof(initrd_inode_t));
+  initrd_inode_t* dir = (initrd_inode_t*)slab_calloc(sizeof(initrd_inode_t));
   char* dir_name = vfs_clone_name(name, name_len, false);
   if (dir == NULL || dir_name == NULL) {
-    free(dir);
+    slab_free(dir);
     free(dir_name);
     return NULL;
   }
@@ -705,7 +706,7 @@ initrd_inode_t* create_dir(const char* name,
 }
 
 initrd_inode_t* create_root() {
-  initrd_inode_t* root = (initrd_inode_t*)calloc(1, sizeof(initrd_inode_t));
+  initrd_inode_t* root = (initrd_inode_t*)slab_calloc(sizeof(initrd_inode_t));
   if (root == NULL) { return NULL; }
   root->name = "";
   root->name_size = 0;
@@ -908,7 +909,8 @@ vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out) {
         h->type == USTAR_TYPE_REGULAR_FILE_ALT) {
       uint64_t name_offset = get_name_start_idx(h->filename, entry_len);
 
-      initrd_inode_t* new = (initrd_inode_t*)calloc(1, sizeof(initrd_inode_t));
+      initrd_inode_t* new =
+          (initrd_inode_t*)slab_calloc(sizeof(initrd_inode_t));
       if (new == NULL) { return VFS_STATUS_NOMEM; }
       new->len = ustar_oct2dec(h->filesize_bytes_oct, 12);
       new->bufsize = new->len;
@@ -932,7 +934,7 @@ vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out) {
         parent = get_or_create_prefix(h->filename, name_offset, root);
       }
       if (parent == NULL) {
-        free(new);
+        slab_free(new);
         return VFS_STATUS_NOTDIR;
       }
       new->parent = parent;
@@ -999,7 +1001,7 @@ vfs_status_t load_ustar(void* buffer, uint64_t size, vfs_mount_t** mount_out) {
     }
   }
 
-  vfs_mount_t* m = (vfs_mount_t*)calloc(1, sizeof(vfs_mount_t));
+  vfs_mount_t* m = (vfs_mount_t*)slab_calloc(sizeof(vfs_mount_t));
   if (m == NULL) { return VFS_STATUS_NOMEM; }
   m->root = &root->vnode;
   m->fs_data = NULL;
