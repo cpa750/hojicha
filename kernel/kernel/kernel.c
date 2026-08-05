@@ -92,8 +92,6 @@ void kernel_main() {
   print_ok("PIT");
   ktime_initialize();
   print_ok("ktime");
-  keyboard_initialize();
-  print_ok("Keyboard");
   pmm_initialize();
   print_ok("PMM");
   if (!bootmodule_initialize()) {
@@ -104,6 +102,8 @@ void kernel_main() {
   print_ok("VMM");
   hmalloc_initialize();
   print_ok("hmalloc");
+  keyboard_initialize();
+  print_ok("Keyboard");
 
 #if defined(__test_hmalloc)
   hmalloc_test();
