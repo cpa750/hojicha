@@ -1,0 +1,3 @@
+[submodule "userspace/hojicha-doomgeneric"]
+	path = userspace/hojicha-doomgeneric
+	url = https://git.22ru.dev/22ru/hojicha-doomgeneric.git
