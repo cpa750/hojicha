@@ -1,26 +1,38 @@
 file(GLOB USERSPACE_SOURCES CONFIGURE_DEPENDS *.c)
 
-foreach(source ${USERSPACE_SOURCES})
-  get_filename_component(program "${source}" NAME_WE)
+set(HOJICHA_USERSPACE_BINARY_DIR "${CMAKE_CURRENT_LIST_DIR}/bin")
+
+function(add_hojicha_userspace_executable target output_name)
   add_executable(
-    "userspace_${program}"
+    "${target}"
     "${HOJICHA_PROJECT_ROOT}/libc/internal/crt0.s"
-    "${source}"
+    ${ARGN}
   )
-  set_target_properties("userspace_${program}" PROPERTIES
-    OUTPUT_NAME "${program}"
+  set_target_properties("${target}" PROPERTIES
+    OUTPUT_NAME "${output_name}"
     SUFFIX ""
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/bin"
+    RUNTIME_OUTPUT_DIRECTORY "${HOJICHA_USERSPACE_BINARY_DIR}"
   )
-  target_compile_options_for_language("userspace_${program}" C ${HOJICHA_LIBC_CFLAGS} -O2)
-  target_compile_options_for_language("userspace_${program}" ASM ${HOJICHA_LIBC_CFLAGS} -O2)
-  target_include_directories("userspace_${program}" PRIVATE "${HOJICHA_PROJECT_ROOT}/libc/include")
-  target_link_options("userspace_${program}" PRIVATE
+  target_compile_options_for_language("${target}" C ${HOJICHA_LIBC_CFLAGS} -O2)
+  target_compile_options_for_language("${target}" ASM ${HOJICHA_LIBC_CFLAGS} -O2)
+  target_include_directories("${target}" PRIVATE "${HOJICHA_PROJECT_ROOT}/libc/include")
+  target_link_options("${target}" PRIVATE
     -nostdlib
     -static
     -no-pie
     -Wl,-melf_x86_64
     -Wl,-e,_start
   )
-  target_link_libraries("userspace_${program}" PRIVATE hojicha_libc gcc)
+  target_link_libraries("${target}" PRIVATE hojicha_libc gcc)
+endfunction()
+
+foreach(source ${USERSPACE_SOURCES})
+  get_filename_component(program "${source}" NAME_WE)
+  add_hojicha_userspace_executable(
+    "userspace_${program}"
+    "${program}"
+    "${source}"
+  )
 endforeach()
+
+add_subdirectory(hojicha-doomgeneric)
