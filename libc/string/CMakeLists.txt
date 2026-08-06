@@ -3,7 +3,9 @@ set(LIBC_STRING_SOURCES
   memmove.c
   memset.c
   strchr.c
+  strcasecmp.c
   strcmp.c
+  strncasecmp.c
   strncmp.c
   strcpy.c
   strdup.c
