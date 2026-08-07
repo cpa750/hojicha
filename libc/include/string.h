@@ -15,6 +15,8 @@ void* memset(void* buf, int val, size_t len);
 char* strchr(const char* str, int c);
 int strcmp(const char* a, const char* b);
 int strncmp(const char* a, const char* b, size_t len);
+char* strncpy(char* restrict dest, const char* restrict src, size_t n);
+char* strrchr(const char* str, int c);
 void* strcpy(void* restrict, const void* restrict s);
 char* strdup(const char* str);
 size_t strlen(const char* str);

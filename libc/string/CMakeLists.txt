@@ -7,6 +7,8 @@ set(LIBC_STRING_SOURCES
   strcmp.c
   strncasecmp.c
   strncmp.c
+  strncpy.c
+  strrchr.c
   strcpy.c
   strdup.c
   strlen.c
