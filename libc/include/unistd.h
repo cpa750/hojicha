@@ -30,6 +30,7 @@ int rmdir(const char* path);
 unsigned int sleep(unsigned int seconds);
 int symlink(const char* target, const char* linkpath);
 int unlink(const char* path);
+int usleep(unsigned long usec);
 
 int brk(void* addr);
 void* sbrk(intptr_t offset);
