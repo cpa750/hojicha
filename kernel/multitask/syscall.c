@@ -105,6 +105,11 @@ void syscall_handle(interrupt_frame_t* frame) {
     case __HOJICHA_INTERNAL_SYSCALL_NANOSLEEP:
       ret = syscall_nanosleep((unsigned long)frame->rdi);
       break;
+    case __HOJICHA_INTERNAL_SYSCALL_CLOCK_GETTIME:
+      ret =
+          syscall_clock_gettime((clockid_t)frame->rdi,
+                                (struct timespec*)frame->rsi);
+      break;
     case __HOJICHA_INTERNAL_SYSCALL_BRK:
       ret = syscall_brk((unsigned long)frame->rdi);
       break;

@@ -1,5 +1,6 @@
 target_sources(kernel_objects PRIVATE
   syscall_brk.c
+  syscall_clock_gettime.c
   syscall_chdir.c
   syscall_close.c
   syscall_dup2.c

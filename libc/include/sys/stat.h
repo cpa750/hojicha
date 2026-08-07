@@ -2,15 +2,9 @@
 #define HOJICHA_STAT_H
 
 #include <stdint.h>
+#include <time.h>
 
-// Adapted from https://www.man7.org/linux/man-pages/man3/stat.3type.html and
-// https://www.man7.org/linux/man-pages/man3/timespec.3type.html
-
-typedef struct timespec timespec_t;
-struct timespec {
-  int64_t tv_sec;
-  int64_t tv_nsec;
-};
+// Adapted from https://www.man7.org/linux/man-pages/man3/stat.3type.html
 
 typedef struct stat stat_t;
 struct stat {
