@@ -52,7 +52,7 @@ extern "C" {
 
 int fstat(int fd, stat_t* stat_buf);
 int lstat(const char* path, stat_t* stat_buf);
-int mkdir(const char* path);
+int mkdir(const char* path, int mode);
 int stat(const char* path, stat_t* stat_buf);
 
 #ifdef __cplusplus

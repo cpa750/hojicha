@@ -14,7 +14,10 @@ int fputc(int char_as_int, FILE* stream) {
 #if defined(__is_libk)
   terminal_write(&c, sizeof(c));
 #else
-  if (write(stream->fd, &c, sizeof(c)) != (int)sizeof(c)) { return EOF; }
+  if (write(stream->fd, &c, sizeof(c)) != (int)sizeof(c)) {
+    stream->flags |= __HOJICHA_FILE_ERROR;
+    return EOF;
+  }
 #endif
   return (unsigned char)c;
 }
