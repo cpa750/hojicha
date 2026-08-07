@@ -12,6 +12,7 @@ extern "C" {
 __attribute__((__noreturn__)) void abort(void);
 int abs(int j);
 int atoi(const char* nptr);
+double atof(const char* nptr);
 char* itoa(int64_t num, char* dst, int base);
 char* utoa(uint64_t num, char* dst, int base);
 

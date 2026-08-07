@@ -19,6 +19,7 @@ char* strncpy(char* restrict dest, const char* restrict src, size_t n);
 char* strrchr(const char* str, int c);
 void* strcpy(void* restrict, const void* restrict s);
 char* strdup(const char* str);
+char* strstr(const char* haystack, const char* needle);
 size_t strlen(const char* str);
 char* strtok(char* restrict str, const char* restrict delim);
 char* strtok_r(char* restrict str,

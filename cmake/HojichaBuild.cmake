@@ -49,8 +49,6 @@ set(HOJICHA_COMMON_CFLAGS
   -march=x86-64
   -mno-80387
   -mno-mmx
-  -mno-sse
-  -mno-sse2
   -fno-omit-frame-pointer
   -mno-red-zone
   -mcmodel=large
@@ -73,6 +71,8 @@ set(HOJICHA_LIBC_CFLAGS
 set(HOJICHA_KERNEL_CFLAGS
   ${HOJICHA_COMMON_CFLAGS}
   -O3
+  -mno-sse
+  -mno-sse2
   -fPIE
 )
 

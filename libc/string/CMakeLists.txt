@@ -11,6 +11,7 @@ set(LIBC_STRING_SOURCES
   strrchr.c
   strcpy.c
   strdup.c
+  strstr.c
   strlen.c
   strtok.c
   strtok_r.c

@@ -4,6 +4,7 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <sys/cdefs.h>
+#include <unistd.h>
 
 #define EOF (-1)
 
@@ -38,7 +39,10 @@ int getchar(void);
 int printf(const char* restrict, ...);
 int putchar(int);
 int puts(const char*);
-int snprintf(char* restrict buffer, size_t size, const char* restrict format, ...);
+int snprintf(char* restrict buffer,
+             size_t size,
+             const char* restrict format,
+             ...);
 int remove(const char*);
 int rename(const char*, const char*);
 int sscanf(const char* restrict, const char* restrict, ...);
