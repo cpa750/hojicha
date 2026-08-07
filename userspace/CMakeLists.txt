@@ -15,6 +15,7 @@ function(add_hojicha_userspace_executable target output_name)
   )
   target_compile_options_for_language("${target}" C ${HOJICHA_LIBC_CFLAGS} -O2)
   target_compile_options_for_language("${target}" ASM ${HOJICHA_LIBC_CFLAGS} -O2)
+  target_compile_definitions("${target}" PRIVATE __HOJICHA__)
   target_include_directories("${target}" PRIVATE "${HOJICHA_PROJECT_ROOT}/libc/include")
   target_link_options("${target}" PRIVATE
     -nostdlib

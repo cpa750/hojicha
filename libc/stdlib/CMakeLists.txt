@@ -1,12 +1,15 @@
 set(LIBC_STDLIB_SOURCES
   abort.c
+  abs.c
   assert.c
+  atoi.c
   calloc.c
   free.c
   getenv.c
   itoa.c
   utoa.c
   malloc.c
+  realloc.c
   exit.c
 )
 
