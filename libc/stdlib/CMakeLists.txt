@@ -3,7 +3,7 @@ set(LIBC_STDLIB_SOURCES
   abs.c
   assert.c
   atoi.c
-  atof.c
+  #atof.c
   calloc.c
   free.c
   getenv.c
