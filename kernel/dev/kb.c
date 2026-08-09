@@ -63,13 +63,16 @@ static vfs_status_t kb_read(vfs_file_t* file,
                             void* buffer,
                             uint64_t len,
                             uint64_t* bytes_read_out) {
-  (void)file;
   SET_OUT(bytes_read_out, 0);
   if (buffer == NULL) { return VFS_STATUS_INVALID_ARG; }
   if (len < sizeof(keyboard_event_t)) { return VFS_STATUS_RANGE; }
 
   keyboard_event_t event;
-  if (!keyboard_read_event_wait(&event)) {
+  bool has_event = (file->flags & VFS_OPEN_NONBLOCK)
+                       ? keyboard_read_event(&event)
+                       : keyboard_read_event_wait(&event);
+  if (!has_event) {
+    if (file->flags & VFS_OPEN_NONBLOCK) { return VFS_STATUS_AGAIN; }
     return VFS_STATUS_NOT_IMPLEMENTED;
   }
 

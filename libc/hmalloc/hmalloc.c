@@ -271,6 +271,34 @@ void hfree(void* ptr) {
   hmalloc_unlock(lock_state);
 }
 
+size_t hmalloc_usable_size(void* ptr) {
+  uint64_t lock_state = hmalloc_lock();
+
+  if (ptr == NULL || !heap_initialized) {
+    hmalloc_unlock(lock_state);
+    return 0;
+  }
+
+  block_header_t* current_block =
+      (block_header_t*)((hmalloc_addr_t)ptr - SIZEOF_HEADER);
+  if ((hmalloc_addr_t)current_block < first_available_vaddr ||
+      (hmalloc_addr_t)current_block >= last_footer) {
+    hmalloc_unlock(lock_state);
+    return 0;
+  }
+
+  if (!is_footer_in_heap(current_block->footer) ||
+      current_block->footer->header != current_block ||
+      current_block->is_free) {
+    hmalloc_unlock(lock_state);
+    return 0;
+  }
+
+  size_t size = current_block->size_bytes;
+  hmalloc_unlock(lock_state);
+  return size;
+}
+
 #if defined(__stress_hmalloc)
 uint64_t hmalloc_debug_last_footer(void) { return last_footer; }
 

@@ -10,7 +10,15 @@ int fgetc(FILE* stream) {
   return EOF;
 #else
   unsigned char c;
-  if (read(stream->fd, &c, sizeof(c)) != (int)sizeof(c)) { return EOF; }
+  int ret = read(stream->fd, &c, sizeof(c));
+  if (ret == 0) {
+    stream->flags |= __HOJICHA_FILE_EOF;
+    return EOF;
+  }
+  if (ret != (int)sizeof(c)) {
+    stream->flags |= __HOJICHA_FILE_ERROR;
+    return EOF;
+  }
   return c;
 #endif
 }

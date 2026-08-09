@@ -12,6 +12,7 @@ set(LIBC_UNISTD_SOURCES
   rmdir.c
   sleep.c
   sbrk.c
+  usleep.c
 )
 
 target_sources(libc_objects PRIVATE ${LIBC_UNISTD_SOURCES})

@@ -1,4 +1,5 @@
 set(LIBC_TIME_SOURCES
+  clock_gettime.c
   nanosleep.c
 )
 

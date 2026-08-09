@@ -2,9 +2,15 @@
 #define HOJICHA_UNISTD_H
 
 #include <stdint.h>
+#ifndef SEEK_SET
 #define SEEK_SET 0
+#endif
+#ifndef SEEK_CUR
 #define SEEK_CUR 1
+#endif
+#ifndef SEEK_END
 #define SEEK_END 2
+#endif
 
 #define F_OK 0
 #define X_OK 1
@@ -30,6 +36,7 @@ int rmdir(const char* path);
 unsigned int sleep(unsigned int seconds);
 int symlink(const char* target, const char* linkpath);
 int unlink(const char* path);
+int usleep(unsigned long usec);
 
 int brk(void* addr);
 void* sbrk(intptr_t offset);

@@ -24,6 +24,7 @@ typedef enum {
   VFS_STATUS_XDEV,
   VFS_STATUS_LOOP,
   VFS_STATUS_RANGE,
+  VFS_STATUS_AGAIN,
 } vfs_status_t;
 
 typedef enum {
@@ -41,6 +42,7 @@ typedef enum {
   VFS_OPEN_CLOEXEC = 16,
   VFS_OPEN_TRUNC = 32,
   VFS_OPEN_APPEND = 64,
+  VFS_OPEN_NONBLOCK = 128,
 } vfs_open_flags_t;
 
 typedef enum {

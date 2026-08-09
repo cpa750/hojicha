@@ -3,10 +3,15 @@ set(LIBC_STRING_SOURCES
   memmove.c
   memset.c
   strchr.c
+  strcasecmp.c
   strcmp.c
+  strncasecmp.c
   strncmp.c
+  strncpy.c
+  strrchr.c
   strcpy.c
   strdup.c
+  strstr.c
   strlen.c
   strtok.c
   strtok_r.c

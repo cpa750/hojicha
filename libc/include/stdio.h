@@ -4,6 +4,7 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <sys/cdefs.h>
+#include <unistd.h>
 
 #define EOF (-1)
 
@@ -22,13 +23,30 @@ extern FILE __hojicha_stderr;
 #define stderr (&__hojicha_stderr)
 
 int fgetc(FILE*);
+int fclose(FILE*);
+int feof(FILE*);
+int fflush(FILE*);
+int ferror(FILE*);
 char* fgets(char* restrict, int, FILE* restrict);
+FILE* fopen(const char* restrict, const char* restrict);
 int fputc(int, FILE*);
+int fprintf(FILE* restrict, const char* restrict, ...);
+size_t fread(void* restrict, size_t, size_t, FILE* restrict);
+int fseek(FILE*, long, int);
+long ftell(FILE*);
+size_t fwrite(const void* restrict, size_t, size_t, FILE* restrict);
 int getchar(void);
 int printf(const char* restrict, ...);
 int putchar(int);
 int puts(const char*);
-int snprintf(char* restrict buffer, size_t size, const char* restrict format, ...);
+int snprintf(char* restrict buffer,
+             size_t size,
+             const char* restrict format,
+             ...);
+int remove(const char*);
+int rename(const char*, const char*);
+int sscanf(const char* restrict, const char* restrict, ...);
+int vfprintf(FILE* restrict, const char* restrict, va_list);
 int vprintf(const char* restrict format, va_list parameters);
 int vsnprintf(char* restrict buffer,
               size_t size,

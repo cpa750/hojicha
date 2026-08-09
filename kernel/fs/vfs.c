@@ -681,6 +681,8 @@ int vfs_status_to_errno(vfs_status_t status) {
       return ELOOP;
     case VFS_STATUS_RANGE:
       return ERANGE;
+    case VFS_STATUS_AGAIN:
+      return EAGAIN;
     default:
       return EINVAL;
   }

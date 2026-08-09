@@ -4,9 +4,11 @@
 #include <cpu/isr.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <time.h>
 
 long syscall_exit(int code);
 unsigned long syscall_nanosleep(unsigned long ns);
+long syscall_clock_gettime(clockid_t clockid, struct timespec* tp);
 
 long syscall_close(long fd);
 long syscall_dup2(long oldfd, long newfd);
