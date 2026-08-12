@@ -7,7 +7,9 @@
 extern "C" {
 #endif
 
+#if !defined(__is_libk)
 double fabs(double x);
+#endif
 
 #ifdef __cplusplus
 }

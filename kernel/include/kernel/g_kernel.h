@@ -37,6 +37,7 @@ struct kernel_state {
   tty_state_t* tty;
   vga_state_t* vga;
   vmm_t* vmm;
+  bool has_fpu;
 };
 typedef struct kernel_state kernel_state_t;
 

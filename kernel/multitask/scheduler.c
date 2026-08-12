@@ -1,3 +1,4 @@
+#include <cpu/fpu.h>
 #include <drivers/pit.h>
 #include <errno.h>
 #include <fs/vfs.h>
@@ -54,6 +55,7 @@ struct process_block {
   proc_entry_t entry;
   // End asm-mapped fields
 
+  fpu_t* fpu;
   hlogger_t* logger;
   char* name;
   uint64_t pid;
@@ -238,15 +240,18 @@ void sched_initialize(void) {
       (process_block_t**)slab_calloc(sizeof(process_block_t*) * MAX_CHILDREN);
   wait_queue_init(&kernel_process->child_waiters);
   wait_queue_init(&kernel_process->exit_waiters);
+  kernel_process->fpu = g_kernel.has_fpu ? fpu_new() : NULL;
   if (kernel_process->name == NULL || kernel_process->logger == NULL ||
       kernel_process->mem == NULL || kernel_process->fds == NULL ||
-      kernel_process->children == NULL) {
+      kernel_process->children == NULL ||
+      (g_kernel.has_fpu && kernel_process->fpu == NULL)) {
     slab_free(kernel_process->name);
     if (kernel_process->logger != NULL) {
       hlog_free_logger(kernel_process->logger);
     }
     slab_free(kernel_process->fds);
     slab_free(kernel_process->children);
+    fpu_free(kernel_process->fpu);
     process_mem_free(kernel_process->mem);
     slab_free(kernel_process);
     abort();
@@ -361,6 +366,11 @@ long sched_execve(process_block_t* process,
   char** old_argv = process->argv;
   char** old_envp = process->envp;
 
+  if (g_kernel.has_fpu) {
+    fpu_reset(process->fpu);
+    fpu_restore(process->fpu);
+  }
+
   process->name = proc_name;
   process->logger = logger;
   process->mem->vmm = vmm;
@@ -436,6 +446,10 @@ long sched_fork(process_block_t* process, interrupt_frame_t* frame) {
   new_proc->mem->brk_start = process->mem->brk_start;
   new_proc->mem->brk = process->mem->brk;
   new_proc->mem->stack_start = process->mem->stack_start;
+  if (g_kernel.has_fpu) {
+    fpu_save(process->fpu);
+    fpu_copy(new_proc->fpu, process->fpu);
+  }
 
   haddr_t child_stack_base = (haddr_t)new_proc->stack_end + STACK_SIZE;
   haddr_t child_frame_addr = child_stack_base - sizeof(interrupt_frame_t);
@@ -613,6 +627,12 @@ void multitask_switch(process_block_t* process) {
              "switching to PID %d from %d",
              process->pid,
              g_kernel.current_process->pid);
+  if (g_kernel.has_fpu) {
+    if (g_kernel.current_process != NULL) {
+      fpu_save(g_kernel.current_process->fpu);
+    }
+    fpu_restore(process->fpu);
+  }
   switch_to(process, is_ctx_switch);
   asm volatile("sti");
 }
@@ -784,6 +804,7 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
   uint8_t* stack_end = (uint8_t*)slab_calloc(STACK_SIZE);
   hlogger_t* logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
   process_mem_t* mem = process_mem_new(NULL);
+  fpu_t* fpu = g_kernel.has_fpu ? fpu_new() : NULL;
   uint64_t pid = g_kernel.sched->total_processes_added + 1;
   char pid_name[21] = {0};
   if (name == NULL) {
@@ -792,11 +813,13 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
   }
   char* proc_name = proc_name_new(name, strlen(name));
   if (new_proc == NULL || mem == NULL || fds == NULL || children == NULL ||
-      stack_end == NULL || logger == NULL || proc_name == NULL) {
+      stack_end == NULL || logger == NULL || proc_name == NULL ||
+      (g_kernel.has_fpu && fpu == NULL)) {
     slab_free(new_proc);
     slab_free(fds);
     slab_free(children);
     slab_free(stack_end);
+    fpu_free(fpu);
     process_mem_free(mem);
     slab_free(proc_name);
     if (logger != NULL) { hlog_free_logger(logger); }
@@ -808,6 +831,7 @@ process_block_t* new_proc_shared(char* name, void* cr3) {
 
   new_proc->pid = pid;
   new_proc->cr3 = cr3;
+  new_proc->fpu = fpu;
   new_proc->stack_end = stack_end;
   new_proc->mem = mem;
   haddr_t stack_base = (haddr_t)(stack_end + STACK_SIZE);
@@ -914,6 +938,7 @@ void process_free(process_block_t* p) {
   proc_strings_free(p->argv);
   proc_strings_free(p->envp);
   sched_pb_set_cwd(p, NULL);
+  fpu_free(p->fpu);
   process_mem_free(p->mem);
   slab_free(p->stack_end);
   slab_free(p);
