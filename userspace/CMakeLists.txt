@@ -36,4 +36,6 @@ foreach(source ${USERSPACE_SOURCES})
   )
 endforeach()
 
-add_subdirectory(hojicha-doomgeneric)
+if(HOJICHA_BUILD_DOOMGENERIC)
+  add_subdirectory(hojicha-doomgeneric)
+endif()

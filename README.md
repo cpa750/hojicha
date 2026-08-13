@@ -66,4 +66,5 @@ It then should be as simple as `./run_virtual.sh` from the project root - see be
 - Tests can be run with: `--test-chardev`, `--test-hmalloc`, `--test-initrd`, `--test-vfs`, `--test-ringbuffer`, `--test-vma`, or `--test-all`
 - Hmalloc stress tests can be run with: `--stress-hmalloc`
 - Automated system tests can be enabled with `--ast-scheduler`. The results can be verified with `scripts/verify_scheduler_ast.py`.
+- Build doomgeneric and add a DOOM IWAD to the initrd with `--doom-wad=path/to/doom1.wad`.
 - `./run_virtual.sh` writes QEMU serial output to `logs/serial.log` by default. Override `QEMU_ARGS` to choose a different location.

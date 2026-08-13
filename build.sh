@@ -83,6 +83,9 @@ case "$*" in
 esac
 
 HLOG_LEVEL=""
+HLOG_LEVEL_VALUE=""
+DOOM_WAD_PATH=""
+BUILD_DOOMGENERIC=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --hlog-level=*)
@@ -95,6 +98,9 @@ while [ "$#" -gt 0 ]; do
         exit 1
       fi
       HLOG_LEVEL_VALUE="$1"
+      ;;
+    --doom-wad=*)
+      DOOM_WAD_PATH="${1#*=}"
       ;;
   esac
   shift
@@ -111,6 +117,9 @@ if [ -n "$HLOG_LEVEL_VALUE" ]; then
       exit 1
       ;;
   esac
+fi
+if [ -n "$DOOM_WAD_PATH" ]; then
+  BUILD_DOOMGENERIC=1
 fi
 
 HOSTARCH=$(./target_triplet_to_arch.sh "$HOST")
@@ -144,6 +153,7 @@ echo "Calling CMake:"
     -DHOJICHA_TEST_VMA="$TEST_VMA" \
     -DHOJICHA_AST_SCHEDULER="$AST_SCHEDULER" \
     -DHOJICHA_TEST_ALL="$TEST_ALL" \
+    -DHOJICHA_BUILD_DOOMGENERIC="$BUILD_DOOMGENERIC" \
     -DHOJICHA_HLOG_LEVEL="$HLOG_LEVEL" \
     -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE" \
     -DCMAKE_INSTALL_PREFIX=/usr
@@ -152,7 +162,11 @@ echo "Calling CMake:"
 "$CMAKE" --build "$BUILDDIR"
 DESTDIR="$SYSROOT" "$CMAKE" --install "$BUILDDIR"
 
-./build_initrd.sh
+if [ -n "$DOOM_WAD_PATH" ]; then
+  ./build_initrd.sh --doom-wad="$DOOM_WAD_PATH"
+else
+  ./build_initrd.sh
+fi
 mkdir -p "$SYSROOT/boot"
 cp -f initrd/bin/initrd.tar "$SYSROOT/boot/"
 
