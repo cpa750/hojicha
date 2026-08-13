@@ -47,10 +47,6 @@ set(HOJICHA_COMMON_CFLAGS
   -fno-stack-check
   -m64
   -march=x86-64
-  -mno-80387
-  -mno-mmx
-  -mno-sse
-  -mno-sse2
   -fno-omit-frame-pointer
   -mno-red-zone
   -mcmodel=large
@@ -68,17 +64,33 @@ set(HOJICHA_LIBC_CFLAGS
   -O3
   -fno-pie
   -fno-pic
+  -mno-80387
+  -mno-mmx
+  -msse
+  -msse2
+  -mfpmath=sse
 )
 
 set(HOJICHA_KERNEL_CFLAGS
   ${HOJICHA_COMMON_CFLAGS}
   -O3
   -fPIE
+  -mno-80387
+  -mno-mmx
+  -mno-sse
+  -mno-sse2
+)
+
+set(HOJICHA_LIBK_CFLAGS
+  ${HOJICHA_KERNEL_CFLAGS}
+  -fno-pie
+  -fno-pic
 )
 
 if(HOJICHA_DEBUG_QEMU)
   list(APPEND HOJICHA_KERNEL_CFLAGS -O0 -g -D__debug_virtual)
   list(APPEND HOJICHA_LIBC_CFLAGS -O0 -g)
+  list(APPEND HOJICHA_LIBK_CFLAGS -O0 -g)
 endif()
 
 function(target_compile_options_for_language target language)

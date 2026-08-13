@@ -52,6 +52,11 @@ bool vmm_find_free_region_forward(vmm_t* vmm,
                                   haddr_t hint,
                                   haddr_t length,
                                   haddr_t* out);
+bool vmm_find_free_region_backward(vmm_t* vmm,
+                                   haddr_t hint,
+                                   haddr_t max,
+                                   haddr_t length,
+                                   haddr_t* out);
 bool vmm_find_free_region_fixed(vmm_t* vmm,
                                 haddr_t addr,
                                 haddr_t length,

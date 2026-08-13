@@ -1,5 +1,6 @@
 #include <cpu/gdt.h>
 #include <cpu/idt.h>
+#include <cpu/fpu.h>
 #include <dev/chardev.h>
 #include <drivers/keyboard.h>
 #include <drivers/pic.h>
@@ -105,6 +106,8 @@ void kernel_main() {
   print_ok("VMM");
   hmalloc_initialize();
   print_ok("hmalloc");
+  g_kernel.has_fpu = fpu_initialize();
+  print_ok(g_kernel.has_fpu ? "FPU" : "FPU unavailable");
 
 #if defined(__test_hmalloc)
   hmalloc_test();

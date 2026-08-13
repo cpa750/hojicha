@@ -1,6 +1,7 @@
 target_sources(kernel_objects PRIVATE
   entry.asm
   enter_ring3.asm
+  fpu_initialize.asm
   load_gdt.asm
   load_idt.asm
   load_pd.asm

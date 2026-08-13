@@ -5,6 +5,7 @@ project(hojicha C ASM ASM_NASM)
 set(HOJICHA_PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}")
 include(cmake/HojichaBuild.cmake)
 
+option(HOJICHA_BUILD_DOOMGENERIC "Build the doomgeneric userspace executable" OFF)
 set(HOJICHA_KERNEL_INCLUDE_DIR "${CMAKE_CURRENT_LIST_DIR}/kernel/include" CACHE PATH "Kernel headers for libk")
 
 add_subdirectory(libc)

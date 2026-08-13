@@ -36,5 +36,6 @@ foreach(source ${USERSPACE_SOURCES})
   )
 endforeach()
 
-# TODO: enable once we have enough kernel support
-#add_subdirectory(hojicha-doomgeneric)
+if(HOJICHA_BUILD_DOOMGENERIC)
+  add_subdirectory(hojicha-doomgeneric)
+endif()
