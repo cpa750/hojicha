@@ -45,7 +45,7 @@ Figuring out what's needed for DOOM port (framebuffer device, frame buffering? H
   - [x] basic init and shell
   - [x] cat, echo, ln, ls, mkdir, touch, rm, rmdir, unlink
   - [x] Brainfuck interpreter/compiler
-  - [ ] DOOM port
+  - [x] DOOM port
 
 If you're reading this and you have feedback, please don't hesitate to let me know!
 
