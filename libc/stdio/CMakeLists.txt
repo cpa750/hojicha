@@ -1,4 +1,5 @@
 set(LIBC_STDIO_SOURCES
+  __vformat.c
   fgetc.c
   fclose.c
   feof.c
