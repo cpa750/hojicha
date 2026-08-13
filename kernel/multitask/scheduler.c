@@ -15,7 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define QUANTUM_LENGTH        20000000  // 20 ms
+#define QUANTUM_LENGTH        50000  // 0.5 ms
 #define SCHED_WAITPID_WNOHANG 1
 
 struct sched_state {
