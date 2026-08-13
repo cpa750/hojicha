@@ -72,6 +72,33 @@ void vma_test(void) {
     vma_test_cleanup(&ctx, &head);
   }
 
+  htest_case_begin(&ctx, "insert keeps ranges sorted");
+  {
+    vma_t* head = NULL;
+    vma_t* second = NULL;
+    vma_t* third = NULL;
+
+    HTEST_ASSERT(&ctx, vma_insert(&head, 5 * PAGE, (6 * PAGE) - 1, 0, 0, 0));
+    HTEST_ASSERT(&ctx, vma_insert(&head, PAGE, (2 * PAGE) - 1, 0, 0, 0));
+    HTEST_ASSERT(&ctx, vma_insert(&head, 3 * PAGE, (4 * PAGE) - 1, 0, 0, 0));
+
+    second = head->next;
+    third = second->next;
+    HTEST_ASSERT(&ctx, vma_test_count(head) == 3);
+    HTEST_ASSERT(&ctx, head->start == PAGE);
+    HTEST_ASSERT(&ctx, head->end == (2 * PAGE) - 1);
+    HTEST_ASSERT(&ctx, second != NULL);
+    HTEST_ASSERT(&ctx, second->start == 3 * PAGE);
+    HTEST_ASSERT(&ctx, second->end == (4 * PAGE) - 1);
+    HTEST_ASSERT(&ctx, second->prev == head);
+    HTEST_ASSERT(&ctx, third != NULL);
+    HTEST_ASSERT(&ctx, third->start == 5 * PAGE);
+    HTEST_ASSERT(&ctx, third->end == (6 * PAGE) - 1);
+    HTEST_ASSERT(&ctx, third->prev == second);
+
+    vma_test_cleanup(&ctx, &head);
+  }
+
   htest_case_begin(&ctx, "delete whole range");
   {
     vma_t* head = NULL;
@@ -244,6 +271,17 @@ void vma_test(void) {
     HTEST_ASSERT(&ctx, found == PAGE);
   }
 
+  htest_case_begin(&ctx, "find free backward empty list");
+  {
+    vma_t* head = NULL;
+    haddr_t found = 0;
+
+    HTEST_ASSERT(&ctx,
+                 vma_find_free_backward(
+                     head, 0, PAGE, (8 * PAGE) - 1, 2 * PAGE, &found));
+    HTEST_ASSERT(&ctx, found == 6 * PAGE);
+  }
+
   htest_case_begin(&ctx, "find free walks forward from hint");
   {
     vma_t* head = NULL;
@@ -257,6 +295,31 @@ void vma_test(void) {
     HTEST_ASSERT(&ctx, found == 3 * PAGE);
 
     vma_test_cleanup(&ctx, &head);
+  }
+
+  htest_case_begin(&ctx, "find free walks backward from top");
+  {
+    vma_t* head = NULL;
+    haddr_t found = 0;
+
+    HTEST_ASSERT(&ctx, vma_insert(&head, 7 * PAGE, (8 * PAGE) - 1, 0, 0, 0));
+    HTEST_ASSERT(&ctx,
+                 vma_find_free_backward(
+                     head, 0, PAGE, (8 * PAGE) - 1, PAGE, &found));
+    HTEST_ASSERT(&ctx, found == 6 * PAGE);
+
+    vma_test_cleanup(&ctx, &head);
+  }
+
+  htest_case_begin(&ctx, "find free backward honors capped hint");
+  {
+    vma_t* head = NULL;
+    haddr_t found = 0;
+
+    HTEST_ASSERT(&ctx,
+                 vma_find_free_backward(
+                     head, 3 * PAGE, PAGE, (8 * PAGE) - 1, PAGE, &found));
+    HTEST_ASSERT(&ctx, found == 3 * PAGE);
   }
 
   htest_case_begin(&ctx, "find fixed rejects overlap");

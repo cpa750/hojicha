@@ -22,6 +22,12 @@ bool vma_find_free_forward(vma_t* head,
                            haddr_t max,
                            haddr_t length,
                            haddr_t* out);
+bool vma_find_free_backward(vma_t* head,
+                            haddr_t hint,
+                            haddr_t min,
+                            haddr_t max,
+                            haddr_t length,
+                            haddr_t* out);
 bool vma_find_free_fixed(vma_t* head,
                          haddr_t addr,
                          haddr_t min,

@@ -400,6 +400,19 @@ bool vmm_find_free_region_forward(vmm_t* vmm,
   return vma_find_free_forward(vmm->vma_list, hint, min, max, length, out);
 }
 
+bool vmm_find_free_region_backward(vmm_t* vmm,
+                                   haddr_t hint,
+                                   haddr_t max,
+                                   haddr_t length,
+                                   haddr_t* out) {
+  if (vmm == NULL || out == NULL) { return false; }
+
+  haddr_t min = vmm->first_available_vaddr;
+  haddr_t user_max = (KERNEL_PML4_FIRST << 39) - 1;
+  if (max > user_max) { max = user_max; }
+  return vma_find_free_backward(vmm->vma_list, hint, min, max, length, out);
+}
+
 bool vmm_find_free_region_fixed(vmm_t* vmm,
                                 haddr_t addr,
                                 haddr_t length,

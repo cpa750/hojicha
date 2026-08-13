@@ -19,7 +19,7 @@ static bool mmap_length_to_pages(unsigned long length,
                                  haddr_t* rounded_len_out,
                                  haddr_t* page_count_out);
 static haddr_t mmap_prot_to_vmm_flags(int prot);
-static long mmap_find_addr(vmm_t* vmm,
+static long mmap_find_addr(process_mem_t* mem,
                            void* addr,
                            haddr_t rounded_len,
                            int flags,
@@ -76,7 +76,7 @@ long syscall_mmap(void* addr,
 
   haddr_t mapped_addr = 0;
   long addr_status =
-      mmap_find_addr(mem->vmm, addr, search_len, flags, &mapped_addr);
+      mmap_find_addr(mem, addr, search_len, flags, &mapped_addr);
   if (addr_status < 0) { return addr_status; }
 
   if (file_mmap) {
@@ -146,7 +146,7 @@ static haddr_t mmap_prot_to_vmm_flags(int prot) {
   return flags;
 }
 
-static long mmap_find_addr(vmm_t* vmm,
+static long mmap_find_addr(process_mem_t* mem,
                            void* addr,
                            haddr_t rounded_len,
                            int flags,
@@ -155,12 +155,15 @@ static long mmap_find_addr(vmm_t* vmm,
   bool ok = false;
 
   if ((flags & MAP_FIXED) != 0) {
-    ok = vmm_find_free_region_fixed(vmm, hint, rounded_len, addr_out);
+    ok = vmm_find_free_region_fixed(mem->vmm, hint, rounded_len, addr_out);
     return ok ? 0 : -EINVAL;
-  } else {
-    ok = vmm_find_free_region_forward(vmm, hint, rounded_len, addr_out);
   }
 
+  if (mem->stack_start <= PAGE_SIZE) { return -ENOMEM; }
+
+  haddr_t mmap_max = mem->stack_start - PAGE_SIZE - 1;
+  ok = vmm_find_free_region_backward(
+      mem->vmm, 0, mmap_max, rounded_len, addr_out);
   return ok ? 0 : -ENOMEM;
 }
 

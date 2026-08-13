@@ -623,10 +623,6 @@ void multitask_switch(process_block_t* process) {
   uint8_t cpl = cs & 0b11;
   bool is_ctx_switch = (!cpl && !process->is_kernel_proc) ||
                        (cpl == 3 && process->is_kernel_proc);
-  hlog_write(HLOG_VERBOSE,
-             "switching to PID %d from %d",
-             process->pid,
-             g_kernel.current_process->pid);
   if (g_kernel.has_fpu) {
     if (g_kernel.current_process != NULL) {
       fpu_save(g_kernel.current_process->fpu);
