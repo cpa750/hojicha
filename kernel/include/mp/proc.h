@@ -39,8 +39,8 @@ struct process_mem {
 typedef void (*proc_entry_t)(void);
 
 /*
- * The process control block. This can be created via `sched_kproc_new()` for
- * kernel processes or `sched_uproc_new()` for userland processes.
+ * The process struct. This can be created via `proc_new_kernel()` for kernel
+ * processes or `proc_new_user()` for userland processes.
  */
 typedef struct proc proc_t;
 struct proc {
@@ -80,37 +80,21 @@ struct proc {
   int exit_code;
 };
 
-static inline proc_t* proc_get_next(proc_t* p) {
-  return p->next;
-}
+static inline proc_t* proc_get_next(proc_t* p) { return p->next; }
 
-static inline void proc_set_next(proc_t* p, proc_t* next) {
-  p->next = next;
-}
+static inline void proc_set_next(proc_t* p, proc_t* next) { p->next = next; }
 
-static inline hlogger_t* proc_get_logger(proc_t* p) {
-  return p->logger;
-}
+static inline hlogger_t* proc_get_logger(proc_t* p) { return p->logger; }
 
-static inline char* proc_get_name(proc_t* p) {
-  return p->name;
-}
+static inline char* proc_get_name(proc_t* p) { return p->name; }
 
-static inline uint64_t proc_get_pid(proc_t* p) {
-  return p->pid;
-}
+static inline uint64_t proc_get_pid(proc_t* p) { return p->pid; }
 
-static inline process_mem_t* proc_get_mem(proc_t* p) {
-  return p->mem;
-}
+static inline process_mem_t* proc_get_mem(proc_t* p) { return p->mem; }
 
-static inline void proc_set_elf(proc_t* p, elf_t* elf) {
-  p->elf = elf;
-}
+static inline void proc_set_elf(proc_t* p, elf_t* elf) { p->elf = elf; }
 
-static inline void* proc_get_cr3(proc_t* p) {
-  return p->cr3;
-}
+static inline void* proc_get_cr3(proc_t* p) { return p->cr3; }
 
 static inline vfs_node_t* proc_get_cwd(proc_t* p) {
   if (p == NULL) { return NULL; }
@@ -154,5 +138,18 @@ static inline vfs_file_t* proc_fd_get(proc_t* p, uint64_t idx) {
 static inline void proc_fd_set(proc_t* p, uint64_t idx, vfs_file_t* val) {
   if (idx < MAX_FDS) { p->fds[idx] = val; }
 }
+
+proc_t* proc_new_kernel(char* name, proc_entry_t entry, void* cr3);
+proc_t* proc_new_user(char* name, elf_t* elf);
+proc_t* proc_new_shared(char* name, void* cr3);
+void proc_dump(proc_t* p, hlog_level_t log_level);
+void proc_free(proc_t* p);
+void proc_terminate(proc_t* p);
+void proc_exit(proc_t* p, int code);
+char* proc_name_new(const char* name, uint64_t name_len);
+void proc_prelude(proc_t* p);
+void proc_strings_free(char** strings);
+process_mem_t* process_mem_new(vmm_t* vmm);
+void process_mem_free(process_mem_t* mem);
 
 #endif  // HOJICHA_MP_PROC_H

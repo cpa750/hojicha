@@ -20,6 +20,7 @@
 #include <memory/vmm.h>
 #include <mp/bootmodule.h>
 #include <kernel/elf.h>
+#include <mp/proc.h>
 #include <mp/scheduler.h>
 #include <mp/semaphore.h>
 #include <stdbool.h>
@@ -189,7 +190,7 @@ void kernel_main() {
   if (res != VFS_STATUS_OK) { hlog_write(HLOG_ERROR, "uh oh..."); }
 
   elf_t* init = elf_read(init_contents, init_stat->size);
-  proc_t* elf_proc = sched_uproc_new("init", init);
+  proc_t* elf_proc = proc_new_user("init", init);
   sched_add_proc(elf_proc);
 
   vfs_close(init_file);

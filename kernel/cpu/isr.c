@@ -70,7 +70,7 @@ void handle_fault(interrupt_frame_t* frame) {
       hlog_add(HLOG_DEBUG, "CR2: %x", cr2);
     }
     hlog_commit();
-    sched_proc_terminate(g_kernel.current_process);
+    proc_terminate(g_kernel.current_process);
   }
   if (frame->int_no < 19) {
     hlog_write(HLOG_ERROR, "%s exception.\n", error_messages[frame->int_no]);

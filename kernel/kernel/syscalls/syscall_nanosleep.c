@@ -1,7 +1,7 @@
 #include <hlog.h>
 #include <kernel/g_kernel.h>
 #include <mp/proc.h>
-#include <mp/scheduler.h>
+#include <mp/sleep.h>
 #include <kernel/syscall_callbacks.h>
 
 unsigned long syscall_nanosleep(unsigned long ns) {
@@ -10,7 +10,6 @@ unsigned long syscall_nanosleep(unsigned long ns) {
              proc_get_name(g_kernel.current_process),
              proc_get_pid(g_kernel.current_process),
              ns);
-  sched_current_sleep_ns(ns);
+  sleep_current_ns(ns);
   return 0;
 }
-

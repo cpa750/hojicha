@@ -1,6 +1,7 @@
 #include <kernel/g_kernel.h>
 #include <mp/proc.h>
 #include <mp/scheduler.h>
+#include <mp/sleep.h>
 #include <mp/wait_queue.h>
 #include <stddef.h>
 
@@ -21,7 +22,7 @@ void wait_queue_sleep(wait_queue_t* q) {
 
   sched_postpone();
   enqueue_current(q);
-  sched_current_block(PROC_STATUS_BLOCKED);
+  block_current_proc(PROC_STATUS_BLOCKED);
   sched_resume();
 }
 
@@ -29,7 +30,7 @@ void wait_queue_sleep_postponed(wait_queue_t* q) {
   if (q == NULL || g_kernel.current_process == NULL) { return; }
 
   enqueue_current(q);
-  sched_current_block(PROC_STATUS_BLOCKED);
+  block_current_proc(PROC_STATUS_BLOCKED);
   sched_resume();
   sched_postpone();
 }
@@ -43,7 +44,7 @@ proc_t* wait_queue_wake_one(wait_queue_t* q) {
     q->head = proc_get_next(proc);
     if (q->head == NULL) { q->tail = NULL; }
     proc_set_next(proc, NULL);
-    sched_proc_unblock(proc);
+    wake_proc(proc);
   }
   sched_resume();
   return proc;
@@ -57,7 +58,7 @@ void wait_queue_wake_all(wait_queue_t* q) {
     proc_t* proc = q->head;
     q->head = proc_get_next(proc);
     proc_set_next(proc, NULL);
-    sched_proc_unblock(proc);
+    wake_proc(proc);
   }
   q->tail = NULL;
   sched_resume();

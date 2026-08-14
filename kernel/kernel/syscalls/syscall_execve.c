@@ -2,7 +2,7 @@
 #include <fs/vfs.h>
 #include <kernel/g_kernel.h>
 #include <kernel/elf.h>
-#include <mp/scheduler.h>
+#include <mp/execve.h>
 #include <kernel/syscall_callbacks.h>
 #include <kernel/syscall_utils.h>
 #include <stdint.h>
@@ -141,13 +141,13 @@ long syscall_execve(const char* pathname,
     return -EINVAL;
   }
 
-  long ret = sched_execve(g_kernel.current_process,
-                          elf,
-                          path_copy,
-                          strlen(path_copy),
-                          argc,
-                          argv_copy,
-                          envp_copy);
+  long ret = execve_proc(g_kernel.current_process,
+                         elf,
+                         path_copy,
+                         strlen(path_copy),
+                         argc,
+                         argv_copy,
+                         envp_copy);
   free(path_copy);
   if (ret != 0) {
     elf_free(elf);

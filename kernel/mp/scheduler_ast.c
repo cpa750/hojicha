@@ -4,6 +4,7 @@
 #include <mp/proc.h>
 #include <mp/scheduler.h>
 #include <mp/semaphore.h>
+#include <mp/sleep.h>
 #include <mp/wait_queue.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -68,12 +69,12 @@ static void ast_scheduler_watch_2(void) {
 }
 
 static void ast_scheduler_sleep_once_1(void) {
-  sched_current_sleep(7);
+  sleep_current(7);
   AST_SCHEDULER_LOG(HLOG_INFO, "sleep_once_1 complete");
 }
 
 static void ast_scheduler_sleep_once_2(void) {
-  sched_current_sleep(7);
+  sleep_current(7);
   AST_SCHEDULER_LOG(HLOG_INFO, "sleep_once_2 complete");
 }
 
@@ -81,7 +82,7 @@ static void ast_scheduler_sem_owner(void) {
   AST_SCHEDULER_LOG(HLOG_INFO, "sem_owner lock requested");
   semaphore_lock(ast_scheduler_sem);
   AST_SCHEDULER_LOG(HLOG_INFO, "sem_owner lock acquired");
-  sched_current_sleep(7);
+  sleep_current(7);
   AST_SCHEDULER_LOG(HLOG_INFO, "sem_owner unlock");
   semaphore_unlock(ast_scheduler_sem);
 }
@@ -106,7 +107,7 @@ static void ast_scheduler_try_fail(void) {
 }
 
 static void ast_scheduler_try_success(void) {
-  sched_current_sleep(20);
+  sleep_current(20);
   AST_SCHEDULER_LOG(HLOG_INFO, "try_success lock requested");
   bool success = semaphore_try_lock(ast_scheduler_sem);
   if (!success) {
@@ -130,10 +131,10 @@ static void ast_scheduler_waiter_2(void) {
 }
 
 static void ast_scheduler_waitq_waker(void) {
-  sched_current_sleep(3);
+  sleep_current(3);
   AST_SCHEDULER_LOG(HLOG_INFO, "waitq wake one");
   wait_queue_wake_one(&ast_scheduler_wait_queue);
-  sched_current_sleep(3);
+  sleep_current(3);
   AST_SCHEDULER_LOG(HLOG_INFO, "waitq wake all");
   wait_queue_wake_all(&ast_scheduler_wait_queue);
 }
@@ -148,7 +149,7 @@ static void ast_scheduler_waitq_postponed_waiter(void) {
 }
 
 static void ast_scheduler_waitq_postponed_waker(void) {
-  sched_current_sleep(3);
+  sleep_current(3);
   if (ast_scheduler_postponed_waiter_woke) {
     AST_SCHEDULER_LOG(HLOG_ERROR, "waitq_postponed waiter woke before wake");
   }
@@ -156,7 +157,7 @@ static void ast_scheduler_waitq_postponed_waker(void) {
   AST_SCHEDULER_LOG(HLOG_INFO, "waitq_postponed wake all");
   wait_queue_wake_all(&ast_scheduler_postponed_wait_queue);
 
-  sched_current_sleep(1);
+  sleep_current(1);
   if (ast_scheduler_postponed_waiter_woke) {
     AST_SCHEDULER_LOG(HLOG_INFO, "waitq_postponed waiter woke after wake");
   } else {
@@ -166,7 +167,7 @@ static void ast_scheduler_waitq_postponed_waker(void) {
 
 static void ast_scheduler_waker(void) {
   while (1) {
-    sched_current_sleep(5);
+    sleep_current(5);
     AST_SCHEDULER_LOG(HLOG_INFO, "waker awake");
     ast_scheduler_awake_1 = true;
     ast_scheduler_awake_2 = true;
@@ -176,20 +177,20 @@ static void ast_scheduler_waker(void) {
 static void ast_scheduler_monitor(void) {
   uint64_t count = 0;
   while (1) {
-    sched_current_sleep(1);
+    sleep_current(1);
     ++count;
     AST_SCHEDULER_LOG(HLOG_INFO, "monitor tick %d", count);
 
     if (count == 15) {
       AST_SCHEDULER_LOG(HLOG_WARN, "terminating watch_2");
       hlog_commit_logger(proc_get_logger(ast_scheduler_proc_2));
-      sched_proc_terminate(ast_scheduler_proc_2);
+      proc_terminate(ast_scheduler_proc_2);
     }
 
     if (count == 21) {
       AST_SCHEDULER_LOG(HLOG_WARN, "terminating watch_1");
       hlog_commit_logger(proc_get_logger(ast_scheduler_proc_1));
-      sched_proc_terminate(ast_scheduler_proc_1);
+      proc_terminate(ast_scheduler_proc_1);
     }
 
     if (count == 22) {
@@ -201,7 +202,7 @@ static void ast_scheduler_monitor(void) {
 
 static void ast_scheduler_add(char* name, proc_entry_t entry) {
   proc_t* proc =
-      sched_kproc_new(name, entry, proc_get_cr3(g_kernel.current_process));
+      proc_new_kernel(name, entry, proc_get_cr3(g_kernel.current_process));
   sched_add_proc(proc);
   if (entry == ast_scheduler_watch_1) { ast_scheduler_proc_1 = proc; }
   if (entry == ast_scheduler_watch_2) { ast_scheduler_proc_2 = proc; }

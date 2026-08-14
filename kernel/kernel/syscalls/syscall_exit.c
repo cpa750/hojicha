@@ -17,6 +17,6 @@ long syscall_exit(int code) {
            proc_get_name(g_kernel.current_process),
            proc_get_pid(g_kernel.current_process),
            code);
-  sched_proc_exit(g_kernel.current_process, code);
+  proc_exit(g_kernel.current_process, code);
   return 0;
 }
