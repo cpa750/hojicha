@@ -5,8 +5,7 @@
 
 #include "mp_utils.h"
 
-static proc_t* find_last_sleep_timestamp_less_than_equal(proc_t* process,
-                                                         uint64_t timestamp);
+static bool proc_sleep_until_less_than_equal(proc_t* process, void* ctx);
 
 void block_current_proc(uint8_t reason) {
   mp_block_proc(g_kernel.current_process, reason);
@@ -18,19 +17,7 @@ void wake_proc(proc_t* process) {
   sched_lock();
 
   process->status = PROC_STATUS_READY_TO_RUN;
-  process->next = NULL;
-
-  if (g_kernel.sched->first_ready_to_run == NULL) {
-    g_kernel.sched->first_ready_to_run = process;
-    g_kernel.sched->last_ready_to_run = process;
-  } else {
-    if (g_kernel.sched->last_ready_to_run == NULL) {
-      mp_set_last_ready_to_run(g_kernel.sched,
-                               g_kernel.sched->first_ready_to_run);
-    }
-    g_kernel.sched->last_ready_to_run->next = process;
-    g_kernel.sched->last_ready_to_run = process;
-  }
+  proc_queue_push_tail(mp_ready_queue(), process);
 
   sched_unlock();
 }
@@ -49,9 +36,8 @@ void sleep_proc_until(proc_t* process, uint64_t timestamp) {
   process->sleep_until = timestamp;
   process->status = PROC_STATUS_SLEEPING_TIMER;
 
-  if (g_kernel.sched->sleeping == NULL) {
-    process->next = NULL;
-    g_kernel.sched->sleeping = process;
+  if (proc_queue_empty(mp_sleeping_queue())) {
+    proc_queue_push_head(mp_sleeping_queue(), process);
     sched_lock();
     schedule_advance();
     sched_unlock();
@@ -59,13 +45,12 @@ void sleep_proc_until(proc_t* process, uint64_t timestamp) {
     return;
   }
 
-  proc_t* last = find_last_sleep_timestamp_less_than_equal(
-      g_kernel.sched->sleeping, timestamp);
+  proc_t* last = proc_queue_find_last_prefix(
+      mp_sleeping_queue(), proc_sleep_until_less_than_equal, &timestamp);
   if (last == NULL) {
-    process->next = g_kernel.sched->sleeping;
-    g_kernel.sched->sleeping = process;
+    proc_queue_push_head(mp_sleeping_queue(), process);
   } else {
-    mp_insert_process_after(process, last);
+    proc_queue_insert_after(mp_sleeping_queue(), last, process);
   }
 
   sched_lock();
@@ -75,44 +60,24 @@ void sleep_proc_until(proc_t* process, uint64_t timestamp) {
 }
 
 void wake_procs_before_timestamp(uint64_t timestamp) {
-  if (g_kernel.sched->sleeping == NULL ||
-      g_kernel.sched->sleeping->sleep_until > timestamp) {
+  proc_t* last_to_wake = proc_queue_find_last_prefix(
+      mp_sleeping_queue(), proc_sleep_until_less_than_equal, &timestamp);
+  if (last_to_wake == NULL) {
     return;
   }
 
-  proc_t* last_to_wake = NULL;
-  for (proc_t* curr = g_kernel.sched->sleeping; curr != NULL;
-       curr = curr->next) {
-    if (curr->sleep_until <= timestamp) {
-      curr->status = PROC_STATUS_READY_TO_RUN;
-      last_to_wake = curr;
-    } else {
-      break;
-    }
+  for (proc_t* curr = proc_queue_head(mp_sleeping_queue()); curr != NULL;
+       curr = proc_get_next(curr)) {
+    curr->status = PROC_STATUS_READY_TO_RUN;
+    if (curr == last_to_wake) { break; }
   }
 
-  if (g_kernel.sched->first_ready_to_run == NULL) {
-    g_kernel.sched->first_ready_to_run = g_kernel.sched->sleeping;
-    g_kernel.sched->last_ready_to_run = last_to_wake;
-  } else {
-    g_kernel.sched->last_ready_to_run->next = g_kernel.sched->sleeping;
-    g_kernel.sched->last_ready_to_run = last_to_wake;
-  }
-
-  g_kernel.sched->sleeping = last_to_wake->next;
-  g_kernel.sched->last_ready_to_run->next = NULL;
+  proc_queue_splice_prefix_tail(mp_ready_queue(),
+                                mp_sleeping_queue(),
+                                last_to_wake);
 }
 
-static proc_t* find_last_sleep_timestamp_less_than_equal(proc_t* process,
-                                                         uint64_t timestamp) {
-  if (process->sleep_until > timestamp) { return NULL; }
-  proc_t* ret = NULL;
-  for (proc_t* curr = process; curr != NULL; curr = curr->next) {
-    if (curr->sleep_until <= timestamp) {
-      ret = curr;
-    } else {
-      break;
-    }
-  }
-  return ret;
+static bool proc_sleep_until_less_than_equal(proc_t* process, void* ctx) {
+  uint64_t timestamp = *(uint64_t*)ctx;
+  return process->sleep_until <= timestamp;
 }

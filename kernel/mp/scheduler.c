@@ -24,15 +24,15 @@ uint64_t sched_state_get_kernel_pid(sched_state_t* mt) {
 }
 
 proc_t* sched_state_get_ready_head(sched_state_t* mt) {
-  return mt->first_ready_to_run;
+  return proc_queue_head(&mt->ready_to_run);
 }
 
 proc_t* sched_state_get_sleeping_head(sched_state_t* mt) {
-  return mt->sleeping;
+  return proc_queue_head(&mt->sleeping);
 }
 
 proc_t* sched_state_get_ready_to_die_head(sched_state_t* mt) {
-  return mt->ready_to_die;
+  return proc_queue_head(&mt->ready_to_die);
 }
 
 static sched_state_t mt = {0};
@@ -85,9 +85,9 @@ void sched_initialize(void) {
   }
   mt.kernel_pid = kernel_process->pid;
 
-  mt.first_ready_to_run = NULL;
-  mt.last_ready_to_run = NULL;
-  mt.ready_to_die = NULL;
+  proc_queue_init(&mt.ready_to_run);
+  proc_queue_init(&mt.ready_to_die);
+  proc_queue_init(&mt.sleeping);
 
   // Initially set to 1 as we don't directly add kernel proc
   mt.total_processes_added = 1;
@@ -128,7 +128,7 @@ void schedule_advance(void) {
         g_kernel.sched->time_elapsed - g_kernel.sched->idle_switch_timestamp;
   }
 
-  if (g_kernel.sched->first_ready_to_run != NULL) {
+  if (!proc_queue_empty(mp_ready_queue())) {
     if (g_kernel.current_process != NULL &&
         g_kernel.current_process->status == PROC_STATUS_RUNNING) {
       g_kernel.current_process->status = PROC_STATUS_READY_TO_RUN;
@@ -136,26 +136,12 @@ void schedule_advance(void) {
       // We only want to place the old process in the ready-to-run queue if
       // it's being pre-empted. Otherwise, (for example, sleeping) it belongs
       // in a difference queue handled elsewhere.
-      if (g_kernel.sched->last_ready_to_run == NULL) {
-        g_kernel.sched->last_ready_to_run = g_kernel.sched->first_ready_to_run;
-      }
-      g_kernel.sched->last_ready_to_run->next = g_kernel.current_process;
-      g_kernel.sched->last_ready_to_run =
-          g_kernel.sched->last_ready_to_run->next;
-      if (g_kernel.sched->first_ready_to_run !=
-          g_kernel.sched->last_ready_to_run) {
-        g_kernel.sched->last_ready_to_run->next = NULL;
-      }
+      proc_queue_push_tail(mp_ready_queue(), g_kernel.current_process);
     }
 
     g_kernel.sched->quantum_remaining = QUANTUM_LENGTH;
-    proc_t* next = g_kernel.sched->first_ready_to_run;
+    proc_t* next = proc_queue_pop_head(mp_ready_queue());
     next->switch_timestamp = g_kernel.sched->time_elapsed;
-    g_kernel.sched->first_ready_to_run =
-        g_kernel.sched->first_ready_to_run->next;
-    if (next == g_kernel.sched->last_ready_to_run) {
-      g_kernel.sched->last_ready_to_run = NULL;
-    }
 
     // TODO: what happens if we sleep the only available process?
     // g_kernel.current_process and its status is updated inside switch_to()
@@ -169,17 +155,12 @@ void schedule_advance(void) {
       asm volatile("sti");
       asm volatile("hlt");
       asm volatile("cli");
-    } while (g_kernel.sched->first_ready_to_run == NULL);
+    } while (proc_queue_empty(mp_ready_queue()));
 
     g_kernel.sched->quantum_remaining = 0;
     g_kernel.current_process = proc;
     proc->switch_timestamp = g_kernel.sched->time_elapsed;
-    proc = g_kernel.sched->first_ready_to_run;
-    g_kernel.sched->first_ready_to_run =
-        g_kernel.sched->first_ready_to_run->next;
-    if (proc == g_kernel.sched->last_ready_to_run) {
-      g_kernel.sched->last_ready_to_run = NULL;
-    }
+    proc = proc_queue_pop_head(mp_ready_queue());
     multitask_switch(proc);
   }
 }
@@ -260,31 +241,31 @@ void handle_timer(uint64_t timestamp) {
  */
 void terminator(void) {
   while (true) {
-    if (g_kernel.sched->ready_to_die == NULL) {
+    if (proc_queue_empty(mp_ready_to_die_queue())) {
       // TODO: improve this so it blocks until a proc is ready to reap.
       sched_lock();
       schedule_advance();
       sched_unlock();
     } else {
       sched_postpone();
-      proc_t* waiting_for_parent = NULL;
-      proc_t* next;
+      proc_queue_t waiting_for_parent;
+      proc_queue_init(&waiting_for_parent);
       bool freed_process = false;
-      for (proc_t* p = g_kernel.sched->ready_to_die; p != NULL;) {
-        next = p->next;
-        p->next = NULL;
+      for (proc_t* p = proc_queue_pop_head(mp_ready_to_die_queue()); p != NULL;
+           p = proc_queue_pop_head(mp_ready_to_die_queue())) {
         if (p->parent != NULL) {
-          p->next = waiting_for_parent;
-          waiting_for_parent = p;
+          proc_queue_push_head(&waiting_for_parent, p);
         } else {
           // TODO: we ideally need to hand the logs committing off to a
           // dedicated task
           proc_free(p);
           freed_process = true;
         }
-        p = next;
       }
-      g_kernel.sched->ready_to_die = waiting_for_parent;
+      while (!proc_queue_empty(&waiting_for_parent)) {
+        proc_queue_push_tail(mp_ready_to_die_queue(),
+                             proc_queue_pop_head(&waiting_for_parent));
+      }
       sched_resume();
       if (!freed_process) { sched_yield(); }
     }

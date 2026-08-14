@@ -5,6 +5,7 @@ target_sources(kernel_objects PRIVATE
   mp_utils.c
   mutex.c
   proc.c
+  proc_queue.c
   scheduler_ast.c
   scheduler.c
   semaphore.c

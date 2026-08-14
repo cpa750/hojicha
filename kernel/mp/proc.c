@@ -266,8 +266,7 @@ void proc_exit(proc_t* p, int code) {
   }
   p->exit_code = code;
   if (p != g_kernel.current_process) { mp_remove_proc(p); }
-  p->next = g_kernel.sched->ready_to_die;
-  g_kernel.sched->ready_to_die = p;
+  proc_queue_push_head(mp_ready_to_die_queue(), p);
   sched_unlock();
 
   mp_block_proc(p, PROC_STATUS_READY_TO_DIE);
