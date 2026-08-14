@@ -10,6 +10,9 @@ struct sched_state;
 typedef struct sched_state sched_state_t;
 void sched_state_dump(sched_state_t* mt);
 uint64_t sched_state_get_kernel_pid(sched_state_t* mt);
+proc_t* sched_state_get_ready_head(sched_state_t* mt);
+proc_t* sched_state_get_sleeping_head(sched_state_t* mt);
+proc_t* sched_state_get_ready_to_die_head(sched_state_t* mt);
 
 void sched_initialize(void);
 

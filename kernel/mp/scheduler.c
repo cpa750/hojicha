@@ -45,6 +45,18 @@ uint64_t sched_state_get_kernel_pid(sched_state_t* mt) {
   return mt->kernel_pid;
 }
 
+proc_t* sched_state_get_ready_head(sched_state_t* mt) {
+  return mt->first_ready_to_run;
+}
+
+proc_t* sched_state_get_sleeping_head(sched_state_t* mt) {
+  return mt->sleeping;
+}
+
+proc_t* sched_state_get_ready_to_die_head(sched_state_t* mt) {
+  return mt->ready_to_die;
+}
+
 void proc_dump(proc_t* p, hlog_level_t log_level) {
   haddr_t vmm_cr3 = 0;
   process_mem_t* mem = proc_get_mem(p);

@@ -16,11 +16,13 @@ DEFAULT_LOG_PATH = Path("logs/serial.log")
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 MONITOR_TICK_RE = re.compile(r"^monitor tick ([0-9]+)$")
+TIMESTAMP_RE = re.compile(r"^([0-9]+):\s*(.*)$")
 
 
 @dataclass(frozen=True)
 class Event:
     line_no: int
+    timestamp: int
     text: str
 
 
@@ -80,7 +82,7 @@ def clean_line(line: str) -> str:
 
 
 def analyze_log(path: Path) -> LogAnalysis:
-    events: list[Event] = []
+    parsed_events: list[Event] = []
     with path.open("r", encoding="utf-8", errors="replace") as log_file:
         for line_no, raw_line in enumerate(log_file, 1):
             line = clean_line(raw_line)
@@ -88,7 +90,22 @@ def analyze_log(path: Path) -> LogAnalysis:
             if marker == -1:
                 continue
             text = line[marker + len(EVENT_PREFIX):].strip()
-            events.append(Event(line_no=line_no, text=text))
+
+            timestamp = line_no
+            timestamp_match = TIMESTAMP_RE.match(text)
+            if timestamp_match is not None:
+                timestamp = int(timestamp_match.group(1))
+                text = timestamp_match.group(2)
+
+            parsed_events.append(
+                Event(line_no=line_no, timestamp=timestamp, text=text)
+            )
+
+    sorted_events = sorted(parsed_events, key=lambda event: event.timestamp)
+    events = [
+        Event(line_no=idx, timestamp=event.timestamp, text=event.text)
+        for idx, event in enumerate(sorted_events, 1)
+    ]
     return LogAnalysis(events=events, warnings=[])
 
 
