@@ -2,81 +2,9 @@
 #define SCHEDULER_H
 
 #include <cpu/isr.h>
-#include <fs/vfs.h>
-#include <haddr.h>
-#include <hlog.h>
-#include <memory/vmm.h>
+#include <mp/proc.h>
 #include <stdbool.h>
 #include <stdint.h>
-
-#define STACK_SIZE   16384  // 4 pages
-#define MAX_CHILDREN 256
-
-typedef enum proc_status {
-  PROC_STATUS_RUNNING = 0b00000001,
-  PROC_STATUS_READY_TO_RUN = 0b00000010,
-  PROC_STATUS_SLEEPING_TIMER = 0b00000100,
-  PROC_STATUS_BLOCKED = 0b00001000,
-  PROC_STATUS_READY_TO_DIE = 0b00010000,
-  PROC_STATUS_UNINITIALIZED = 0b11111111,
-} proc_status_t;
-
-typedef struct elf elf_t;
-
-typedef struct process_mem process_mem_t;
-struct process_mem {
-  vmm_t* vmm;
-  haddr_t brk_start;
-  haddr_t brk;
-  haddr_t stack_start;
-};
-
-/*
- * The entry point of the process. Must take no parameters and return void.
- */
-typedef void (*proc_entry_t)(void);
-
-/*
- * The process control block. This can be created via `sched_kproc_new()` for
- * kernel processes or `sched_uproc_new()` for userland processes.
- */
-typedef struct process_block process_block_t;
-struct process_block;
-
-process_block_t* sched_pb_get_next(process_block_t* p);
-void sched_pb_set_next(process_block_t* p, process_block_t* next);
-hlogger_t* sched_pb_get_logger(process_block_t* p);
-char* sched_pb_get_name(process_block_t* p);
-uint64_t sched_pb_get_pid(process_block_t* p);
-process_mem_t* sched_pb_get_mem(process_block_t* p);
-void sched_pb_set_elf(process_block_t* p, elf_t* elf);
-void* sched_pb_get_cr3(process_block_t* p);
-
-/*
- * Gets/sets the process cwd vnode. `sched_pb_set_cwd()` borrows `cwd` and
- * releases the previous cwd, if any. The returned cwd pointer is owned by the
- * process and remains valid only while the process exists or until cwd changes.
- */
-vfs_node_t* sched_pb_get_cwd(process_block_t* p);
-void sched_pb_set_cwd(process_block_t* p, vfs_node_t* cwd);
-
-/*
- * Finds the first free file descriptor in a processe's file descriptor
- * table. Returns `true` and the index in `idx_out` if there is a free
- * descriptor, `false` if not.
- */
-bool sched_pb_fd_find_null(process_block_t* p, uint64_t* idx_out);
-bool sched_pb_child_find_null(process_block_t* p, uint64_t* idx_out);
-
-/*
- * Gets the entry in the processe's file descriptor table at `idx`.
- */
-vfs_file_t* sched_pb_fd_get(process_block_t* p, uint64_t idx);
-
-/*
- * Sets the entry in the processe's file descriptor table at `idx` to `val`.
- */
-void sched_pb_fd_set(process_block_t* p, uint64_t idx, vfs_file_t* val);
 
 struct sched_state;
 typedef struct sched_state sched_state_t;
@@ -92,7 +20,7 @@ void sched_initialize(void);
  * and the scheduler cleans up. The caller must not call `free()`
  * on the process handle manually.
  */
-process_block_t* sched_kproc_new(char* name, proc_entry_t entry, void* cr3);
+proc_t* sched_kproc_new(char* name, proc_entry_t entry, void* cr3);
 
 /*
  * Creates a new user space process with the given entry address.
@@ -101,12 +29,12 @@ process_block_t* sched_kproc_new(char* name, proc_entry_t entry, void* cr3);
  * and the scheduler cleans up. The caller must not call `free()`
  * on the process handle manually.
  */
-process_block_t* sched_uproc_new(char* name, elf_t* elf);
+proc_t* sched_uproc_new(char* name, elf_t* elf);
 
 /*
  * Replaces the current running executable with a new one.
  */
-long sched_execve(process_block_t* process,
+long sched_execve(proc_t* process,
                   elf_t* elf,
                   char* name,
                   uint64_t name_len,
@@ -117,12 +45,12 @@ long sched_execve(process_block_t* process,
 /*
  * Forks the given `process`.
  */
-long sched_fork(process_block_t* process, interrupt_frame_t* frame);
+long sched_fork(proc_t* process, interrupt_frame_t* frame);
 
 /*
  * Waits for a child process to exit and reaps it.
  */
-long sched_waitpid(process_block_t* process,
+long sched_waitpid(proc_t* process,
                    long pid,
                    int* wstatus,
                    int options);
@@ -131,7 +59,7 @@ long sched_waitpid(process_block_t* process,
  * Adds a proc to the scheduler's queue.
  * The process will be added in a `READY_TO_RUN` state.
  */
-void sched_add_proc(process_block_t* process);
+void sched_add_proc(proc_t* process);
 
 /*
  * Advances the scheduler if there is an available next process.
@@ -173,7 +101,7 @@ void sched_current_block(uint8_t reason);
  * Unblocks the given process. Only pre-empts if the process is the only one
  * running, otherwise the process is appended to the scheduler's queue.
  */
-void sched_proc_unblock(process_block_t* process);
+void sched_proc_unblock(proc_t* process);
 
 /*
  * Sleeps the current process `s` seconds.
@@ -189,11 +117,11 @@ void sched_current_sleep_ns(uint64_t ns);
  * Terminates a process. Child processes with live parents remain waitable
  * until the parent calls waitpid().
  */
-void sched_proc_terminate(process_block_t* p);
+void sched_proc_terminate(proc_t* p);
 
 /*
  * Terminates a process with an exit status visible to waitpid().
  */
-void sched_proc_exit(process_block_t* p, int code);
+void sched_proc_exit(proc_t* p, int code);
 
 #endif  // SCHEDULER_H

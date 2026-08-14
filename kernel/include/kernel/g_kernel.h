@@ -3,7 +3,7 @@
 
 #include <cpu/tss.h>
 #include <drivers/pit.h>
-#include <mp/scheduler.h>
+#include <mp/proc.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -27,7 +27,7 @@ typedef struct console_state console_state_t;
 struct kernel_state {
   // Begin ASM-mapped fields
   tss_t* tss;
-  process_block_t* current_process;
+  proc_t* current_process;
   // End asm-mapped fields
 
   console_state_t* console;

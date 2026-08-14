@@ -5,6 +5,7 @@
 #include <io.h>
 #include <kernel/g_kernel.h>
 #include <memory/pmm.h>
+#include <mp/scheduler.h>
 #include <mp/spinlock.h>
 #include <mp/wait_queue.h>
 #include <stdint.h>

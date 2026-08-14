@@ -7,6 +7,7 @@
 #include <kernel/g_kernel.h>
 #include <memory/slab.h>
 #include <mp/mutex.h>
+#include <mp/scheduler.h>
 #include <mp/spinlock.h>
 #include <mp/wait_queue.h>
 #include <stdbool.h>

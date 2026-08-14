@@ -1,5 +1,6 @@
 #include <hlog.h>
 #include <kernel/g_kernel.h>
+#include <mp/proc.h>
 #include <mp/scheduler.h>
 #include <mp/semaphore.h>
 #include <mp/wait_queue.h>
@@ -12,8 +13,8 @@ static wait_queue_t ast_scheduler_postponed_wait_queue;
 static volatile bool ast_scheduler_awake_1 = false;
 static volatile bool ast_scheduler_awake_2 = false;
 static volatile bool ast_scheduler_postponed_waiter_woke = false;
-static process_block_t* ast_scheduler_proc_1;
-static process_block_t* ast_scheduler_proc_2;
+static proc_t* ast_scheduler_proc_1;
+static proc_t* ast_scheduler_proc_2;
 
 static void ast_scheduler_watch_1(void) {
   while (1) {
@@ -162,8 +163,8 @@ static void ast_scheduler_monitor(void) {
 }
 
 static void ast_scheduler_add(char* name, proc_entry_t entry) {
-  process_block_t* proc =
-      sched_kproc_new(name, entry, sched_pb_get_cr3(g_kernel.current_process));
+  proc_t* proc =
+      sched_kproc_new(name, entry, proc_get_cr3(g_kernel.current_process));
   sched_add_proc(proc);
   if (entry == ast_scheduler_watch_1) { ast_scheduler_proc_1 = proc; }
   if (entry == ast_scheduler_watch_2) { ast_scheduler_proc_2 = proc; }

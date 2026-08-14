@@ -2,12 +2,13 @@
 #include <kernel/g_kernel.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
+#include <mp/proc.h>
 #include <mp/scheduler.h>
 #include <kernel/syscall_callbacks.h>
 #include <stddef.h>
 
 unsigned long syscall_brk(unsigned long brk) {
-  process_mem_t* mem = sched_pb_get_mem(g_kernel.current_process);
+  process_mem_t* mem = proc_get_mem(g_kernel.current_process);
   hlog_write(HLOG_VERBOSE, "syscall_brk request brk=%x", brk);
 
   if (mem == NULL || mem->vmm == NULL) {

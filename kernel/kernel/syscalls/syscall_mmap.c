@@ -4,6 +4,7 @@
 #include <kernel/g_kernel.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
+#include <mp/proc.h>
 #include <mp/scheduler.h>
 #include <kernel/syscall_callbacks.h>
 #include <stdbool.h>
@@ -37,7 +38,7 @@ long syscall_mmap(void* addr,
                   int flags,
                   int fd,
                   long offset) {
-  process_mem_t* mem = sched_pb_get_mem(g_kernel.current_process);
+  process_mem_t* mem = proc_get_mem(g_kernel.current_process);
   if (mem == NULL || mem->vmm == NULL) { return -EINVAL; }
 
   if ((flags & ~MMAP_SUPPORTED_FLAGS) != 0) { return -EINVAL; }
@@ -106,7 +107,7 @@ long syscall_mmap(void* addr,
 }
 
 long syscall_munmap(void* addr, unsigned long length) {
-  process_mem_t* mem = sched_pb_get_mem(g_kernel.current_process);
+  process_mem_t* mem = proc_get_mem(g_kernel.current_process);
   if (mem == NULL || mem->vmm == NULL) { return -EINVAL; }
 
   haddr_t start = (haddr_t)addr;

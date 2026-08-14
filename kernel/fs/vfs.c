@@ -2,6 +2,7 @@
 #include <fs/vfs.h>
 #include <kernel/g_kernel.h>
 #include <kernel/ktime.h>
+#include <mp/proc.h>
 #include <mp/scheduler.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -93,8 +94,8 @@ vfs_status_t vfs_mount_root(vfs_mount_t* mount) {
   mount->root->mount = mount;
   vfs_vnode_borrow(mount->root);
   if (g_kernel.current_process != NULL &&
-      sched_pb_get_cwd(g_kernel.current_process) == NULL) {
-    sched_pb_set_cwd(g_kernel.current_process, mount->root);
+      proc_get_cwd(g_kernel.current_process) == NULL) {
+    proc_set_cwd(g_kernel.current_process, mount->root);
   }
   return VFS_STATUS_OK;
 }
@@ -240,12 +241,12 @@ vfs_status_t vfs_open(const char* path,
   if (open_create_path_invalid(path, flags)) { return VFS_STATUS_INVALID_ARG; }
 
   uint64_t fd_idx;
-  bool has_fd = sched_pb_fd_find_null(g_kernel.current_process, &fd_idx);
+  bool has_fd = proc_fd_find_null(g_kernel.current_process, &fd_idx);
   if (!has_fd) { return VFS_STATUS_TOO_MANY_OPEN; }
 
   vfs_status_t open_status = vfs_get_file_handle(path, flags, out);
   if (open_status == VFS_STATUS_OK) {
-    sched_pb_fd_set(g_kernel.current_process, fd_idx, *out);
+    proc_fd_set(g_kernel.current_process, fd_idx, *out);
     SET_OUT(out_fd, fd_idx);
   }
   return open_status;
@@ -599,7 +600,7 @@ vfs_status_t vfs_ioctl(vfs_file_t* file, uint64_t request, void* args) {
 
 vfs_status_t vfs_resolve_fd(uint64_t fd, vfs_file_t** out) {
   SET_OUT(out, NULL);
-  vfs_file_t* ret = sched_pb_fd_get(g_kernel.current_process, fd);
+  vfs_file_t* ret = proc_fd_get(g_kernel.current_process, fd);
   if (ret == NULL) { return VFS_STATUS_BAD_FD; }
   SET_OUT(out, ret);
   return VFS_STATUS_OK;
@@ -692,8 +693,8 @@ static void clear_process_fd(vfs_file_t* file) {
   if (g_kernel.current_process == NULL) { return; }
 
   for (uint64_t i = 0; i < MAX_FDS; ++i) {
-    if (sched_pb_fd_get(g_kernel.current_process, i) == file) {
-      sched_pb_fd_set(g_kernel.current_process, i, NULL);
+    if (proc_fd_get(g_kernel.current_process, i) == file) {
+      proc_fd_set(g_kernel.current_process, i, NULL);
       return;
     }
   }
@@ -1121,7 +1122,7 @@ static vfs_status_t walk_path(const vfs_lookup_request_t* request,
 
   vfs_node_t* base = request->base;
   if (path[0] != '/') {
-    vfs_node_t* cwd = sched_pb_get_cwd(g_kernel.current_process);
+    vfs_node_t* cwd = proc_get_cwd(g_kernel.current_process);
     if (base == NULL) { base = cwd == NULL ? root_mount->root : cwd; }
   }
 

@@ -189,7 +189,7 @@ void kernel_main() {
   if (res != VFS_STATUS_OK) { hlog_write(HLOG_ERROR, "uh oh..."); }
 
   elf_t* init = elf_read(init_contents, init_stat->size);
-  process_block_t* elf_proc = sched_uproc_new("init", init);
+  proc_t* elf_proc = sched_uproc_new("init", init);
   sched_add_proc(elf_proc);
 
   vfs_close(init_file);

@@ -1,6 +1,7 @@
 #include <cpu/isr.h>
 #include <hlog.h>
 #include <kernel/g_kernel.h>
+#include <mp/proc.h>
 #include <mp/scheduler.h>
 #include <kernel/syscall.h>
 #include <stdio.h>
@@ -39,7 +40,7 @@ void handle_fault(interrupt_frame_t* frame) {
     return;
   }
 
-  if (sched_pb_get_pid(g_kernel.current_process) ==
+  if (proc_get_pid(g_kernel.current_process) ==
       sched_state_get_kernel_pid(g_kernel.sched)) {
     hlog_add(HLOG_FATAL,
              "%s exception at %x in kernel. Aborting...",
@@ -59,8 +60,8 @@ void handle_fault(interrupt_frame_t* frame) {
              "process...",
              exception_str,
              frame->rip,
-             sched_pb_get_name(g_kernel.current_process),
-             sched_pb_get_pid(g_kernel.current_process));
+             proc_get_name(g_kernel.current_process),
+             proc_get_pid(g_kernel.current_process));
     hlog_add(HLOG_DEBUG, "Error code: %b", frame->err_code);
     g_kernel_dump();
     if (frame->int_no == 14) {

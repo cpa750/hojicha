@@ -8,6 +8,7 @@
 #include <memory/slab.h>
 #include <memory/vmm.h>
 #include <kernel/elf.h>
+#include <mp/proc.h>
 #include <mp/scheduler.h>
 #include <mp/wait_queue.h>
 #include <stdint.h>
@@ -19,10 +20,10 @@
 #define SCHED_WAITPID_WNOHANG 1
 
 struct sched_state {
-  process_block_t* first_ready_to_run;
-  process_block_t* last_ready_to_run;
-  process_block_t* ready_to_die;
-  process_block_t* sleeping;
+  proc_t* first_ready_to_run;
+  proc_t* last_ready_to_run;
+  proc_t* ready_to_die;
+  proc_t* sleeping;
 
   uint64_t total_processes_added;
   uint64_t process_count;
@@ -44,66 +45,9 @@ uint64_t sched_state_get_kernel_pid(sched_state_t* mt) {
   return mt->kernel_pid;
 }
 
-typedef struct process_block process_block_t;
-struct process_block {
-  // Begin asm-mapped fields
-  void* cr3;
-  void* rsp;
-  void* rsp0;
-  uint8_t status;
-  uint8_t is_kernel_proc;
-  proc_entry_t entry;
-  // End asm-mapped fields
-
-  fpu_t* fpu;
-  hlogger_t* logger;
-  char* name;
-  uint64_t pid;
-
-  process_block_t* next;
-  void* stack_end;
-
-  uint64_t elapsed;
-  uint64_t sleep_until;
-  uint64_t switch_timestamp;
-
-  process_mem_t* mem;
-  elf_t* elf;
-  uint64_t argc;
-  char** argv;
-  char** envp;
-
-  vfs_file_t** fds;
-  vfs_node_t* cwd;
-  process_block_t** children;
-  process_block_t* parent;
-  wait_queue_t child_waiters;
-  wait_queue_t exit_waiters;
-  int exit_code;
-};
-
-process_block_t* sched_pb_get_next(process_block_t* p) { return p->next; }
-void sched_pb_set_next(process_block_t* p, process_block_t* next) {
-  p->next = next;
-}
-hlogger_t* sched_pb_get_logger(process_block_t* p) { return p->logger; }
-char* sched_pb_get_name(process_block_t* p) { return p->name; }
-uint64_t sched_pb_get_pid(process_block_t* p) { return p->pid; }
-process_mem_t* sched_pb_get_mem(process_block_t* p) { return p->mem; }
-void sched_pb_set_elf(process_block_t* p, elf_t* elf) { p->elf = elf; }
-vfs_node_t* sched_pb_get_cwd(process_block_t* p) {
-  if (p == NULL) { return NULL; }
-  return p->cwd;
-}
-void sched_pb_set_cwd(process_block_t* p, vfs_node_t* cwd) {
-  if (p == NULL) { return; }
-  vfs_vnode_borrow(cwd);
-  vfs_vnode_release(p->cwd);
-  p->cwd = cwd;
-}
-void multitask_pb_dump(process_block_t* p, hlog_level_t log_level) {
+void proc_dump(proc_t* p, hlog_level_t log_level) {
   haddr_t vmm_cr3 = 0;
-  process_mem_t* mem = sched_pb_get_mem(p);
+  process_mem_t* mem = proc_get_mem(p);
   if (mem != NULL && mem->vmm != NULL) {
     vmm_cr3 = (haddr_t)vmm_get_cr3(mem->vmm);
   }
@@ -143,83 +87,52 @@ void multitask_pb_dump(process_block_t* p, hlog_level_t log_level) {
              (haddr_t)p->elf);
 }
 
-bool sched_pb_fd_find_null(process_block_t* p, uint64_t* idx_out) {
-  for (uint16_t i = 0; i < MAX_FDS; ++i) {
-    if (p->fds[i] == NULL) {
-      if (idx_out != NULL) { *idx_out = i; }
-      return true;
-    }
-  }
-  return false;
-}
-
-bool sched_pb_child_find_null(process_block_t* p, uint64_t* idx_out) {
-  if (p == NULL || p->children == NULL) { return false; }
-
-  for (uint64_t i = 1; i < MAX_CHILDREN; ++i) {
-    if (p->children[i] == NULL) {
-      if (idx_out != NULL) { *idx_out = i; }
-      return true;
-    }
-  }
-  return false;
-}
-
-vfs_file_t* sched_pb_fd_get(process_block_t* p, uint64_t idx) {
-  if (idx >= MAX_FDS) { return NULL; }
-  return p->fds[idx];
-}
-
-void sched_pb_fd_set(process_block_t* p, uint64_t idx, vfs_file_t* val) {
-  if (idx < MAX_FDS) { p->fds[idx] = val; }
-}
-
 static sched_state_t mt = {0};
 static pit_callback_t pit_callback = {0};
 
-extern void switch_to(process_block_t* process, bool is_ctx_switch);
+extern void switch_to(proc_t* process, bool is_ctx_switch);
 extern void make_fork_kstack(void);
 extern void load_pd(haddr_t* pd_addr);
 
-void multitask_switch(process_block_t* process);
+void multitask_switch(proc_t* process);
 
-void block_process(process_block_t* p, uint8_t reason);
-void enqueue_ready_process(process_block_t* process);
-process_block_t* find_last_sleep_timestamp_less_than_equal(
-    process_block_t* process,
+void block_process(proc_t* p, uint8_t reason);
+void enqueue_ready_process(proc_t* process);
+proc_t* find_last_sleep_timestamp_less_than_equal(
+    proc_t* process,
     uint64_t timestamp);
 void handle_timer(uint64_t timestamp);
-void insert_process_after(process_block_t* process, process_block_t* after);
-void mark_proc_range(process_block_t* start,
-                     process_block_t* end,
+void insert_process_after(proc_t* process, proc_t* after);
+void mark_proc_range(proc_t* start,
+                     proc_t* end,
                      proc_status_t status);
-process_block_t* new_proc_shared(char* name, void* cr3);
+proc_t* new_proc_shared(char* name, void* cr3);
 process_mem_t* process_mem_new(vmm_t* vmm);
 void process_mem_free(process_mem_t* mem);
 char* proc_name_new(const char* name, uint64_t name_len);
-void proc_prelude(process_block_t* p);
+void proc_prelude(proc_t* p);
 void proc_strings_free(char** strings);
-void process_free(process_block_t* p);
+void process_free(proc_t* p);
 void process_fd_release(vfs_file_t* file);
-long process_wait_collect(process_block_t* parent,
-                          process_block_t* child,
+long process_wait_collect(proc_t* parent,
+                          proc_t* child,
                           uint64_t child_slot,
                           int* wstatus);
-void ready_to_die_remove(process_block_t* target);
+void ready_to_die_remove(proc_t* target);
 void set_last_ready_to_run(sched_state_t* mt,
-                           process_block_t* first_ready_to_run);
-void remove_proc(process_block_t* p);
-void sleep_proc_until(process_block_t* process, uint64_t timestamp);
+                           proc_t* first_ready_to_run);
+void remove_proc(proc_t* p);
+void sleep_proc_until(proc_t* process, uint64_t timestamp);
 void terminator(void);
-static bool wait_child_find(process_block_t* parent,
+static bool wait_child_find(proc_t* parent,
                             long pid,
-                            process_block_t** child_out,
+                            proc_t** child_out,
                             uint64_t* child_slot_out);
 void wake_procs_before_timestamp(uint64_t timestamp);
 
 void sched_initialize(void) {
-  process_block_t* kernel_process =
-      (process_block_t*)slab_calloc(sizeof(process_block_t));
+  proc_t* kernel_process =
+      (proc_t*)slab_calloc(sizeof(proc_t));
   haddr_t cr3;
   haddr_t rsp;
   asm volatile("\t movq %%cr3,%0" : "=r"(cr3));
@@ -237,7 +150,7 @@ void sched_initialize(void) {
   kernel_process->fds =
       (vfs_file_t**)slab_calloc(sizeof(vfs_file_t*) * MAX_FDS);
   kernel_process->children =
-      (process_block_t**)slab_calloc(sizeof(process_block_t*) * MAX_CHILDREN);
+      (proc_t**)slab_calloc(sizeof(proc_t*) * MAX_CHILDREN);
   wait_queue_init(&kernel_process->child_waiters);
   wait_queue_init(&kernel_process->exit_waiters);
   kernel_process->fpu = g_kernel.has_fpu ? fpu_new() : NULL;
@@ -273,13 +186,13 @@ void sched_initialize(void) {
   pit_callback.next = NULL;
   pit_register_callback(&pit_callback);
 
-  process_block_t* terminator_task =
+  proc_t* terminator_task =
       sched_kproc_new("kterminator", terminator, kernel_process->cr3);
   sched_add_proc(terminator_task);
 }
 
-process_block_t* sched_kproc_new(char* name, proc_entry_t entry, void* cr3) {
-  process_block_t* new_proc = new_proc_shared(name, cr3);
+proc_t* sched_kproc_new(char* name, proc_entry_t entry, void* cr3) {
+  proc_t* new_proc = new_proc_shared(name, cr3);
   if (new_proc == NULL) { return NULL; }
 
   new_proc->is_kernel_proc = true;
@@ -288,11 +201,11 @@ process_block_t* sched_kproc_new(char* name, proc_entry_t entry, void* cr3) {
   return new_proc;
 }
 
-process_block_t* sched_uproc_new(char* name, elf_t* elf) {
+proc_t* sched_uproc_new(char* name, elf_t* elf) {
   vmm_t* vmm = vmm_new(PAGE_USER_ACCESIBLE);
   if (vmm == NULL) { return NULL; }
 
-  process_block_t* new_proc = new_proc_shared(name, vmm_get_cr3(vmm));
+  proc_t* new_proc = new_proc_shared(name, vmm_get_cr3(vmm));
   if (new_proc == NULL) {
     vmm_free(vmm);
     return NULL;
@@ -303,7 +216,7 @@ process_block_t* sched_uproc_new(char* name, elf_t* elf) {
     if (vfs_get_file_handle("/dev/tty0",
                             VFS_OPEN_READ | VFS_OPEN_WRITE,
                             &tty) == VFS_STATUS_OK) {
-      sched_pb_fd_set(new_proc, fd, tty);
+      proc_fd_set(new_proc, fd, tty);
       continue;
     }
 
@@ -311,7 +224,7 @@ process_block_t* sched_uproc_new(char* name, elf_t* elf) {
       vfs_file_t* console = NULL;
       if (vfs_get_file_handle("/dev/console", VFS_OPEN_WRITE, &console) ==
           VFS_STATUS_OK) {
-        sched_pb_fd_set(new_proc, fd, console);
+        proc_fd_set(new_proc, fd, console);
       }
     }
   }
@@ -319,11 +232,11 @@ process_block_t* sched_uproc_new(char* name, elf_t* elf) {
   new_proc->is_kernel_proc = false;
   new_proc->elf = elf;
   new_proc->mem->vmm = vmm;
-  sched_pb_set_cwd(new_proc, sched_pb_get_cwd(g_kernel.current_process));
+  proc_set_cwd(new_proc, proc_get_cwd(g_kernel.current_process));
   return new_proc;
 }
 
-long sched_execve(process_block_t* process,
+long sched_execve(proc_t* process,
                   elf_t* elf,
                   char* name,
                   uint64_t name_len,
@@ -402,14 +315,14 @@ long sched_execve(process_block_t* process,
   return -EINVAL;
 }
 
-long sched_fork(process_block_t* process, interrupt_frame_t* frame) {
+long sched_fork(proc_t* process, interrupt_frame_t* frame) {
   if (process == NULL || frame == NULL || process->stack_end == NULL ||
       process->fds == NULL || process->children == NULL) {
     return -EINVAL;
   }
 
   uint64_t child_slot = 0;
-  if (!sched_pb_child_find_null(process, &child_slot)) { return -EAGAIN; }
+  if (!proc_child_find_null(process, &child_slot)) { return -EAGAIN; }
 
   haddr_t parent_stack_bottom = (haddr_t)process->stack_end;
   haddr_t parent_stack_base = parent_stack_bottom + STACK_SIZE;
@@ -435,7 +348,7 @@ long sched_fork(process_block_t* process, interrupt_frame_t* frame) {
     return -ENOMEM;
   }
 
-  process_block_t* new_proc =
+  proc_t* new_proc =
       new_proc_shared(process->name, vmm_get_cr3(new_vmm));
   if (new_proc == NULL) {
     vmm_free(new_vmm);
@@ -469,7 +382,7 @@ long sched_fork(process_block_t* process, interrupt_frame_t* frame) {
     new_proc->fds[fd] = process->fds[fd];
     vfs_file_borrow(new_proc->fds[fd]);
   }
-  sched_pb_set_cwd(new_proc, process->cwd);
+  proc_set_cwd(new_proc, process->cwd);
 
   new_proc->rsp = (void*)switch_rsp;
   new_proc->parent = process;
@@ -482,7 +395,7 @@ long sched_fork(process_block_t* process, interrupt_frame_t* frame) {
   return new_proc->pid;
 }
 
-long sched_waitpid(process_block_t* process,
+long sched_waitpid(proc_t* process,
                    long pid,
                    int* wstatus,
                    int options) {
@@ -493,7 +406,7 @@ long sched_waitpid(process_block_t* process,
 
   sched_postpone();
 
-  process_block_t* child = NULL;
+  proc_t* child = NULL;
   uint64_t child_slot = 0;
   bool has_child = wait_child_find(process, pid, &child, &child_slot);
 
@@ -531,7 +444,7 @@ long sched_waitpid(process_block_t* process,
   return ret;
 }
 
-void sched_add_proc(process_block_t* process) {
+void sched_add_proc(proc_t* process) {
   sched_postpone();
   enqueue_ready_process(process);
   sched_resume();
@@ -575,7 +488,7 @@ void schedule_advance(void) {
     }
 
     g_kernel.sched->quantum_remaining = QUANTUM_LENGTH;
-    process_block_t* next = g_kernel.sched->first_ready_to_run;
+    proc_t* next = g_kernel.sched->first_ready_to_run;
     next->switch_timestamp = g_kernel.sched->time_elapsed;
     g_kernel.sched->first_ready_to_run =
         g_kernel.sched->first_ready_to_run->next;
@@ -587,7 +500,7 @@ void schedule_advance(void) {
     // g_kernel.current_process and its status is updated inside switch_to()
     multitask_switch(next);
   } else if (g_kernel.current_process->status != PROC_STATUS_RUNNING) {
-    process_block_t* proc = g_kernel.current_process;
+    proc_t* proc = g_kernel.current_process;
     g_kernel.current_process = NULL;
     g_kernel.sched->idle_switch_timestamp = g_kernel.sched->time_elapsed;
 
@@ -616,7 +529,7 @@ void sched_yield(void) {
   sched_unlock();
 }
 
-void multitask_switch(process_block_t* process) {
+void multitask_switch(proc_t* process) {
   asm volatile("cli");
   uint64_t cs = 0;
   asm volatile("\t movq %%cs,%0" : "=r"(cs));
@@ -668,7 +581,7 @@ void sched_current_block(uint8_t reason) {
   block_process(g_kernel.current_process, reason);
 }
 
-void sched_proc_unblock(process_block_t* process) {
+void sched_proc_unblock(proc_t* process) {
   if (process == NULL) { return; }
 
   sched_lock();
@@ -699,9 +612,9 @@ void sched_current_sleep_ns(uint64_t ns) {
                    pit_get_ns_elapsed_since_init(g_kernel.pit) + ns);
 }
 
-void sched_proc_terminate(process_block_t* p) { sched_proc_exit(p, 0); }
+void sched_proc_terminate(proc_t* p) { sched_proc_exit(p, 0); }
 
-void sched_proc_exit(process_block_t* p, int code) {
+void sched_proc_exit(proc_t* p, int code) {
   if (p == NULL) { return; }
   sched_postpone();
 
@@ -725,16 +638,14 @@ void sched_proc_exit(process_block_t* p, int code) {
   sched_resume();
 }
 
-void* sched_pb_get_cr3(process_block_t* p) { return p->cr3; }
-
-void block_process(process_block_t* p, uint8_t reason) {
+void block_process(proc_t* p, uint8_t reason) {
   sched_lock();
   p->status = reason;
   schedule_advance();
   sched_unlock();
 }
 
-void enqueue_ready_process(process_block_t* process) {
+void enqueue_ready_process(proc_t* process) {
   process->next = NULL;
   if (g_kernel.sched->first_ready_to_run == NULL) {
     g_kernel.sched->first_ready_to_run = process;
@@ -752,12 +663,12 @@ void enqueue_ready_process(process_block_t* process) {
 /*
  * Finds the last process needing to be woken.
  */
-process_block_t* find_last_sleep_timestamp_less_than_equal(
-    process_block_t* process,
+proc_t* find_last_sleep_timestamp_less_than_equal(
+    proc_t* process,
     uint64_t timestamp) {
   if (process->sleep_until > timestamp) { return NULL; }
-  process_block_t* ret = NULL;
-  for (process_block_t* curr = process; curr != NULL; curr = curr->next) {
+  proc_t* ret = NULL;
+  for (proc_t* curr = process; curr != NULL; curr = curr->next) {
     if (curr->sleep_until <= timestamp) {
       ret = curr;
     } else {
@@ -784,19 +695,19 @@ void handle_timer(uint64_t timestamp) {
   sched_resume();
 }
 
-void insert_process_after(process_block_t* process, process_block_t* after) {
+void insert_process_after(proc_t* process, proc_t* after) {
   if (after == NULL) { return; }
 
   process->next = after->next;
   after->next = process;
 }
 
-process_block_t* new_proc_shared(char* name, void* cr3) {
-  process_block_t* new_proc =
-      (process_block_t*)slab_calloc(sizeof(process_block_t));
+proc_t* new_proc_shared(char* name, void* cr3) {
+  proc_t* new_proc =
+      (proc_t*)slab_calloc(sizeof(proc_t));
   vfs_file_t** fds = (vfs_file_t**)slab_calloc(sizeof(vfs_file_t*) * MAX_FDS);
-  process_block_t** children =
-      (process_block_t**)slab_calloc(sizeof(process_block_t*) * MAX_CHILDREN);
+  proc_t** children =
+      (proc_t**)slab_calloc(sizeof(proc_t*) * MAX_CHILDREN);
   uint8_t* stack_end = (uint8_t*)slab_calloc(STACK_SIZE);
   hlogger_t* logger = hlog_new(DEFAULT_HLOG_LEVEL, DEFAULT_HLOG_BUFSIZE);
   process_mem_t* mem = process_mem_new(NULL);
@@ -884,7 +795,7 @@ void proc_strings_free(char** strings) {
   free(strings);
 }
 
-void proc_prelude(process_block_t* p) {
+void proc_prelude(proc_t* p) {
   if (p == NULL) { return; }
   if (p->status == PROC_STATUS_UNINITIALIZED) {
     p->status = PROC_STATUS_RUNNING;
@@ -899,7 +810,7 @@ void proc_prelude(process_block_t* p) {
   sched_proc_terminate(p);
 }
 
-void process_free(process_block_t* p) {
+void process_free(proc_t* p) {
   if (p == NULL) { return; }
 
   if (p->parent != NULL && p->parent->children != NULL) {
@@ -933,7 +844,7 @@ void process_free(process_block_t* p) {
   slab_free(p->name);
   proc_strings_free(p->argv);
   proc_strings_free(p->envp);
-  sched_pb_set_cwd(p, NULL);
+  proc_set_cwd(p, NULL);
   fpu_free(p->fpu);
   process_mem_free(p->mem);
   slab_free(p->stack_end);
@@ -951,8 +862,8 @@ void process_fd_release(vfs_file_t* file) {
   vfs_close(file);
 }
 
-long process_wait_collect(process_block_t* parent,
-                          process_block_t* child,
+long process_wait_collect(proc_t* parent,
+                          proc_t* child,
                           uint64_t child_slot,
                           int* wstatus) {
   if (parent == NULL || child == NULL || parent->children == NULL) {
@@ -970,11 +881,11 @@ long process_wait_collect(process_block_t* parent,
   return child_pid;
 }
 
-void ready_to_die_remove(process_block_t* target) {
+void ready_to_die_remove(proc_t* target) {
   if (target == NULL) { return; }
 
-  process_block_t* prev = NULL;
-  for (process_block_t* p = g_kernel.sched->ready_to_die; p != NULL;
+  proc_t* prev = NULL;
+  for (proc_t* p = g_kernel.sched->ready_to_die; p != NULL;
        p = p->next) {
     if (p != target) {
       prev = p;
@@ -991,9 +902,9 @@ void ready_to_die_remove(process_block_t* target) {
   }
 }
 
-void remove_proc(process_block_t* p) {
+void remove_proc(proc_t* p) {
   // TODO: tidy this up
-  process_block_t* head;
+  proc_t* head;
   bool is_ready_queue = false;
   switch (p->status) {
     case PROC_STATUS_READY_TO_RUN:
@@ -1025,8 +936,8 @@ void remove_proc(process_block_t* p) {
         return;
     }
   } else {
-    process_block_t* last = head;
-    process_block_t* proc;
+    proc_t* last = head;
+    proc_t* proc;
     for (proc = head; proc != p && proc != NULL; proc = proc->next) {
       last = proc;
     }
@@ -1041,7 +952,7 @@ void remove_proc(process_block_t* p) {
 }
 
 void set_last_ready_to_run(sched_state_t* mt,
-                           process_block_t* first_ready_to_run) {
+                           proc_t* first_ready_to_run) {
   if (first_ready_to_run->next == NULL) {
     mt->last_ready_to_run = first_ready_to_run;
     return;
@@ -1049,7 +960,7 @@ void set_last_ready_to_run(sched_state_t* mt,
   set_last_ready_to_run(mt, first_ready_to_run->next);
 }
 
-void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
+void sleep_proc_until(proc_t* process, uint64_t timestamp) {
   sched_postpone();
   process->sleep_until = timestamp;
   process->status = PROC_STATUS_SLEEPING_TIMER;
@@ -1066,7 +977,7 @@ void sleep_proc_until(process_block_t* process, uint64_t timestamp) {
     return;
   }
 
-  process_block_t* last = find_last_sleep_timestamp_less_than_equal(
+  proc_t* last = find_last_sleep_timestamp_less_than_equal(
       g_kernel.sched->sleeping, timestamp);
   if (last == NULL) {
     process->next = g_kernel.sched->sleeping;
@@ -1092,10 +1003,10 @@ void terminator(void) {
       sched_unlock();
     } else {
       sched_postpone();
-      process_block_t* waiting_for_parent = NULL;
-      process_block_t* next;
+      proc_t* waiting_for_parent = NULL;
+      proc_t* next;
       bool freed_process = false;
-      for (process_block_t* p = g_kernel.sched->ready_to_die; p != NULL;) {
+      for (proc_t* p = g_kernel.sched->ready_to_die; p != NULL;) {
         next = p->next;
         p->next = NULL;
         if (p->parent != NULL) {
@@ -1116,16 +1027,16 @@ void terminator(void) {
   }
 }
 
-static bool wait_child_find(process_block_t* parent,
+static bool wait_child_find(proc_t* parent,
                             long pid,
-                            process_block_t** child_out,
+                            proc_t** child_out,
                             uint64_t* child_slot_out) {
   if (parent == NULL || parent->children == NULL) { return false; }
 
-  process_block_t* first_matching_child = NULL;
+  proc_t* first_matching_child = NULL;
   uint64_t first_matching_child_slot = 0;
   for (uint64_t child_slot = 1; child_slot < MAX_CHILDREN; ++child_slot) {
-    process_block_t* child = parent->children[child_slot];
+    proc_t* child = parent->children[child_slot];
     if (child == NULL) { continue; }
     if (pid != -1 && child->pid != (uint64_t)pid) { continue; }
 
@@ -1154,8 +1065,8 @@ void wake_procs_before_timestamp(uint64_t timestamp) {
     return;
   }
 
-  process_block_t* last_to_wake = NULL;
-  for (process_block_t* curr = g_kernel.sched->sleeping; curr != NULL;
+  proc_t* last_to_wake = NULL;
+  for (proc_t* curr = g_kernel.sched->sleeping; curr != NULL;
        curr = curr->next) {
     if (curr->sleep_until <= timestamp) {
       curr->status = PROC_STATUS_READY_TO_RUN;

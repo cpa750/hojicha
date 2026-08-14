@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <fs/vfs.h>
 #include <kernel/g_kernel.h>
+#include <mp/proc.h>
 #include <mp/scheduler.h>
 #include <kernel/syscall_callbacks.h>
 #include <kernel/syscall_utils.h>
@@ -25,17 +26,17 @@ long syscall_chdir(const char* target) {
     vfs_vnode_release(node);
     return (long)-vfs_status_to_errno(VFS_STATUS_NOTDIR);
   }
-  sched_pb_set_cwd(g_kernel.current_process, node);
+  proc_set_cwd(g_kernel.current_process, node);
   vfs_vnode_release(node);
   return 0;
 }
 
 long syscall_fchdir(long target_fd) {
-  vfs_file_t* file = sched_pb_fd_get(g_kernel.current_process, target_fd);
+  vfs_file_t* file = proc_fd_get(g_kernel.current_process, target_fd);
   if (file == NULL) { return -EBADF; }
   if (file->vnode->type != VFS_NODE_DIR) {
     return (long)-vfs_status_to_errno(VFS_STATUS_NOTDIR);
   }
-  sched_pb_set_cwd(g_kernel.current_process, file->vnode);
+  proc_set_cwd(g_kernel.current_process, file->vnode);
   return 0;
 }

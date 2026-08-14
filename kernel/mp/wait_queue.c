@@ -1,4 +1,6 @@
 #include <kernel/g_kernel.h>
+#include <mp/proc.h>
+#include <mp/scheduler.h>
 #include <mp/wait_queue.h>
 #include <stddef.h>
 
@@ -32,15 +34,15 @@ void wait_queue_sleep_postponed(wait_queue_t* q) {
   sched_postpone();
 }
 
-process_block_t* wait_queue_wake_one(wait_queue_t* q) {
+proc_t* wait_queue_wake_one(wait_queue_t* q) {
   if (q == NULL) { return NULL; }
 
   sched_postpone();
-  process_block_t* proc = q->head;
+  proc_t* proc = q->head;
   if (proc != NULL) {
-    q->head = sched_pb_get_next(proc);
+    q->head = proc_get_next(proc);
     if (q->head == NULL) { q->tail = NULL; }
-    sched_pb_set_next(proc, NULL);
+    proc_set_next(proc, NULL);
     sched_proc_unblock(proc);
   }
   sched_resume();
@@ -52,9 +54,9 @@ void wait_queue_wake_all(wait_queue_t* q) {
 
   sched_postpone();
   while (q->head != NULL) {
-    process_block_t* proc = q->head;
-    q->head = sched_pb_get_next(proc);
-    sched_pb_set_next(proc, NULL);
+    proc_t* proc = q->head;
+    q->head = proc_get_next(proc);
+    proc_set_next(proc, NULL);
     sched_proc_unblock(proc);
   }
   q->tail = NULL;
@@ -64,11 +66,11 @@ void wait_queue_wake_all(wait_queue_t* q) {
 static void enqueue_current(wait_queue_t* q) {
   if (q == NULL || g_kernel.current_process == NULL) { return; }
 
-  sched_pb_set_next(g_kernel.current_process, NULL);
+  proc_set_next(g_kernel.current_process, NULL);
   if (q->head == NULL) {
     q->head = g_kernel.current_process;
   } else {
-    sched_pb_set_next(q->tail, g_kernel.current_process);
+    proc_set_next(q->tail, g_kernel.current_process);
   }
   q->tail = g_kernel.current_process;
 }
