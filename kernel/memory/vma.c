@@ -3,7 +3,7 @@
 #include <kernel/g_kernel.h>
 #include <memory/slab.h>
 #include <memory/vma.h>
-#include <multitask/scheduler.h>
+#include <mp/scheduler.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>

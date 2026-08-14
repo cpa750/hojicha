@@ -5,8 +5,8 @@
 #include <utils/set_out.h>
 #include <hlog.h>
 #include <memory/slab.h>
-#include <multitask/bootmodule.h>
-#include <multitask/scheduler.h>
+#include <mp/bootmodule.h>
+#include <mp/scheduler.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>

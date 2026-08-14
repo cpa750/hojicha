@@ -3,7 +3,7 @@
 #include <hlog.h>
 #include <kernel/g_kernel.h>
 #include <memory/slab.h>
-#include <multitask/scheduler.h>
+#include <mp/scheduler.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>

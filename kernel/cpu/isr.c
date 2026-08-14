@@ -1,8 +1,8 @@
 #include <cpu/isr.h>
 #include <hlog.h>
 #include <kernel/g_kernel.h>
-#include <multitask/scheduler.h>
-#include <multitask/syscall.h>
+#include <mp/scheduler.h>
+#include <kernel/syscall.h>
 #include <stdio.h>
 #include <stdlib.h>
 

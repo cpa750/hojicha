@@ -18,10 +18,10 @@
 #include <limine.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
-#include <multitask/bootmodule.h>
-#include <multitask/elf.h>
-#include <multitask/scheduler.h>
-#include <multitask/semaphore.h>
+#include <mp/bootmodule.h>
+#include <kernel/elf.h>
+#include <mp/scheduler.h>
+#include <mp/semaphore.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -49,7 +49,7 @@
 #include <memory/vma_test.h>
 #endif
 #if defined(__ast_scheduler)
-#include <multitask/scheduler_ast.h>
+#include <mp/scheduler_ast.h>
 #endif
 
 void print_ok(const char* component);

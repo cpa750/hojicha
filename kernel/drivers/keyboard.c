@@ -5,8 +5,8 @@
 #include <io.h>
 #include <kernel/g_kernel.h>
 #include <memory/pmm.h>
-#include <multitask/spinlock.h>
-#include <multitask/wait_queue.h>
+#include <mp/spinlock.h>
+#include <mp/wait_queue.h>
 #include <stdint.h>
 #include <utils/ringbuffer.h>
 #include <utils/set_out.h>

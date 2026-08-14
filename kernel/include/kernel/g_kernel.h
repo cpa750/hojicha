@@ -3,7 +3,7 @@
 
 #include <cpu/tss.h>
 #include <drivers/pit.h>
-#include <multitask/scheduler.h>
+#include <mp/scheduler.h>
 #include <stdbool.h>
 #include <stdint.h>
 

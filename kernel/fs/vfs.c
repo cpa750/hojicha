@@ -2,7 +2,7 @@
 #include <fs/vfs.h>
 #include <kernel/g_kernel.h>
 #include <kernel/ktime.h>
-#include <multitask/scheduler.h>
+#include <mp/scheduler.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
