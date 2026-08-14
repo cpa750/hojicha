@@ -3,7 +3,7 @@
 #include <limine.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
-#include <multitask/spinlock.h>
+#include <mp/spinlock.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>

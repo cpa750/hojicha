@@ -1,7 +1,8 @@
 #include <fs/vfs.h>
 #include <fs/vfs_test.h>
 #include <kernel/g_kernel.h>
-#include <multitask/scheduler.h>
+#include <mp/proc.h>
+#include <mp/scheduler.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -250,7 +251,7 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx, resolved == file);
   HTEST_ASSERT(&ctx, vfs_close(file) == VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, mock.close_calls == 1);
-  HTEST_ASSERT(&ctx, sched_pb_fd_get(g_kernel.current_process, fd) == NULL);
+  HTEST_ASSERT(&ctx, proc_fd_get(g_kernel.current_process, fd) == NULL);
 
   looked_up = NULL;
   HTEST_ASSERT(&ctx, vfs_lookup("/..", &looked_up) == VFS_STATUS_NOENT);
@@ -259,11 +260,11 @@ void vfs_test(void) {
   htest_case_begin(&ctx, "process cwd lookup");
   mock_reset(&mock);
 
-  vfs_node_t* old_cwd = sched_pb_get_cwd(g_kernel.current_process);
+  vfs_node_t* old_cwd = proc_get_cwd(g_kernel.current_process);
   HTEST_ASSERT(&ctx, old_cwd != NULL);
   vfs_vnode_borrow(old_cwd);
 
-  sched_pb_set_cwd(g_kernel.current_process, NULL);
+  proc_set_cwd(g_kernel.current_process, NULL);
   looked_up = NULL;
   HTEST_ASSERT(&ctx,
                vfs_lookup("etc/vfs_mock/existing.txt", &looked_up) ==
@@ -275,7 +276,7 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx,
                vfs_lookup("/etc/vfs_mock/existing_dir", &mock_cwd) ==
                    VFS_STATUS_OK);
-  sched_pb_set_cwd(g_kernel.current_process, mock_cwd);
+  proc_set_cwd(g_kernel.current_process, mock_cwd);
   vfs_vnode_release(mock_cwd);
   looked_up = NULL;
   HTEST_ASSERT(&ctx, vfs_lookup("nested.txt", &looked_up) == VFS_STATUS_OK);
@@ -300,7 +301,7 @@ void vfs_test(void) {
   HTEST_ASSERT(&ctx, memcmp(name, "nested.txt", strlen("nested.txt")) == 0);
   vfs_vnode_release(parent);
 
-  sched_pb_set_cwd(g_kernel.current_process, old_cwd);
+  proc_set_cwd(g_kernel.current_process, old_cwd);
   vfs_vnode_release(old_cwd);
 
   htest_case_begin(&ctx, "relative lookup");

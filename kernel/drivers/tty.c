@@ -6,9 +6,10 @@
 #include <io.h>
 #include <kernel/g_kernel.h>
 #include <memory/slab.h>
-#include <multitask/mutex.h>
-#include <multitask/spinlock.h>
-#include <multitask/wait_queue.h>
+#include <mp/mutex.h>
+#include <mp/scheduler.h>
+#include <mp/spinlock.h>
+#include <mp/wait_queue.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

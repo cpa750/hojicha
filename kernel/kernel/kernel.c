@@ -18,10 +18,11 @@
 #include <limine.h>
 #include <memory/pmm.h>
 #include <memory/vmm.h>
-#include <multitask/bootmodule.h>
-#include <multitask/elf.h>
-#include <multitask/scheduler.h>
-#include <multitask/semaphore.h>
+#include <mp/bootmodule.h>
+#include <kernel/elf.h>
+#include <mp/proc.h>
+#include <mp/scheduler.h>
+#include <mp/semaphore.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -49,7 +50,7 @@
 #include <memory/vma_test.h>
 #endif
 #if defined(__ast_scheduler)
-#include <multitask/scheduler_ast.h>
+#include <mp/scheduler_ast.h>
 #endif
 
 void print_ok(const char* component);
@@ -189,7 +190,7 @@ void kernel_main() {
   if (res != VFS_STATUS_OK) { hlog_write(HLOG_ERROR, "uh oh..."); }
 
   elf_t* init = elf_read(init_contents, init_stat->size);
-  process_block_t* elf_proc = sched_uproc_new("init", init);
+  proc_t* elf_proc = proc_new_user("init", init);
   sched_add_proc(elf_proc);
 
   vfs_close(init_file);

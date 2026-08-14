@@ -3,7 +3,8 @@
 #include <kernel/g_kernel.h>
 #include <memory/slab.h>
 #include <memory/vma.h>
-#include <multitask/scheduler.h>
+#include <mp/proc.h>
+#include <mp/scheduler.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -339,7 +340,7 @@ static bool vma_range_valid(haddr_t start, haddr_t end) {
 
 static bool vma_log_enabled(void) {
   return g_kernel.current_process != NULL &&
-         sched_pb_get_logger(g_kernel.current_process) != NULL;
+         proc_get_logger(g_kernel.current_process) != NULL;
 }
 
 static bool vma_overlaps(vma_t* vma, haddr_t start, haddr_t end) {

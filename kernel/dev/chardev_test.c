@@ -2,7 +2,8 @@
 
 #include <fs/vfs.h>
 #include <kernel/g_kernel.h>
-#include <multitask/scheduler.h>
+#include <mp/proc.h>
+#include <mp/scheduler.h>
 #include <stdint.h>
 #include <string.h>
 #include <utils/test.h>
@@ -171,7 +172,7 @@ void chardev_test(void) {
   HTEST_ASSERT(&ctx, memcmp(child_name, "test.txt", child_name_len) == 0);
   vfs_vnode_release(parent);
 
-  vfs_node_t* old_cwd = sched_pb_get_cwd(g_kernel.current_process);
+  vfs_node_t* old_cwd = proc_get_cwd(g_kernel.current_process);
   HTEST_ASSERT(&ctx, old_cwd != NULL);
   vfs_vnode_borrow(old_cwd);
 
@@ -179,7 +180,7 @@ void chardev_test(void) {
   HTEST_ASSERT(&ctx, vfs_lookup("/dev", &dev_cwd) == VFS_STATUS_OK);
   HTEST_ASSERT(&ctx, dev_cwd->mount != NULL);
   HTEST_ASSERT(&ctx, dev_cwd == dev_cwd->mount->root);
-  sched_pb_set_cwd(g_kernel.current_process, dev_cwd);
+  proc_set_cwd(g_kernel.current_process, dev_cwd);
   vfs_vnode_release(dev_cwd);
 
   HTEST_ASSERT(&ctx,
@@ -202,7 +203,7 @@ void chardev_test(void) {
   vfs_vnode_release(parent);
   vfs_vnode_release(etc);
 
-  sched_pb_set_cwd(g_kernel.current_process, old_cwd);
+  proc_set_cwd(g_kernel.current_process, old_cwd);
   vfs_vnode_release(old_cwd);
 
   HTEST_ASSERT(&ctx,

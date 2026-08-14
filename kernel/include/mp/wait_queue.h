@@ -1,0 +1,24 @@
+#ifndef HOJICHA_MP_WAIT_QUEUE_H
+#define HOJICHA_MP_WAIT_QUEUE_H
+
+#include <stdbool.h>
+
+typedef struct proc proc_t;
+
+typedef struct wait_queue {
+  proc_t* head;
+  proc_t* tail;
+} wait_queue_t;
+
+void wait_queue_init(wait_queue_t* q);
+bool wait_queue_empty(wait_queue_t* q);
+void wait_queue_sleep(wait_queue_t* q);
+/*
+ * Sleeps on `q` while the caller has already postponed scheduler switches.
+ * Returns with the caller's postponed section restored.
+ */
+void wait_queue_sleep_postponed(wait_queue_t* q);
+proc_t* wait_queue_wake_one(wait_queue_t* q);
+void wait_queue_wake_all(wait_queue_t* q);
+
+#endif  // HOJICHA_MP_WAIT_QUEUE_H

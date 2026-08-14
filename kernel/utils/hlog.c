@@ -3,7 +3,8 @@
 #include <hlog.h>
 #include <kernel/g_kernel.h>
 #include <memory/slab.h>
-#include <multitask/scheduler.h>
+#include <mp/proc.h>
+#include <mp/scheduler.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -14,7 +15,7 @@
 typedef struct pending_log pending_log_t;
 struct pending_log {
   char* buf;
-  process_block_t* proc;
+  proc_t* proc;
   hlog_level_t level;
   pending_log_t* next;
 };
@@ -27,18 +28,18 @@ static bool use_console = false;
 
 void add_log_internal(hlogger_t* logger,
                       hlog_level_t level,
-                      process_block_t* proc,
+                      proc_t* proc,
                       const char* restrict format,
                       va_list args);
 uint64_t write_log_internal(hlog_level_t level,
                             hlogger_t* logger,
-                            process_block_t* proc,
+                            proc_t* proc,
                             const char* restrict format,
                             va_list args);
 uint64_t print_level(hlog_level_t level);
-uint64_t write_log_record(hlog_level_t level, process_block_t* proc, char* buf);
+uint64_t write_log_record(hlog_level_t level, proc_t* proc, char* buf);
 uint64_t serial_write_log_record(hlog_level_t level,
-                                 process_block_t* proc,
+                                 proc_t* proc,
                                  char* buf);
 
 hlogger_t* hlog_new(hlog_level_t level, uint64_t bufsize) {
@@ -59,7 +60,7 @@ uint64_t hlog_free_logger(hlogger_t* logger) {
 }
 
 void hlog_add(hlog_level_t level, const char* restrict format, ...) {
-  hlogger_t* logger = sched_pb_get_logger(g_kernel.current_process);
+  hlogger_t* logger = proc_get_logger(g_kernel.current_process);
   if (level > logger->max_level) { return; }
   va_list args;
   va_start(args, format);
@@ -81,7 +82,7 @@ void hlog_add_logger(hlogger_t* logger,
 
 void add_log_internal(hlogger_t* logger,
                       hlog_level_t level,
-                      process_block_t* proc,
+                      proc_t* proc,
                       const char* restrict format,
                       va_list args) {
   pending_log_t* log = (pending_log_t*)slab_alloc(sizeof(pending_log_t));
@@ -106,7 +107,7 @@ void add_log_internal(hlogger_t* logger,
 }
 
 uint64_t hlog_commit(void) {
-  return hlog_commit_logger(sched_pb_get_logger(g_kernel.current_process));
+  return hlog_commit_logger(proc_get_logger(g_kernel.current_process));
 }
 
 uint64_t hlog_commit_logger(hlogger_t* logger) {
@@ -125,7 +126,7 @@ uint64_t hlog_commit_logger(hlogger_t* logger) {
 }
 
 uint64_t hlog_write(hlog_level_t level, const char* restrict format, ...) {
-  hlogger_t* logger = sched_pb_get_logger(g_kernel.current_process);
+  hlogger_t* logger = proc_get_logger(g_kernel.current_process);
   if (level > logger->max_level) { return 0; }
 
   va_list args;
@@ -178,7 +179,7 @@ void hlog_enable_console(void) {
 
 uint64_t write_log_internal(hlog_level_t level,
                             hlogger_t* logger,
-                            process_block_t* proc,
+                            proc_t* proc,
                             const char* restrict format,
                             va_list args) {
   char* buf = (char*)slab_alloc(sizeof(char) * logger->bufsize);
@@ -191,23 +192,23 @@ uint64_t write_log_internal(hlog_level_t level,
 }
 
 uint64_t write_log_record(hlog_level_t level,
-                          process_block_t* proc,
+                          proc_t* proc,
                           char* buf) {
   if (!use_console) { return serial_write_log_record(level, proc, buf); }
 
   uint64_t bytes_written = 0;
   bytes_written += print_level(level);
   bytes_written += printf(
-      "[%s] (PID: %d): ", sched_pb_get_name(proc), sched_pb_get_pid(proc));
+      "[%s] (PID: %d): ", proc_get_name(proc), proc_get_pid(proc));
   bytes_written += printf("%s\n", buf);
   return bytes_written;
 }
 
 uint64_t serial_write_log_record(hlog_level_t level,
-                                 process_block_t* proc,
+                                 proc_t* proc,
                                  char* buf) {
   char pid_string_buf[64];
-  itoa(sched_pb_get_pid(proc), pid_string_buf, 10);
+  itoa(proc_get_pid(proc), pid_string_buf, 10);
   char* pid_string = pid_string_buf;
   if (pid_string_buf[0] == '0' && pid_string_buf[1] == 'd') {
     pid_string = pid_string_buf + 2;
@@ -220,8 +221,8 @@ uint64_t serial_write_log_record(hlog_level_t level,
   bytes_written += strlen(hlog_level_to_string(level));
   serial_write_string("] [");
   bytes_written += 3;
-  serial_write_string(sched_pb_get_name(proc));
-  bytes_written += strlen(sched_pb_get_name(proc));
+  serial_write_string(proc_get_name(proc));
+  bytes_written += strlen(proc_get_name(proc));
   serial_write_string("] (PID: ");
   bytes_written += 8;
   serial_write_string(pid_string);

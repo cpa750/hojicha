@@ -54,7 +54,7 @@ add_subdirectory(fonts)
 add_subdirectory(fs)
 add_subdirectory(kernel)
 add_subdirectory(memory)
-add_subdirectory(multitask)
+add_subdirectory(mp)
 add_subdirectory(utils)
 
 add_compiler_runtime_object(crtbegin.o CRTBEGIN_OBJECT)
